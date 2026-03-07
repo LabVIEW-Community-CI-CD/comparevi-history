@@ -70,8 +70,25 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - `history-report-md`
 - `history-report-html`
 
+## Trust boundaries
+
+- Treat this action as a trusted-runner workflow primitive. Real VI History diagnostics should run only on Windows runners that you control and that already satisfy the LabVIEW/LVCompare prerequisites of the backend tooling.
+- Do not expose this action to untrusted fork pull requests with write-scoped tokens or secrets. For public repositories, prefer comment-gated or maintainer-dispatched workflows for PR diagnostics.
+- `comparevi_repository` and `comparevi_ref` are escape hatches for maintainers and smoke coverage. Leave them at their defaults in normal consumer workflows so the action stays on the reviewed backend pin.
+- Hosted smoke coverage in this repo uses an LVCompare stub on `windows-latest`. That proves the facade contract and cross-repo wiring, but it is not a substitute for trusted-runner production use.
+
+## Release mapping
+
+- The default backend mapping is pinned in `comparevi-backend-ref.txt`. The current default is `371b9b9d802903fb12cb8deb3fd8a297dc95f09c` from `LabVIEW-Community-CI-CD/compare-vi-cli-action`.
+- Immutable facade tags such as `v1.0.0`, `v1.0.1`, and later patch tags should each map to a single reviewed backend ref through that file.
+- The moving major tag `v1` should point to the latest compatible facade release after smoke passes.
+- When updating the backend pin:
+  1. Change `comparevi-backend-ref.txt`.
+  2. Run the facade smoke workflow so both local and external paths validate the pinned backend.
+  3. Cut a new immutable tag in `comparevi-history`.
+  4. Move `v1` to that same commit.
+
 ## Notes
 
-- This action is intended for trusted Windows runners that already satisfy the LabVIEW/LVCompare requirements of the backend tooling.
-- The current facade is a thin wrapper over `compare-vi-cli-action`; the default backend mapping is pinned in `comparevi-backend-ref.txt` and should be updated intentionally when releasing new facade tags.
+- The facade is a thin wrapper over `compare-vi-cli-action`; consumers should treat the pinned backend ref as part of the release contract.
 - Tracking epic: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/841

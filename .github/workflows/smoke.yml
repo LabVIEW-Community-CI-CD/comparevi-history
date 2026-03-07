@@ -29,7 +29,6 @@ jobs:
         uses: ./
         with:
           repository_root: compare-vi-cli-action
-          comparevi_ref: develop
           target_path: fixtures/vi-stage/bd-cosmetic/Head.vi
           start_ref: HEAD
           max_pairs: 1
@@ -202,7 +201,6 @@ jobs:
         uses: LabVIEW-Community-CI-CD/comparevi-history@main
         with:
           repository_root: labview-icon-editor
-          comparevi_ref: develop
           target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
           start_ref: HEAD
           max_pairs: 1
