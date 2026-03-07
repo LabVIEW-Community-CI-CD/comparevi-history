@@ -145,8 +145,8 @@ jobs:
           }
 
           git fetch --tags --force origin
-          & git rev-parse -q --verify "refs/tags/$immutableTag" *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $existingTag = (& git tag --list $immutableTag)
+          if (-not [string]::IsNullOrWhiteSpace($existingTag)) {
             throw "Tag $immutableTag already exists."
           }
 
