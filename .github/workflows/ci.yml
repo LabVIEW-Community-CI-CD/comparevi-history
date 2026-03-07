@@ -81,3 +81,10 @@ jobs:
               '- Generated smoke stub parsed successfully'
             ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           }
+
+      - name: Validate trust guard scenarios
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          & "$PWD/scripts/Test-CompareVIHistoryTrust.ps1"
