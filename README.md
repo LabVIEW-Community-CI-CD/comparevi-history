@@ -79,14 +79,21 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 
 ## Release mapping
 
-- The default backend mapping is pinned in `comparevi-backend-ref.txt`. The current default is `371b9b9d802903fb12cb8deb3fd8a297dc95f09c` from `LabVIEW-Community-CI-CD/compare-vi-cli-action`.
+- The default backend mapping is pinned in `comparevi-backend-ref.txt`. Treat that file as the source of truth for the backend commit used by the facade.
 - Immutable facade tags such as `v1.0.0`, `v1.0.1`, and later patch tags should each map to a single reviewed backend ref through that file.
 - The moving major tag `v1` should point to the latest compatible facade release after smoke passes.
-- When updating the backend pin:
-  1. Change `comparevi-backend-ref.txt`.
-  2. Run the facade smoke workflow so both local and external paths validate the pinned backend.
-  3. Cut a new immutable tag in `comparevi-history`.
-  4. Move `v1` to that same commit.
+
+## Release workflow
+
+- Use `.github/workflows/release.yml` to automate backend pin bumps and facade publication.
+- Dispatch it with:
+  - `backend_ref`: branch, tag, or commit in `LabVIEW-Community-CI-CD/compare-vi-cli-action`
+  - `immutable_tag`: new immutable facade tag such as `v1.0.2`
+  - `major_tag`: moving compatibility tag, normally `v1`
+  - `publish`: `false` for smoke-only rehearsal, `true` for a real release from `main`
+- The workflow resolves `backend_ref` to a commit SHA, runs both local and external smoke against that candidate backend, and uploads a release-plan artifact before any publish step runs.
+- When `publish: true`, the workflow then updates `comparevi-backend-ref.txt`, creates the immutable tag, publishes GitHub Release notes with the mapped backend ref, and finally moves `v1`.
+- Failure before the final major-tag step leaves `v1` unchanged.
 
 ## Notes
 

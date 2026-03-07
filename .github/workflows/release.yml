@@ -1,0 +1,443 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: compare-vi-cli-action ref to pin for this release
+        required: true
+        type: string
+      immutable_tag:
+        description: Immutable facade tag to create, for example v1.0.2
+        required: true
+        type: string
+      major_tag:
+        description: Moving major tag to update after smoke passes
+        required: false
+        default: v1
+        type: string
+      comparevi_repository:
+        description: Backend tooling repository
+        required: false
+        default: LabVIEW-Community-CI-CD/compare-vi-cli-action
+        type: string
+      consumer_repository:
+        description: External consumer repository for smoke coverage
+        required: false
+        default: svelderrainruiz/labview-icon-editor
+        type: string
+      consumer_ref:
+        description: Ref for the external consumer smoke checkout
+        required: false
+        default: develop
+        type: string
+      publish:
+        description: Publish the release after smoke passes
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_sha: ${{ steps.plan.outputs.backend_sha }}
+      comparevi_repository: ${{ steps.plan.outputs.comparevi_repository }}
+      immutable_tag: ${{ steps.plan.outputs.immutable_tag }}
+      major_tag: ${{ steps.plan.outputs.major_tag }}
+      publish: ${{ steps.plan.outputs.publish }}
+      consumer_repository: ${{ steps.plan.outputs.consumer_repository }}
+      consumer_ref: ${{ steps.plan.outputs.consumer_ref }}
+      current_backend_ref: ${{ steps.plan.outputs.current_backend_ref }}
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate release inputs
+        id: plan
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_BACKEND_REF: ${{ inputs.backend_ref }}
+          INPUT_IMMUTABLE_TAG: ${{ inputs.immutable_tag }}
+          INPUT_MAJOR_TAG: ${{ inputs.major_tag }}
+          INPUT_COMPAREVI_REPOSITORY: ${{ inputs.comparevi_repository }}
+          INPUT_CONSUMER_REPOSITORY: ${{ inputs.consumer_repository }}
+          INPUT_CONSUMER_REF: ${{ inputs.consumer_ref }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$INPUT_IMMUTABLE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::immutable_tag must match v<major>.<minor>.<patch>."
+            exit 1
+          fi
+
+          if [[ ! "$INPUT_MAJOR_TAG" =~ ^v[0-9]+$ ]]; then
+            echo "::error::major_tag must match v<major>."
+            exit 1
+          fi
+
+          if [[ "$INPUT_PUBLISH" == "true" && "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "::error::publish=true is only allowed when dispatching from main."
+            exit 1
+          fi
+
+          backend_sha=''
+          if [[ "$INPUT_BACKEND_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            backend_sha="$(gh api "repos/$INPUT_COMPAREVI_REPOSITORY/commits/$INPUT_BACKEND_REF" --jq .sha)"
+          else
+            backend_sha="$(git ls-remote "https://github.com/$INPUT_COMPAREVI_REPOSITORY.git" "$INPUT_BACKEND_REF" | awk '{ print $1; exit }')"
+          fi
+          if [[ -z "$backend_sha" ]]; then
+            echo "::error::Unable to resolve backend_ref $INPUT_BACKEND_REF in $INPUT_COMPAREVI_REPOSITORY."
+            exit 1
+          fi
+          current_backend_ref="$(tr -d '\r\n' < comparevi-backend-ref.txt)"
+
+          git fetch --tags --force origin
+          if git rev-parse -q --verify "refs/tags/$INPUT_IMMUTABLE_TAG" >/dev/null; then
+            echo "::error::Tag $INPUT_IMMUTABLE_TAG already exists."
+            exit 1
+          fi
+
+          cat > release-plan.json <<EOF
+          {
+            "schema": "comparevi-history-release-plan@v1",
+            "facadeRepository": "${GITHUB_REPOSITORY}",
+            "facadeRef": "${GITHUB_SHA}",
+            "backendRepository": "${INPUT_COMPAREVI_REPOSITORY}",
+            "requestedBackendRef": "${INPUT_BACKEND_REF}",
+            "resolvedBackendSha": "${backend_sha}",
+            "currentBackendRef": "${current_backend_ref}",
+            "immutableTag": "${INPUT_IMMUTABLE_TAG}",
+            "majorTag": "${INPUT_MAJOR_TAG}",
+            "consumerRepository": "${INPUT_CONSUMER_REPOSITORY}",
+            "consumerRef": "${INPUT_CONSUMER_REF}",
+            "publish": ${INPUT_PUBLISH}
+          }
+          EOF
+
+          {
+            echo "backend_sha=$backend_sha"
+            echo "comparevi_repository=$INPUT_COMPAREVI_REPOSITORY"
+            echo "immutable_tag=$INPUT_IMMUTABLE_TAG"
+            echo "major_tag=$INPUT_MAJOR_TAG"
+            echo "publish=$INPUT_PUBLISH"
+            echo "consumer_repository=$INPUT_CONSUMER_REPOSITORY"
+            echo "consumer_ref=$INPUT_CONSUMER_REF"
+            echo "current_backend_ref=$current_backend_ref"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload release plan artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-release-plan-${{ github.run_id }}
+          path: release-plan.json
+          if-no-files-found: error
+
+      - name: Summarize release plan
+        shell: bash
+        run: |
+          {
+            echo '## comparevi-history release plan'
+            echo
+            echo "- Backend repo: \`${{ steps.plan.outputs.comparevi_repository }}\`"
+            echo "- Requested backend ref: \`${{ inputs.backend_ref }}\`"
+            echo "- Resolved backend SHA: \`${{ steps.plan.outputs.backend_sha }}\`"
+            echo "- Current backend ref: \`${{ steps.plan.outputs.current_backend_ref }}\`"
+            echo "- Immutable tag: \`${{ steps.plan.outputs.immutable_tag }}\`"
+            echo "- Major tag: \`${{ steps.plan.outputs.major_tag }}\`"
+            echo "- External consumer: \`${{ steps.plan.outputs.consumer_repository }}@${{ steps.plan.outputs.consumer_ref }}\`"
+            echo "- Publish: \`${{ steps.plan.outputs.publish }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  smoke-local:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+
+      - name: Checkout backend target repo
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ needs.validate.outputs.comparevi_repository }}
+          ref: ${{ needs.validate.outputs.backend_sha }}
+          path: compare-vi-cli-action
+          fetch-depth: 0
+
+      - name: Run facade action against backend fixture repo
+        id: history
+        uses: ./
+        with:
+          repository_root: compare-vi-cli-action
+          target_path: fixtures/vi-stage/bd-cosmetic/Head.vi
+          start_ref: HEAD
+          max_pairs: 1
+          mode: default
+          results_dir: tests/results/_facade-release/local
+          detailed: true
+          render_report: true
+          comparevi_repository: ${{ needs.validate.outputs.comparevi_repository }}
+          comparevi_ref: ${{ needs.validate.outputs.backend_sha }}
+          invoke_script_path: tests/stubs/Invoke-LVCompare.stub.ps1
+
+      - name: Assert local smoke outputs
+        shell: pwsh
+        env:
+          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
+          RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
+          HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
+          TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
+          TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($path in @($env:MANIFEST_PATH, $env:RESULTS_DIR, $env:HISTORY_REPORT_MD, $env:HISTORY_REPORT_HTML)) {
+            if ([string]::IsNullOrWhiteSpace($path)) {
+              throw 'Expected facade output path was empty.'
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $env:MANIFEST_PATH -PathType Leaf)) {
+            throw "Manifest not found: $env:MANIFEST_PATH"
+          }
+          if (-not (Test-Path -LiteralPath $env:RESULTS_DIR -PathType Container)) {
+            throw "Results directory not found: $env:RESULTS_DIR"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_MD -PathType Leaf)) {
+            throw "Markdown report not found: $env:HISTORY_REPORT_MD"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_HTML -PathType Leaf)) {
+            throw "HTML report not found: $env:HISTORY_REPORT_HTML"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:TOTAL_PROCESSED) -or [int]$env:TOTAL_PROCESSED -lt 1) {
+            throw "Expected total-processed >= 1. Actual: $($env:TOTAL_PROCESSED)"
+          }
+
+          @(
+            '## comparevi-history local release smoke'
+            ''
+            ('- Manifest: `{0}`' -f $env:MANIFEST_PATH)
+            ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
+            ('- Markdown report: `{0}`' -f $env:HISTORY_REPORT_MD)
+            ('- HTML report: `{0}`' -f $env:HISTORY_REPORT_HTML)
+            ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
+            ('- Total diffs: `{0}`' -f $env:TOTAL_DIFFS)
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload local release smoke artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-release-local-${{ github.run_id }}
+          path: ${{ steps.history.outputs['results-dir'] }}/**
+          if-no-files-found: error
+
+  smoke-external:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+
+      - name: Checkout external consumer repo
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ needs.validate.outputs.consumer_repository }}
+          ref: ${{ needs.validate.outputs.consumer_ref }}
+          path: labview-icon-editor
+          fetch-depth: 0
+
+      - name: Write external smoke LVCompare stub
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $stubPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/tests/results/_comparevi-history-release/Invoke-LVCompare.stub.ps1'
+          & "$env:GITHUB_WORKSPACE/scripts/Write-CompareVIHistorySmokeStub.ps1" -DestinationPath $stubPath
+
+      - name: Run facade action against external consumer repo
+        id: history
+        uses: ./
+        with:
+          repository_root: labview-icon-editor
+          target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
+          start_ref: HEAD
+          max_pairs: 1
+          mode: default
+          results_dir: tests/results/_comparevi-history-release/history
+          detailed: true
+          render_report: true
+          comparevi_repository: ${{ needs.validate.outputs.comparevi_repository }}
+          comparevi_ref: ${{ needs.validate.outputs.backend_sha }}
+          invoke_script_path: tests/results/_comparevi-history-release/Invoke-LVCompare.stub.ps1
+
+      - name: Assert external smoke outputs
+        shell: pwsh
+        env:
+          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
+          RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
+          HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
+          TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
+          TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($path in @($env:MANIFEST_PATH, $env:RESULTS_DIR, $env:HISTORY_REPORT_MD, $env:HISTORY_REPORT_HTML)) {
+            if ([string]::IsNullOrWhiteSpace($path)) {
+              throw 'Expected facade output path was empty.'
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $env:MANIFEST_PATH -PathType Leaf)) {
+            throw "Manifest not found: $env:MANIFEST_PATH"
+          }
+          if (-not (Test-Path -LiteralPath $env:RESULTS_DIR -PathType Container)) {
+            throw "Results directory not found: $env:RESULTS_DIR"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_MD -PathType Leaf)) {
+            throw "Markdown report not found: $env:HISTORY_REPORT_MD"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_HTML -PathType Leaf)) {
+            throw "HTML report not found: $env:HISTORY_REPORT_HTML"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:TOTAL_PROCESSED) -or [int]$env:TOTAL_PROCESSED -lt 1) {
+            throw "Expected total-processed >= 1. Actual: $($env:TOTAL_PROCESSED)"
+          }
+
+          @(
+            '## comparevi-history external release smoke'
+            ''
+            ('- Consumer repo: `{0}@{1}`' -f '${{ needs.validate.outputs.consumer_repository }}', '${{ needs.validate.outputs.consumer_ref }}')
+            '- Target path: `Tooling/deployment/VIP_Post-Install Custom Action.vi`'
+            ('- Manifest: `{0}`' -f $env:MANIFEST_PATH)
+            ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
+            ('- Markdown report: `{0}`' -f $env:HISTORY_REPORT_MD)
+            ('- HTML report: `{0}`' -f $env:HISTORY_REPORT_HTML)
+            ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
+            ('- Total diffs: `{0}`' -f $env:TOTAL_DIFFS)
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload external release smoke artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-release-external-${{ github.run_id }}
+          path: ${{ steps.history.outputs['results-dir'] }}/**
+          if-no-files-found: error
+
+  publish:
+    if: ${{ needs.validate.outputs.publish == 'true' }}
+    needs:
+      - validate
+      - smoke-local
+      - smoke-external
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Update backend pin and create release notes
+        id: prepare
+        shell: bash
+        env:
+          BACKEND_SHA: ${{ needs.validate.outputs.backend_sha }}
+          BACKEND_REPOSITORY: ${{ needs.validate.outputs.comparevi_repository }}
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+          MAJOR_TAG: ${{ needs.validate.outputs.major_tag }}
+        run: |
+          set -euo pipefail
+
+          printf '%s\n' "$BACKEND_SHA" > comparevi-backend-ref.txt
+
+          if ! git diff --quiet -- comparevi-backend-ref.txt; then
+            git add comparevi-backend-ref.txt
+            git commit -m "Release comparevi-history $IMMUTABLE_TAG (#1)"
+          fi
+
+          target_sha="$(git rev-parse HEAD)"
+
+          cat > release-notes.md <<EOF
+          ## comparevi-history $IMMUTABLE_TAG
+
+          - Facade repository: \`${GITHUB_REPOSITORY}\`
+          - Facade commit: \`${target_sha}\`
+          - Backend repository: \`${BACKEND_REPOSITORY}\`
+          - Backend ref: \`${BACKEND_SHA}\`
+          - Major tag updated: \`${MAJOR_TAG}\`
+          - Smoke workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          ### Published contract
+
+          - \`comparevi-backend-ref.txt\` now pins \`${BACKEND_SHA}\`
+          - \`${IMMUTABLE_TAG}\` is the immutable facade tag for this backend mapping
+          - \`${MAJOR_TAG}\` advances only after smoke and release publication succeed
+          EOF
+
+          echo "target-sha=$target_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Push release commit and immutable tag
+        shell: bash
+        env:
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+        run: |
+          set -euo pipefail
+          git tag "$IMMUTABLE_TAG" "${{ steps.prepare.outputs.target-sha }}"
+          git push --atomic origin HEAD:main "refs/tags/$IMMUTABLE_TAG"
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$IMMUTABLE_TAG" \
+            --title "comparevi-history $IMMUTABLE_TAG" \
+            --notes-file release-notes.md
+
+      - name: Move major tag
+        shell: bash
+        env:
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+          MAJOR_TAG: ${{ needs.validate.outputs.major_tag }}
+        run: |
+          set -euo pipefail
+          git tag -f "$MAJOR_TAG" "$IMMUTABLE_TAG"
+          git push origin "refs/tags/$MAJOR_TAG" --force
+
+      - name: Summarize published release
+        shell: bash
+        env:
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+          MAJOR_TAG: ${{ needs.validate.outputs.major_tag }}
+          BACKEND_SHA: ${{ needs.validate.outputs.backend_sha }}
+        run: |
+          {
+            echo '## comparevi-history published release'
+            echo
+            echo "- Immutable tag: \`${IMMUTABLE_TAG}\`"
+            echo "- Major tag: \`${MAJOR_TAG}\`"
+            echo "- Backend ref: \`${BACKEND_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
