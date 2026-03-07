@@ -1,0 +1,93 @@
+name: smoke
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vi-history-facade:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+
+      - name: Checkout backend target repo
+        uses: actions/checkout@v5
+        with:
+          repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
+          ref: develop
+          path: compare-vi-cli-action
+          fetch-depth: 0
+
+      - name: Run facade action against backend fixture repo
+        id: history
+        uses: ./
+        with:
+          repository_root: compare-vi-cli-action
+          target_path: fixtures/vi-stage/bd-cosmetic/Head.vi
+          start_ref: HEAD
+          max_pairs: 1
+          mode: default
+          results_dir: tests/results/_facade-smoke/history
+          detailed: true
+          render_report: true
+          invoke_script_path: tests/stubs/Invoke-LVCompare.stub.ps1
+
+      - name: Assert facade outputs
+        shell: pwsh
+        env:
+          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
+          RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
+          HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
+          TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
+          TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($path in @($env:MANIFEST_PATH, $env:RESULTS_DIR, $env:HISTORY_REPORT_MD, $env:HISTORY_REPORT_HTML)) {
+            if ([string]::IsNullOrWhiteSpace($path)) {
+              throw 'Expected facade output path was empty.'
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $env:MANIFEST_PATH -PathType Leaf)) {
+            throw "Manifest not found: $env:MANIFEST_PATH"
+          }
+          if (-not (Test-Path -LiteralPath $env:RESULTS_DIR -PathType Container)) {
+            throw "Results directory not found: $env:RESULTS_DIR"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_MD -PathType Leaf)) {
+            throw "Markdown report not found: $env:HISTORY_REPORT_MD"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_HTML -PathType Leaf)) {
+            throw "HTML report not found: $env:HISTORY_REPORT_HTML"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:TOTAL_PROCESSED) -or [int]$env:TOTAL_PROCESSED -lt 1) {
+            throw "Expected total-processed >= 1. Actual: $($env:TOTAL_PROCESSED)"
+          }
+
+          @(
+            '## comparevi-history smoke'
+            ''
+            ('- Manifest: `{0}`' -f $env:MANIFEST_PATH)
+            ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
+            ('- Markdown report: `{0}`' -f $env:HISTORY_REPORT_MD)
+            ('- HTML report: `{0}`' -f $env:HISTORY_REPORT_HTML)
+            ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
+            ('- Total diffs: `{0}`' -f $env:TOTAL_DIFFS)
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload smoke artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-smoke
+          path: ${{ steps.history.outputs['results-dir'] }}/**
+          if-no-files-found: error

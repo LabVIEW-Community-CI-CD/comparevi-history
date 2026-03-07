@@ -153,6 +153,7 @@ runs:
         INPUT_COMPAREVI_REPOSITORY: ${{ inputs.comparevi_repository }}
         INPUT_COMPAREVI_REF: ${{ inputs.comparevi_ref }}
         ACTION_REF: ${{ github.action_ref }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         Set-StrictMode -Version Latest
         $ErrorActionPreference = 'Stop'
@@ -165,6 +166,11 @@ runs:
         $toolingPath = '.comparevi-history-tools'
         $remote = "https://github.com/$repo.git"
         $candidates = New-Object System.Collections.Generic.List[string]
+        $defaultRefPath = Join-Path $env:ACTION_PATH 'comparevi-backend-ref.txt'
+        $defaultRef = $null
+        if (Test-Path -LiteralPath $defaultRefPath -PathType Leaf) {
+          $defaultRef = (Get-Content -LiteralPath $defaultRefPath -Raw).Trim()
+        }
 
         function Add-Candidate {
           param([string]$Value)
@@ -177,6 +183,7 @@ runs:
         }
 
         Add-Candidate $env:INPUT_COMPAREVI_REF
+        Add-Candidate $defaultRef
         Add-Candidate $env:ACTION_REF
         Add-Candidate 'develop'
 
@@ -207,6 +214,7 @@ runs:
             ''
             ('- Repository: `{0}`' -f $repo)
             ('- Ref: `{0}`' -f $resolvedRef)
+            ('- Default mapping: `{0}`' -f ($(if ([string]::IsNullOrWhiteSpace($defaultRef)) { 'none' } else { $defaultRef })))
             ('- Tooling path: `{0}`' -f $toolingPath)
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
         }
