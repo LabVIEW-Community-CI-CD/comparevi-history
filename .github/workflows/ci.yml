@@ -68,7 +68,8 @@ jobs:
             'scripts/Resolve-CompareVIHistoryBackend.ps1',
             'scripts/Acquire-CompareVIToolsBundle.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
-            'scripts/Write-CompareVIHistorySmokeStub.ps1'
+            'scripts/Write-CompareVIHistorySmokeStub.ps1',
+            'scripts/Test-CompareVIHistoryBranchProtection.ps1'
           )) {
             $errors = $null
             $tokens = $null
@@ -98,6 +99,7 @@ jobs:
               ('- Backend release pin: `{0}`' -f $backendRef)
               ('- Backend bundle asset: `{0}`' -f $bundleAsset.name)
               '- PowerShell facade scripts parsed successfully'
+              '- Branch-protection drift script parsed successfully'
               '- Generated smoke stub parsed successfully'
             ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           }

@@ -1,0 +1,61 @@
+name: branch-protection-drift
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-protection-drift
+  cancel-in-progress: false
+
+jobs:
+  verify-main-policy:
+    name: verify-main-policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+
+      - name: Compare live branch protection with the checked-in policy
+        id: drift
+        shell: pwsh
+        env:
+          COMPAREVI_BRANCH_PROTECTION_TOKEN: ${{ secrets.COMPAREVI_BRANCH_PROTECTION_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $token = if (-not [string]::IsNullOrWhiteSpace($env:COMPAREVI_BRANCH_PROTECTION_TOKEN)) {
+            $env:COMPAREVI_BRANCH_PROTECTION_TOKEN
+          } else {
+            $env:GITHUB_TOKEN
+          }
+
+          $tokenSource = if (-not [string]::IsNullOrWhiteSpace($env:COMPAREVI_BRANCH_PROTECTION_TOKEN)) {
+            'COMPAREVI_BRANCH_PROTECTION_TOKEN'
+          } else {
+            'GITHUB_TOKEN'
+          }
+
+          & "$PWD/scripts/Test-CompareVIHistoryBranchProtection.ps1" `
+            -Repository $env:GITHUB_REPOSITORY `
+            -Branch 'main' `
+            -PolicyPath '.github/branch-protection-main.json' `
+            -ResultsDir 'tests/results/_branch-protection-drift' `
+            -GitHubToken $token `
+            -TokenSource $tokenSource `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload drift report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-branch-protection-drift-${{ github.run_id }}
+          path: tests/results/_branch-protection-drift/**
+          if-no-files-found: error
