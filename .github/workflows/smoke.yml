@@ -29,6 +29,7 @@ jobs:
         uses: ./
         with:
           repository_root: compare-vi-cli-action
+          comparevi_ref: develop
           target_path: fixtures/vi-stage/bd-cosmetic/Head.vi
           start_ref: HEAD
           max_pairs: 1
@@ -173,8 +174,24 @@ jobs:
           $capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
 
           if ($RenderReport.IsPresent -or $ReportFormat.ToLowerInvariant() -eq 'html') {
-              "<html><body><h1>Stub Report (diff=True)</h1></body></html>" |
-                  Set-Content -LiteralPath (Join-Path $OutputDir 'compare-report.html') -Encoding utf8
+              @"
+          <!DOCTYPE html>
+          <html>
+          <body>
+            <div class="included-attributes">
+              <ul class="inclusion-list">
+                <li class="checked">VI Attribute</li>
+              </ul>
+            </div>
+            <details open>
+              <summary class="difference-heading">1. VI Attribute - Window Size/Appearance</summary>
+              <ol class="detailed-description-list">
+                <li class="diff-detail">Window bounds changed for VIP custom action dialog.</li>
+              </ol>
+            </details>
+          </body>
+          </html>
+          "@ | Set-Content -LiteralPath (Join-Path $OutputDir 'compare-report.html') -Encoding utf8
           }
 
           exit $exitCode
@@ -185,6 +202,7 @@ jobs:
         uses: LabVIEW-Community-CI-CD/comparevi-history@main
         with:
           repository_root: labview-icon-editor
+          comparevi_ref: develop
           target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
           start_ref: HEAD
           max_pairs: 1
