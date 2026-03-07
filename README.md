@@ -95,6 +95,25 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - When `publish: true`, the workflow then updates `comparevi-backend-ref.txt`, creates the immutable tag, publishes GitHub Release notes with the mapped backend ref, and finally moves `v1`.
 - Failure before the final major-tag step leaves `v1` unchanged.
 
+## Repository policy
+
+- The lightweight baseline for `main` is:
+  - `lint` from `.github/workflows/ci.yml`
+  - `smoke-local` from `.github/workflows/smoke.yml`
+  - `smoke-external` from `.github/workflows/smoke.yml`
+- `smoke.yml` runs on pull requests to `main`, pushes to `main`, and manual dispatch so the public facade contract is covered before merge and after publish.
+- `release.yml` validates itself on pull requests that touch release plumbing and remains the only path that should publish immutable tags or advance `v1`.
+- The branch protection source of truth is `.github/branch-protection-main.json`.
+- Apply or refresh the policy with:
+
+```bash
+gh api repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main/protection \
+  --method PUT \
+  --input .github/branch-protection-main.json
+```
+
+- The policy intentionally relies on required status checks instead of required reviewer gates so the manual release workflow can update `comparevi-backend-ref.txt` and tags after smoke passes.
+
 ## Notes
 
 - The facade is a thin wrapper over `compare-vi-cli-action`; consumers should treat the pinned backend ref as part of the release contract.

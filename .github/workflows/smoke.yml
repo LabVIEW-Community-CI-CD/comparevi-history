@@ -1,6 +1,9 @@
 name: smoke
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -9,8 +12,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   vi-history-facade-local:
+    name: smoke-local
     runs-on: windows-latest
     steps:
       - name: Checkout facade repo
@@ -93,6 +101,7 @@ jobs:
           if-no-files-found: error
 
   vi-history-facade-external:
+    name: smoke-external
     runs-on: windows-latest
     steps:
       - name: Checkout facade repo

@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+
+      - name: Install actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='1.7.7'
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
+
+      - name: Lint workflows
+        shell: bash
+        run: ./actionlint -color
+
+      - name: Validate backend pin and facade scripts
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $backendRef = (Get-Content -LiteralPath 'comparevi-backend-ref.txt' -Raw).Trim()
+          if ($backendRef -notmatch '^[0-9a-f]{40}$') {
+            throw "comparevi-backend-ref.txt must contain a single 40-character commit SHA. Actual: $backendRef"
+          }
+
+          foreach ($path in @(
+            'scripts/Invoke-CompareVIHistoryFacade.ps1',
+            'scripts/Write-CompareVIHistorySmokeStub.ps1'
+          )) {
+            $errors = $null
+            $tokens = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors) {
+              $messages = $errors | ForEach-Object { $_.Message }
+              throw ("PowerShell parse errors in {0}: {1}" -f $path, ($messages -join '; '))
+            }
+          }
+
+          $stubPath = Join-Path $env:RUNNER_TEMP 'comparevi-history-smoke-stub.ps1'
+          & "$PWD/scripts/Write-CompareVIHistorySmokeStub.ps1" -DestinationPath $stubPath
+
+          $errors = $null
+          $tokens = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($stubPath, [ref]$tokens, [ref]$errors)
+          if ($errors) {
+            $messages = $errors | ForEach-Object { $_.Message }
+            throw ("Generated smoke stub parse errors: {0}" -f ($messages -join '; '))
+          }
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+            @(
+              '## comparevi-history lint'
+              ''
+              '- actionlint passed'
+              ('- Backend pin: `{0}`' -f $backendRef)
+              '- PowerShell facade scripts parsed successfully'
+              '- Generated smoke stub parsed successfully'
+            ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
