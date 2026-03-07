@@ -111,6 +111,8 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - `smoke.yml` runs on pull requests to `main`, pushes to `main`, and manual dispatch so the public facade contract is covered before merge and after publish.
 - `release.yml` validates itself on pull requests that touch release plumbing and remains the only path that should publish immutable tags or advance `v1`.
 - The branch protection source of truth is `.github/branch-protection-main.json`.
+- `branch-protection-drift.yml` runs weekly and on maintainer dispatch to compare the live `main` protection settings with `.github/branch-protection-main.json`, upload the expected/live snapshots, and fail with a remediation command if drift is detected.
+- The drift workflow prefers a repo secret named `COMPAREVI_BRANCH_PROTECTION_TOKEN` and falls back to `GITHUB_TOKEN`. If the fallback token cannot read branch protection, the workflow fails with instructions to configure the secret.
 - Apply or refresh the policy with:
 
 ```bash
