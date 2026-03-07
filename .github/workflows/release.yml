@@ -51,6 +51,7 @@ permissions:
 
 jobs:
   validate:
+    name: release-validate
     runs-on: ubuntu-latest
     outputs:
       backend_sha: ${{ steps.plan.outputs.backend_sha }}
@@ -185,6 +186,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   smoke-local:
+    name: release-smoke-local
     needs: validate
     runs-on: windows-latest
     steps:
@@ -270,6 +272,7 @@ jobs:
           if-no-files-found: error
 
   smoke-external:
+    name: release-smoke-external
     needs: validate
     runs-on: windows-latest
     steps:
@@ -366,6 +369,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    name: release-publish
     if: ${{ needs.validate.outputs.publish == 'true' }}
     needs:
       - validate
