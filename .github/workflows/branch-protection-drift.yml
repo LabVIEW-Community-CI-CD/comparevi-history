@@ -1,6 +1,14 @@
 name: branch-protection-drift
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/branch-protection-main.json
+      - .github/workflows/branch-protection-drift.yml
+      - scripts/Test-CompareVIHistoryBranchProtection.ps1
+      - README.md
   schedule:
     - cron: '17 9 * * 1'
   workflow_dispatch:
