@@ -24,11 +24,25 @@ jobs:
       - name: Checkout facade repo
         uses: actions/checkout@v5
 
+      - name: Resolve pinned backend release
+        id: backend
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $backendRef = (Get-Content -LiteralPath 'comparevi-backend-ref.txt' -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($backendRef)) {
+            throw 'comparevi-backend-ref.txt was empty.'
+          }
+
+          "backend-ref=$backendRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Checkout backend target repo
         uses: actions/checkout@v5
         with:
           repository: LabVIEW-Community-CI-CD/compare-vi-cli-action
-          ref: develop
+          ref: ${{ steps.backend.outputs['backend-ref'] }}
           path: compare-vi-cli-action
           fetch-depth: 0
 
@@ -124,9 +138,9 @@ jobs:
           $stubPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/tests/results/_comparevi-history-smoke/Invoke-LVCompare.stub.ps1'
           & "$env:GITHUB_WORKSPACE/scripts/Write-CompareVIHistorySmokeStub.ps1" -DestinationPath $stubPath
 
-      - name: Run remote facade action against icon-editor VIP custom action history
+      - name: Run facade action against icon-editor VIP custom action history
         id: history
-        uses: LabVIEW-Community-CI-CD/comparevi-history@main
+        uses: ./
         with:
           repository_root: labview-icon-editor
           target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi

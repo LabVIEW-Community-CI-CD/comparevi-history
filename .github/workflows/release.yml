@@ -5,8 +5,11 @@ on:
     branches:
       - main
     paths:
+      - action.yml
       - .github/workflows/release.yml
       - .github/workflows/smoke.yml
+      - scripts/Resolve-CompareVIHistoryBackend.ps1
+      - scripts/Acquire-CompareVIToolsBundle.ps1
       - scripts/Write-CompareVIHistorySmokeStub.ps1
       - README.md
       - comparevi-backend-ref.txt
@@ -54,6 +57,7 @@ jobs:
     name: release-validate
     runs-on: ubuntu-latest
     outputs:
+      backend_tag: ${{ steps.plan.outputs.backend_tag }}
       backend_sha: ${{ steps.plan.outputs.backend_sha }}
       comparevi_repository: ${{ steps.plan.outputs.comparevi_repository }}
       immutable_tag: ${{ steps.plan.outputs.immutable_tag }}
@@ -70,7 +74,7 @@ jobs:
 
       - name: Validate release inputs
         id: plan
-        shell: bash
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_BACKEND_REF: ${{ inputs.backend_ref }}
@@ -81,86 +85,105 @@ jobs:
           INPUT_CONSUMER_REF: ${{ inputs.consumer_ref }}
           INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
-          set -euo pipefail
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
 
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            requested_backend_ref="$INPUT_BACKEND_REF"
-            immutable_tag="$INPUT_IMMUTABLE_TAG"
-            major_tag="$INPUT_MAJOR_TAG"
-            comparevi_repository="$INPUT_COMPAREVI_REPOSITORY"
-            consumer_repository="$INPUT_CONSUMER_REPOSITORY"
-            consumer_ref="$INPUT_CONSUMER_REF"
-            publish="$INPUT_PUBLISH"
-          else
-            requested_backend_ref="$(tr -d '\r\n' < comparevi-backend-ref.txt)"
-            immutable_tag="v0.0.${GITHUB_RUN_NUMBER}"
-            major_tag='v1'
-            comparevi_repository='LabVIEW-Community-CI-CD/compare-vi-cli-action'
-            consumer_repository='svelderrainruiz/labview-icon-editor'
-            consumer_ref='develop'
-            publish='false'
-          fi
+          $requestedBackendRef = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $env:INPUT_BACKEND_REF
+          } else {
+            (Get-Content -LiteralPath 'comparevi-backend-ref.txt' -Raw).Trim()
+          }
+          $immutableTag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_IMMUTABLE_TAG } else { "v0.0.$env:GITHUB_RUN_NUMBER" }
+          $majorTag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_MAJOR_TAG } else { 'v1' }
+          $compareviRepository = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_COMPAREVI_REPOSITORY } else { 'LabVIEW-Community-CI-CD/compare-vi-cli-action' }
+          $consumerRepository = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_CONSUMER_REPOSITORY } else { 'svelderrainruiz/labview-icon-editor' }
+          $consumerRef = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_CONSUMER_REF } else { 'develop' }
+          $publish = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { [string]$env:INPUT_PUBLISH } else { 'false' }
 
-          if [[ ! "$immutable_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::immutable_tag must match v<major>.<minor>.<patch>."
-            exit 1
-          fi
+          if ($immutableTag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw 'immutable_tag must match v<major>.<minor>.<patch>.'
+          }
 
-          if [[ ! "$major_tag" =~ ^v[0-9]+$ ]]; then
-            echo "::error::major_tag must match v<major>."
-            exit 1
-          fi
+          if ($majorTag -notmatch '^v[0-9]+$') {
+            throw 'major_tag must match v<major>.'
+          }
 
-          if [[ "$publish" == "true" && "$GITHUB_REF_NAME" != "main" ]]; then
-            echo "::error::publish=true is only allowed when dispatching from main."
-            exit 1
-          fi
+          if ($publish -eq 'true' -and $env:GITHUB_REF_NAME -ne 'main') {
+            throw 'publish=true is only allowed when dispatching from main.'
+          }
 
-          backend_sha=''
-          if [[ "$requested_backend_ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            backend_sha="$(gh api "repos/$comparevi_repository/commits/$requested_backend_ref" --jq .sha)"
-          else
-            backend_sha="$(git ls-remote "https://github.com/$comparevi_repository.git" "$requested_backend_ref" | awk '{ print $1; exit }')"
-          fi
-          if [[ -z "$backend_sha" ]]; then
-            echo "::error::Unable to resolve backend_ref $requested_backend_ref in $comparevi_repository."
-            exit 1
-          fi
-          current_backend_ref="$(tr -d '\r\n' < comparevi-backend-ref.txt)"
+          $currentBackendRef = (Get-Content -LiteralPath 'comparevi-backend-ref.txt' -Raw).Trim()
+          $resolverOutputPath = Join-Path $env:RUNNER_TEMP 'comparevi-backend-resolution.out'
+          if (Test-Path -LiteralPath $resolverOutputPath) {
+            Remove-Item -LiteralPath $resolverOutputPath -Force
+          }
+
+          & "$PWD/scripts/Resolve-CompareVIHistoryBackend.ps1" `
+            -Repository $compareviRepository `
+            -RequestedRef $requestedBackendRef `
+            -DefaultRefPath '' `
+            -ActionRef '' `
+            -ToolingPath '.comparevi-history-tools' `
+            -GitHubToken $env:GITHUB_TOKEN `
+            -GitHubOutputPath $resolverOutputPath `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+          $resolverValues = @{}
+          foreach ($line in Get-Content -LiteralPath $resolverOutputPath) {
+            if ($line -match '^(?<key>[^=]+)=(?<value>.*)$') {
+              $resolverValues[$matches['key']] = $matches['value']
+            }
+          }
+
+          if ($resolverValues['tooling-source'] -ne 'bundle') {
+            throw "Release automation requires an immutable CompareVI.Tools bundle release tag. Resolution kind was '$($resolverValues['tooling-source'])'."
+          }
+
+          $backendTag = $resolverValues['comparevi-ref']
+          if ([string]::IsNullOrWhiteSpace($backendTag)) {
+            throw 'Resolved backend release tag was empty.'
+          }
 
           git fetch --tags --force origin
-          if git rev-parse -q --verify "refs/tags/$immutable_tag" >/dev/null; then
-            echo "::error::Tag $immutable_tag already exists."
-            exit 1
-          fi
-
-          cat > release-plan.json <<EOF
-          {
-            "schema": "comparevi-history-release-plan@v1",
-            "facadeRepository": "${GITHUB_REPOSITORY}",
-            "facadeRef": "${GITHUB_SHA}",
-            "backendRepository": "${comparevi_repository}",
-            "requestedBackendRef": "${requested_backend_ref}",
-            "resolvedBackendSha": "${backend_sha}",
-            "currentBackendRef": "${current_backend_ref}",
-            "immutableTag": "${immutable_tag}",
-            "majorTag": "${major_tag}",
-            "consumerRepository": "${consumer_repository}",
-            "consumerRef": "${consumer_ref}",
-            "publish": ${publish}
+          $existingTag = (& git tag --list $immutableTag)
+          if (-not [string]::IsNullOrWhiteSpace($existingTag)) {
+            throw "Tag $immutableTag already exists."
           }
-          EOF
 
-          {
-            echo "backend_sha=$backend_sha"
-            echo "comparevi_repository=$comparevi_repository"
-            echo "immutable_tag=$immutable_tag"
-            echo "major_tag=$major_tag"
-            echo "publish=$publish"
-            echo "consumer_repository=$consumer_repository"
-            echo "consumer_ref=$consumer_ref"
-            echo "current_backend_ref=$current_backend_ref"
-          } >> "$GITHUB_OUTPUT"
+          $backendSha = $resolverValues['resolved-sha']
+          if ([string]::IsNullOrWhiteSpace($backendSha)) {
+            throw "Resolved backend SHA was empty for backend tag '$backendTag'."
+          }
+
+          $releasePlan = [ordered]@{
+            schema = 'comparevi-history-release-plan@v1'
+            facadeRepository = $env:GITHUB_REPOSITORY
+            facadeRef = $env:GITHUB_SHA
+            backendRepository = $compareviRepository
+            requestedBackendRef = $requestedBackendRef
+            resolvedBackendTag = $backendTag
+            resolvedBackendSha = $backendSha
+            currentBackendRef = $currentBackendRef
+            immutableTag = $immutableTag
+            majorTag = $majorTag
+            consumerRepository = $consumerRepository
+            consumerRef = $consumerRef
+            publish = [System.Convert]::ToBoolean($publish)
+          }
+          $releasePlan | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath 'release-plan.json' -Encoding utf8
+
+          Get-Content -LiteralPath $resolverOutputPath | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          @(
+            "backend_tag=$backendTag"
+            "backend_sha=$backendSha"
+            "comparevi_repository=$compareviRepository"
+            "immutable_tag=$immutableTag"
+            "major_tag=$majorTag"
+            "publish=$publish"
+            "consumer_repository=$consumerRepository"
+            "consumer_ref=$consumerRef"
+            "current_backend_ref=$currentBackendRef"
+          ) | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload release plan artifact
         uses: actions/upload-artifact@v5
@@ -177,6 +200,7 @@ jobs:
             echo
             echo "- Backend repo: \`${{ steps.plan.outputs.comparevi_repository }}\`"
             echo "- Requested backend ref: \`${{ github.event_name == 'workflow_dispatch' && inputs.backend_ref || steps.plan.outputs.current_backend_ref }}\`"
+            echo "- Resolved backend tag: \`${{ steps.plan.outputs.backend_tag }}\`"
             echo "- Resolved backend SHA: \`${{ steps.plan.outputs.backend_sha }}\`"
             echo "- Current backend ref: \`${{ steps.plan.outputs.current_backend_ref }}\`"
             echo "- Immutable tag: \`${{ steps.plan.outputs.immutable_tag }}\`"
@@ -197,7 +221,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ${{ needs.validate.outputs.comparevi_repository }}
-          ref: ${{ needs.validate.outputs.backend_sha }}
+          ref: ${{ needs.validate.outputs.backend_tag }}
           path: compare-vi-cli-action
           fetch-depth: 0
 
@@ -214,7 +238,7 @@ jobs:
           detailed: true
           render_report: true
           comparevi_repository: ${{ needs.validate.outputs.comparevi_repository }}
-          comparevi_ref: ${{ needs.validate.outputs.backend_sha }}
+          comparevi_ref: ${{ needs.validate.outputs.backend_tag }}
           invoke_script_path: tests/stubs/Invoke-LVCompare.stub.ps1
 
       - name: Assert local smoke outputs
@@ -309,7 +333,7 @@ jobs:
           detailed: true
           render_report: true
           comparevi_repository: ${{ needs.validate.outputs.comparevi_repository }}
-          comparevi_ref: ${{ needs.validate.outputs.backend_sha }}
+          comparevi_ref: ${{ needs.validate.outputs.backend_tag }}
           invoke_script_path: tests/results/_comparevi-history-release/Invoke-LVCompare.stub.ps1
 
       - name: Assert external smoke outputs
@@ -394,13 +418,14 @@ jobs:
         shell: bash
         env:
           BACKEND_SHA: ${{ needs.validate.outputs.backend_sha }}
+          BACKEND_TAG: ${{ needs.validate.outputs.backend_tag }}
           BACKEND_REPOSITORY: ${{ needs.validate.outputs.comparevi_repository }}
           IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
           MAJOR_TAG: ${{ needs.validate.outputs.major_tag }}
         run: |
           set -euo pipefail
 
-          printf '%s\n' "$BACKEND_SHA" > comparevi-backend-ref.txt
+          printf '%s\n' "$BACKEND_TAG" > comparevi-backend-ref.txt
 
           if ! git diff --quiet -- comparevi-backend-ref.txt; then
             git add comparevi-backend-ref.txt
@@ -415,13 +440,15 @@ jobs:
           - Facade repository: \`${GITHUB_REPOSITORY}\`
           - Facade commit: \`${target_sha}\`
           - Backend repository: \`${BACKEND_REPOSITORY}\`
+          - Backend tag: \`${BACKEND_TAG}\`
           - Backend ref: \`${BACKEND_SHA}\`
           - Major tag updated: \`${MAJOR_TAG}\`
           - Smoke workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 
           ### Published contract
 
-          - \`comparevi-backend-ref.txt\` now pins \`${BACKEND_SHA}\`
+          - \`comparevi-backend-ref.txt\` now pins backend release tag \`${BACKEND_TAG}\`
+          - Backend source SHA for that tag is \`${BACKEND_SHA}\`
           - \`${IMMUTABLE_TAG}\` is the immutable facade tag for this backend mapping
           - \`${MAJOR_TAG}\` advances only after smoke and release publication succeed
           EOF
@@ -464,11 +491,13 @@ jobs:
           IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
           MAJOR_TAG: ${{ needs.validate.outputs.major_tag }}
           BACKEND_SHA: ${{ needs.validate.outputs.backend_sha }}
+          BACKEND_TAG: ${{ needs.validate.outputs.backend_tag }}
         run: |
           {
             echo '## comparevi-history published release'
             echo
             echo "- Immutable tag: \`${IMMUTABLE_TAG}\`"
             echo "- Major tag: \`${MAJOR_TAG}\`"
+            echo "- Backend tag: \`${BACKEND_TAG}\`"
             echo "- Backend ref: \`${BACKEND_SHA}\`"
           } >> "$GITHUB_STEP_SUMMARY"

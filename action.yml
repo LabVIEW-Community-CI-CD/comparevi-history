@@ -46,7 +46,7 @@ inputs:
     required: false
     default: "LabVIEW-Community-CI-CD/compare-vi-cli-action"
   comparevi_ref:
-    description: "Backend tooling ref override. Maintainer-only override in trusted contexts."
+    description: "Backend release tag or maintainer-only backend ref override in trusted contexts."
     required: false
     default: ""
   render_report:
@@ -93,10 +93,10 @@ inputs:
 outputs:
   comparevi-ref:
     description: "Resolved backend tooling ref."
-    value: ${{ steps.resolve.outputs.comparevi-ref }}
+    value: ${{ steps.resolve.outputs['comparevi-ref'] }}
   tooling-path:
-    description: "Workspace-relative backend checkout path."
-    value: ${{ steps.resolve.outputs.tooling-path }}
+    description: "Workspace-relative backend tooling path (extracted bundle or maintainer fallback checkout)."
+    value: ${{ steps.tooling.outputs['tooling-path'] }}
   repository-root:
     description: "Resolved caller repository root."
     value: ${{ steps.run.outputs['repository-root'] }}
@@ -170,85 +170,78 @@ runs:
           -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
     - id: resolve
-      name: Resolve backend ref
+      name: Resolve backend tooling source
       shell: pwsh
       env:
         INPUT_COMPAREVI_REPOSITORY: ${{ inputs.comparevi_repository }}
         INPUT_COMPAREVI_REF: ${{ inputs.comparevi_ref }}
         ACTION_REF: ${{ github.action_ref }}
         ACTION_PATH: ${{ github.action_path }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         Set-StrictMode -Version Latest
         $ErrorActionPreference = 'Stop'
 
-        $repo = $env:INPUT_COMPAREVI_REPOSITORY
-        if ([string]::IsNullOrWhiteSpace($repo)) {
-          throw 'comparevi_repository input must not be empty.'
-        }
+        & "${{ github.action_path }}/scripts/Resolve-CompareVIHistoryBackend.ps1" `
+          -Repository $env:INPUT_COMPAREVI_REPOSITORY `
+          -RequestedRef $env:INPUT_COMPAREVI_REF `
+          -DefaultRefPath (Join-Path $env:ACTION_PATH 'comparevi-backend-ref.txt') `
+          -ActionRef $env:ACTION_REF `
+          -ToolingPath '.comparevi-history-tools' `
+          -AllowSourceFallback `
+          -GitHubToken $env:GITHUB_TOKEN `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-        $toolingPath = '.comparevi-history-tools'
-        $remote = "https://github.com/$repo.git"
-        $candidates = New-Object System.Collections.Generic.List[string]
-        $defaultRefPath = Join-Path $env:ACTION_PATH 'comparevi-backend-ref.txt'
-        $defaultRef = $null
-        if (Test-Path -LiteralPath $defaultRefPath -PathType Leaf) {
-          $defaultRef = (Get-Content -LiteralPath $defaultRefPath -Raw).Trim()
-        }
+    - id: bundle
+      name: Acquire backend bundle
+      if: ${{ steps.resolve.outputs['tooling-source'] == 'bundle' }}
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
 
-        function Add-Candidate {
-          param([string]$Value)
-          if ([string]::IsNullOrWhiteSpace($Value)) {
-            return
-          }
-          if (-not $candidates.Contains($Value)) {
-            [void]$candidates.Add($Value)
-          }
-        }
+        & "${{ github.action_path }}/scripts/Acquire-CompareVIToolsBundle.ps1" `
+          -Repository '${{ inputs.comparevi_repository }}' `
+          -ReleaseTag '${{ steps.resolve.outputs['release-tag'] }}' `
+          -BundleAssetName '${{ steps.resolve.outputs['bundle-asset-name'] }}' `
+          -BundleAssetUrl '${{ steps.resolve.outputs['bundle-asset-url'] }}' `
+          -BundleAssetDigest '${{ steps.resolve.outputs['bundle-asset-digest'] }}' `
+          -DestinationPath '.comparevi-history-tools' `
+          -GitHubToken $env:GITHUB_TOKEN `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
-        Add-Candidate $env:INPUT_COMPAREVI_REF
-        Add-Candidate $defaultRef
-        Add-Candidate $env:ACTION_REF
-        Add-Candidate 'develop'
-
-        $resolvedRef = $null
-        foreach ($candidate in $candidates) {
-          if ($candidate -match '^[0-9a-fA-F]{40}$') {
-            $resolvedRef = $candidate
-            break
-          }
-
-          & git ls-remote --exit-code --heads --tags $remote $candidate *> $null
-          if ($LASTEXITCODE -eq 0) {
-            $resolvedRef = $candidate
-            break
-          }
-        }
-
-        if (-not $resolvedRef) {
-          throw "Unable to resolve a backend ref for $repo. Candidates: $($candidates -join ', ')"
-        }
-
-        "comparevi-ref=$resolvedRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        "tooling-path=$toolingPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-        if ($env:GITHUB_STEP_SUMMARY) {
-          @(
-            '## comparevi-history backend'
-            ''
-            ('- Repository: `{0}`' -f $repo)
-            ('- Ref: `{0}`' -f $resolvedRef)
-            ('- Default mapping: `{0}`' -f ($(if ([string]::IsNullOrWhiteSpace($defaultRef)) { 'none' } else { $defaultRef })))
-            ('- Tooling path: `{0}`' -f $toolingPath)
-          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-        }
-
-    - name: Checkout backend tooling
+    - name: Checkout backend tooling fallback
+      if: ${{ steps.resolve.outputs['tooling-source'] == 'source-checkout' }}
       uses: actions/checkout@v5
       with:
         repository: ${{ inputs.comparevi_repository }}
-        ref: ${{ steps.resolve.outputs.comparevi-ref }}
-        path: ${{ steps.resolve.outputs.tooling-path }}
+        ref: ${{ steps.resolve.outputs['comparevi-ref'] }}
+        path: ${{ steps.resolve.outputs['tooling-path'] }}
         fetch-depth: 1
+
+    - id: tooling
+      name: Finalize tooling path
+      shell: pwsh
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        $toolingSource = '${{ steps.resolve.outputs['tooling-source'] }}'
+        $toolingPath = if ($toolingSource -eq 'bundle') {
+          '${{ steps.bundle.outputs['tooling-path'] }}'
+        } else {
+          '${{ steps.resolve.outputs['tooling-path'] }}'
+        }
+
+        if ([string]::IsNullOrWhiteSpace($toolingPath)) {
+          throw "Resolved tooling path was empty for source '$toolingSource'."
+        }
+
+        "tooling-path=$toolingPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
     - id: run
       name: Run VI History facade
@@ -266,7 +259,12 @@ runs:
           [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $repositoryRootInput))
         }
 
-        $toolingRoot = Join-Path $env:GITHUB_WORKSPACE '${{ steps.resolve.outputs.tooling-path }}'
+        $toolingPathInput = '${{ steps.tooling.outputs['tooling-path'] }}'
+        $toolingRoot = if ([System.IO.Path]::IsPathRooted($toolingPathInput)) {
+          [System.IO.Path]::GetFullPath($toolingPathInput)
+        } else {
+          [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $toolingPathInput))
+        }
         $invokeArgs = @{
           RepositoryRoot       = $repositoryRoot
           ToolingRoot          = $toolingRoot
