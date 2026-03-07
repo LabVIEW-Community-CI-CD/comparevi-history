@@ -65,16 +65,15 @@ $headFork = [bool](Get-NestedValue -Object $pullRequest -Path @('head','repo','f
 $headFullName = [string](Get-NestedValue -Object $pullRequest -Path @('head','repo','full_name'))
 $baseFullName = [string](Get-NestedValue -Object $pullRequest -Path @('base','repo','full_name'))
 $isForkPullRequest = $false
+$isRepoLocalPullRequest = $false
 
 if ($isPullRequestEvent -and $null -ne $pullRequest) {
   $isForkPullRequest = $headFork
   if (-not $isForkPullRequest -and -not [string]::IsNullOrWhiteSpace($headFullName) -and -not [string]::IsNullOrWhiteSpace($baseFullName)) {
     $isForkPullRequest = $headFullName -ne $baseFullName
+    $isRepoLocalPullRequest = $headFullName -eq $baseFullName
   }
 }
-
-$trustedAssociations = @('OWNER','MEMBER','COLLABORATOR')
-$hasTrustedAssociation = $trustedAssociations -contains $authorAssociation
 
 if ($isForkPullRequest) {
   $eventLabel = if ($EventName -eq 'pull_request_target') { 'fork pull_request_target' } else { 'fork pull_request' }
@@ -87,9 +86,9 @@ if ($isForkPullRequest) {
   throw ("comparevi-history refuses to run on {0} events because the facade assumes a trusted runner and trusted refs. {1}" -f $eventLabel, $guidance)
 }
 
-if ($overrideInputs.Count -gt 0 -and $isPullRequestEvent -and -not $hasTrustedAssociation) {
+if ($overrideInputs.Count -gt 0 -and $isPullRequestEvent -and -not $isRepoLocalPullRequest) {
   $associationLabel = if ([string]::IsNullOrWhiteSpace($authorAssociation)) { 'unknown' } else { $authorAssociation }
-  throw ("comparevi-history override inputs ({0}) are restricted to trusted maintainer scenarios. Current author_association is '{1}'. Remove the overrides or rerun from workflow_dispatch on a trusted branch." -f ($overrideInputs -join ', '), $associationLabel)
+  throw ("comparevi-history override inputs ({0}) are restricted to trusted maintainer scenarios. This pull request does not prove a repo-local trusted branch. Current author_association is '{1}'. Remove the overrides or rerun from workflow_dispatch on a trusted branch." -f ($overrideInputs -join ', '), $associationLabel)
 }
 
 if ($StepSummaryPath) {
@@ -99,6 +98,7 @@ if ($StepSummaryPath) {
     ('- Event: `{0}`' -f $EventName)
     ('- Repository: `{0}`' -f $Repository)
     ('- Fork PR detected: `{0}`' -f $isForkPullRequest.ToString().ToLowerInvariant())
+    ('- Repo-local PR detected: `{0}`' -f $isRepoLocalPullRequest.ToString().ToLowerInvariant())
     ('- Override inputs: `{0}`' -f ($(if ($overrideInputs.Count -eq 0) { 'none' } else { $overrideInputs -join ', ' })))
     ('- Author association: `{0}`' -f ($(if ([string]::IsNullOrWhiteSpace($authorAssociation)) { 'n/a' } else { $authorAssociation })))
   ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append

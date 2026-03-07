@@ -74,7 +74,7 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 
 - Treat this action as a trusted-runner workflow primitive. Real VI History diagnostics should run only on Windows runners that you control and that already satisfy the LabVIEW/LVCompare prerequisites of the backend tooling.
 - The action fails closed on `pull_request` and `pull_request_target` events for forked repositories. For public repositories, use comment-gated or maintainer-dispatched workflows for PR diagnostics instead of running the facade directly on fork PR events.
-- `comparevi_repository`, `comparevi_ref`, and `invoke_script_path` are maintainer-only overrides. The action rejects them in untrusted PR contexts and expects normal consumer workflows to leave them at their defaults.
+- `comparevi_repository`, `comparevi_ref`, and `invoke_script_path` are maintainer-only overrides. The action rejects them when the PR context is not provably repo-local and trusted, and normal consumer workflows should leave them at their defaults.
 - Do not expose this action to untrusted fork pull requests with write-scoped tokens or secrets. `pull_request_target` against a fork is treated as unsafe by default because the facade assumes trusted refs and a trusted runner.
 - Hosted smoke coverage in this repo uses an LVCompare stub on `windows-latest`. That proves the facade contract and cross-repo wiring, but it is not a substitute for trusted-runner production use.
 

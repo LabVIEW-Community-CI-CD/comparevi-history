@@ -76,19 +76,19 @@ try {
 
   Invoke-TrustCase -Name 'trusted-pr-override' -EventName 'pull_request' -Payload @{
     pull_request = @{
-      author_association = 'MEMBER'
+      author_association = 'CONTRIBUTOR'
       head = @{ repo = @{ fork = $false; full_name = 'LabVIEW-Community-CI-CD/comparevi-history' } }
       base = @{ repo = @{ full_name = 'LabVIEW-Community-CI-CD/comparevi-history' } }
     }
   } -CompareviRef 'develop' -InvokeScriptPath 'tests/results/stub.ps1' -ShouldPass $true
 
-  Invoke-TrustCase -Name 'untrusted-pr-override' -EventName 'pull_request' -Payload @{
+  Invoke-TrustCase -Name 'unknown-pr-override' -EventName 'pull_request' -Payload @{
     pull_request = @{
       author_association = 'CONTRIBUTOR'
-      head = @{ repo = @{ fork = $false; full_name = 'LabVIEW-Community-CI-CD/comparevi-history' } }
-      base = @{ repo = @{ full_name = 'LabVIEW-Community-CI-CD/comparevi-history' } }
+      head = @{ repo = @{ fork = $false } }
+      base = @{ repo = @{ } }
     }
-  } -CompareviRef 'develop' -ShouldPass $false -ExpectedMessagePattern 'trusted maintainer scenarios'
+  } -CompareviRef 'develop' -ShouldPass $false -ExpectedMessagePattern 'does not prove a repo-local trusted branch'
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
