@@ -42,11 +42,11 @@ inputs:
     required: false
     default: ""
   comparevi_repository:
-    description: "Backend tooling repository."
+    description: "Backend tooling repository. Maintainer-only override in trusted contexts."
     required: false
     default: "LabVIEW-Community-CI-CD/compare-vi-cli-action"
   comparevi_ref:
-    description: "Backend tooling ref override."
+    description: "Backend tooling ref override. Maintainer-only override in trusted contexts."
     required: false
     default: ""
   render_report:
@@ -86,7 +86,7 @@ inputs:
     required: false
     default: ""
   invoke_script_path:
-    description: "Optional override for LVCompare invocation."
+    description: "Optional override for LVCompare invocation. Maintainer-only override in trusted contexts."
     required: false
     default: ""
 
@@ -146,6 +146,29 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - id: trust
+      name: Assert trusted execution context
+      shell: pwsh
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        EVENT_PATH: ${{ github.event_path }}
+        REPOSITORY: ${{ github.repository }}
+        INPUT_COMPAREVI_REPOSITORY: ${{ inputs.comparevi_repository }}
+        INPUT_COMPAREVI_REF: ${{ inputs.comparevi_ref }}
+        INPUT_INVOKE_SCRIPT_PATH: ${{ inputs.invoke_script_path }}
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        & "${{ github.action_path }}/scripts/Assert-CompareVIHistoryTrust.ps1" `
+          -EventName $env:EVENT_NAME `
+          -EventPath $env:EVENT_PATH `
+          -Repository $env:REPOSITORY `
+          -CompareviRepository $env:INPUT_COMPAREVI_REPOSITORY `
+          -CompareviRef $env:INPUT_COMPAREVI_REF `
+          -InvokeScriptPath $env:INPUT_INVOKE_SCRIPT_PATH `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
     - id: resolve
       name: Resolve backend ref
       shell: pwsh
