@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  vi-history-facade:
+  vi-history-facade-local:
     runs-on: windows-latest
     steps:
       - name: Checkout facade repo
@@ -75,7 +75,7 @@ jobs:
           }
 
           @(
-            '## comparevi-history smoke'
+            '## comparevi-history local smoke'
             ''
             ('- Manifest: `{0}`' -f $env:MANIFEST_PATH)
             ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
@@ -88,6 +88,164 @@ jobs:
       - name: Upload smoke artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: comparevi-history-smoke
+          name: comparevi-history-local-smoke
+          path: ${{ steps.history.outputs['results-dir'] }}/**
+          if-no-files-found: error
+
+  vi-history-facade-external:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout external consumer repo
+        uses: actions/checkout@v5
+        with:
+          repository: svelderrainruiz/labview-icon-editor
+          ref: develop
+          path: labview-icon-editor
+          fetch-depth: 0
+
+      - name: Write external smoke LVCompare stub
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $stubPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/tests/results/_comparevi-history-smoke/Invoke-LVCompare.stub.ps1'
+          $stubDir = Split-Path -Parent $stubPath
+          New-Item -ItemType Directory -Path $stubDir -Force | Out-Null
+
+          @'
+          param(
+              [string]$BaseVi,
+              [string]$HeadVi,
+              [string]$OutputDir,
+              [string[]]$Flags,
+              [switch]$RenderReport,
+              [string]$ReportFormat = 'html',
+              [string]$NoiseProfile = 'full'
+          )
+
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          if (-not $OutputDir) {
+              $OutputDir = Join-Path $env:TEMP ("lvcompare-stub-" + [guid]::NewGuid().ToString('N'))
+          }
+
+          New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+          $imagesDir = Join-Path $OutputDir 'cli-images'
+          New-Item -ItemType Directory -Path $imagesDir -Force | Out-Null
+
+          $stdoutPath = Join-Path $OutputDir 'lvcompare-stdout.txt'
+          $stderrPath = Join-Path $OutputDir 'lvcompare-stderr.txt'
+          $capturePath = Join-Path $OutputDir 'lvcompare-capture.json'
+
+          "Stub LVCompare run for $BaseVi -> $HeadVi" | Set-Content -LiteralPath $stdoutPath -Encoding utf8
+          "" | Set-Content -LiteralPath $stderrPath -Encoding utf8
+          [System.IO.File]::WriteAllBytes((Join-Path $imagesDir 'cli-image-00.png'), @(0xCA,0xFE,0xBA,0xBE))
+
+          $exitCode = 1
+
+          $capture = [ordered]@{
+              schema    = 'lvcompare-capture-v1'
+              timestamp = (Get-Date).ToString('o')
+              base      = $BaseVi
+              head      = $HeadVi
+              cliPath   = 'Stub LVCompare'
+              args      = $Flags
+              exitCode  = $exitCode
+              seconds   = 0.05
+              command   = "Stub LVCompare ""$BaseVi"" ""$HeadVi"""
+              environment = @{
+                  cli = @{
+                      artifacts = @{
+                          images = @(
+                              @{
+                                  index      = 0
+                                  mimeType   = 'image/png'
+                                  byteLength = 4
+                                  savedPath  = (Join-Path $imagesDir 'cli-image-00.png')
+                              }
+                          )
+                      }
+                  }
+              }
+          }
+          $capture | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $capturePath -Encoding utf8
+
+          if ($RenderReport.IsPresent -or $ReportFormat.ToLowerInvariant() -eq 'html') {
+              "<html><body><h1>Stub Report (diff=True)</h1></body></html>" |
+                  Set-Content -LiteralPath (Join-Path $OutputDir 'compare-report.html') -Encoding utf8
+          }
+
+          exit $exitCode
+          '@ | Set-Content -LiteralPath $stubPath -Encoding utf8
+
+      - name: Run remote facade action against icon-editor VIP custom action history
+        id: history
+        uses: LabVIEW-Community-CI-CD/comparevi-history@main
+        with:
+          repository_root: labview-icon-editor
+          target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
+          start_ref: HEAD
+          max_pairs: 1
+          mode: default
+          results_dir: tests/results/_comparevi-history-smoke/history
+          detailed: true
+          render_report: true
+          invoke_script_path: tests/results/_comparevi-history-smoke/Invoke-LVCompare.stub.ps1
+
+      - name: Assert external smoke outputs
+        shell: pwsh
+        env:
+          MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
+          RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
+          HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
+          HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
+          TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
+          TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($path in @($env:MANIFEST_PATH, $env:RESULTS_DIR, $env:HISTORY_REPORT_MD, $env:HISTORY_REPORT_HTML)) {
+            if ([string]::IsNullOrWhiteSpace($path)) {
+              throw 'Expected facade output path was empty.'
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $env:MANIFEST_PATH -PathType Leaf)) {
+            throw "Manifest not found: $env:MANIFEST_PATH"
+          }
+          if (-not (Test-Path -LiteralPath $env:RESULTS_DIR -PathType Container)) {
+            throw "Results directory not found: $env:RESULTS_DIR"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_MD -PathType Leaf)) {
+            throw "Markdown report not found: $env:HISTORY_REPORT_MD"
+          }
+          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_HTML -PathType Leaf)) {
+            throw "HTML report not found: $env:HISTORY_REPORT_HTML"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:TOTAL_PROCESSED) -or [int]$env:TOTAL_PROCESSED -lt 1) {
+            throw "Expected total-processed >= 1. Actual: $($env:TOTAL_PROCESSED)"
+          }
+
+          @(
+            '## comparevi-history external smoke'
+            ''
+            '- Consumer repo: `svelderrainruiz/labview-icon-editor`'
+            '- Target path: `Tooling/deployment/VIP_Post-Install Custom Action.vi`'
+            ('- Manifest: `{0}`' -f $env:MANIFEST_PATH)
+            ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
+            ('- Markdown report: `{0}`' -f $env:HISTORY_REPORT_MD)
+            ('- HTML report: `{0}`' -f $env:HISTORY_REPORT_HTML)
+            ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
+            ('- Total diffs: `{0}`' -f $env:TOTAL_DIFFS)
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload external smoke artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-external-smoke
           path: ${{ steps.history.outputs['results-dir'] }}/**
           if-no-files-found: error
