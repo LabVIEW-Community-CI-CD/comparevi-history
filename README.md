@@ -101,7 +101,7 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - Use `.github/workflows/release.yml` to automate backend pin bumps and facade publication.
 - Dispatch it with:
   - `backend_ref`: backend release tag to pin, or another backend ref that already resolves to a published `CompareVI.Tools` bundle
-  - `immutable_tag`: new immutable facade tag such as `v1.0.2`
+  - `immutable_tag`: new immutable facade tag such as `v1.2.3`
   - `major_tag`: moving compatibility tag, normally `v1`
   - `publish`: `false` for smoke-only rehearsal, `true` for a real release from `main`
 - The workflow resolves `backend_ref` to a backend release tag plus source SHA, runs both local and external smoke against that candidate bundle-backed backend, and uploads a release-plan artifact before any publish step runs.
