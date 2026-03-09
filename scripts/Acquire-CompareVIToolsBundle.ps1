@@ -104,6 +104,31 @@ try {
     }
   }
 
+  if (-not ($metadata.PSObject.Properties['consumerContract'] -and $metadata.consumerContract.PSObject.Properties['hostedNiLinuxRunner'])) {
+    throw "CompareVI.Tools bundle '$BundleAssetName' does not publish consumerContract.hostedNiLinuxRunner."
+  }
+
+  $hostedRunnerContract = $metadata.consumerContract.hostedNiLinuxRunner
+  $hostedRunnerScriptPath = [string]$hostedRunnerContract.entryScriptPath
+  if ([string]::IsNullOrWhiteSpace($hostedRunnerScriptPath)) {
+    throw "CompareVI.Tools bundle '$BundleAssetName' published an empty hostedNiLinuxRunner.entryScriptPath."
+  }
+
+  $hostedRunnerSupportPaths = @(
+    @($hostedRunnerContract.supportScriptPaths) |
+      ForEach-Object { [string]$_ } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+  if ($hostedRunnerSupportPaths.Count -eq 0) {
+    throw "CompareVI.Tools bundle '$BundleAssetName' published no hostedNiLinuxRunner.supportScriptPaths."
+  }
+
+  $hostedRunnerDefaultImage = [string]$hostedRunnerContract.defaultImage
+  if ([string]::IsNullOrWhiteSpace($hostedRunnerDefaultImage)) {
+    throw "CompareVI.Tools bundle '$BundleAssetName' published an empty hostedNiLinuxRunner.defaultImage."
+  }
+
+  $requiredRelativePaths = New-Object System.Collections.Generic.List[string]
   foreach ($relativePath in @(
     'README.md',
     'tools/CompareVI.Tools/CompareVI.Tools.psd1',
@@ -113,6 +138,18 @@ try {
     'tools/Render-VIHistoryReport.ps1',
     'scripts/CompareVI.psm1'
   )) {
+    if (-not $requiredRelativePaths.Contains($relativePath)) {
+      $requiredRelativePaths.Add($relativePath) | Out-Null
+    }
+  }
+
+  foreach ($relativePath in @($hostedRunnerScriptPath) + @($hostedRunnerSupportPaths)) {
+    if (-not $requiredRelativePaths.Contains($relativePath)) {
+      $requiredRelativePaths.Add($relativePath) | Out-Null
+    }
+  }
+
+  foreach ($relativePath in @($requiredRelativePaths.ToArray())) {
     $candidate = Join-Path $bundleDir.FullName $relativePath
     if (-not (Test-Path -LiteralPath $candidate)) {
       throw "CompareVI.Tools bundle '$BundleAssetName' is missing required file '$relativePath'."
@@ -134,6 +171,8 @@ try {
   Write-ActionOutput -Key 'tooling-path' -Value $relativeToolingPath
   Write-ActionOutput -Key 'bundle-release-version' -Value ([string]$metadata.module.releaseVersion)
   Write-ActionOutput -Key 'bundle-source-sha' -Value ([string]$metadata.source.sha)
+  Write-ActionOutput -Key 'hosted-runner-script-path' -Value $hostedRunnerScriptPath
+  Write-ActionOutput -Key 'hosted-runner-default-image' -Value $hostedRunnerDefaultImage
 
   if ($StepSummaryPath) {
     @(
@@ -144,6 +183,8 @@ try {
       ('- Extracted tooling path: `{0}`' -f $relativeToolingPath)
       ('- Bundle release version: `{0}`' -f $metadata.module.releaseVersion)
       ('- Bundle source SHA: `{0}`' -f $metadata.source.sha)
+      ('- Hosted runner script: `{0}`' -f $hostedRunnerScriptPath)
+      ('- Hosted runner image: `{0}`' -f $hostedRunnerDefaultImage)
     ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
   }
 } finally {
