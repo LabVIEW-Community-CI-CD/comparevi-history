@@ -93,6 +93,9 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 
 - The default backend mapping is pinned in `comparevi-backend-ref.txt`. Treat that file as the source of truth for the backend release tag used by the facade.
 - The pinned backend release must publish a `CompareVI.Tools-v<release-version>.zip` asset and its embedded `comparevi-tools-release.json` metadata.
+- For hosted NI Linux diagnostics, the pinned backend release must also publish
+  `consumerContract.hostedNiLinuxRunner` plus the bundled runner/support
+  scripts it references.
 - Immutable facade tags such as `v1.0.0`, `v1.0.1`, and later patch tags should each map to a single reviewed backend release tag through that file.
 - The moving major tag `v1` should point to the latest compatible facade release after smoke passes.
 

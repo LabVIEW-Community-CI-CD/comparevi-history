@@ -71,6 +71,32 @@ jobs:
             throw "Backend release '$backendRef' does not publish a CompareVI.Tools zip asset."
           }
 
+          $acquireOutputPath = Join-Path $env:RUNNER_TEMP 'comparevi-history-bundle-acquire.out'
+          $bundleDestination = Join-Path $env:RUNNER_TEMP 'comparevi-history-tools'
+          & "$PWD/scripts/Acquire-CompareVIToolsBundle.ps1" `
+            -Repository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
+            -ReleaseTag $backendRef `
+            -BundleAssetName ([string]$bundleAsset.name) `
+            -BundleAssetUrl ([string]$bundleAsset.browser_download_url) `
+            -BundleAssetDigest $(if ($bundleAsset.PSObject.Properties['digest']) { [string]$bundleAsset.digest } else { '' }) `
+            -DestinationPath $bundleDestination `
+            -GitHubToken $env:GITHUB_TOKEN `
+            -GitHubOutputPath $acquireOutputPath `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
+
+          $acquireValues = @{}
+          foreach ($line in Get-Content -LiteralPath $acquireOutputPath) {
+            if ($line -match '^(?<key>[^=]+)=(?<value>.*)$') {
+              $acquireValues[$Matches['key']] = $Matches['value']
+            }
+          }
+
+          foreach ($requiredOutput in @('tooling-path', 'hosted-runner-script-path', 'hosted-runner-default-image')) {
+            if (-not $acquireValues.ContainsKey($requiredOutput) -or [string]::IsNullOrWhiteSpace([string]$acquireValues[$requiredOutput])) {
+              throw "Bundle acquisition did not emit required output '$requiredOutput'."
+            }
+          }
+
           foreach ($path in @(
             'scripts/Resolve-CompareVIHistoryBackend.ps1',
             'scripts/Acquire-CompareVIToolsBundle.ps1',
@@ -108,6 +134,9 @@ jobs:
               '- actionlint passed'
               ('- Backend release pin: `{0}`' -f $backendRef)
               ('- Backend bundle asset: `{0}`' -f $bundleAsset.name)
+              ('- Hosted runner script path: `{0}`' -f $acquireValues['hosted-runner-script-path'])
+              ('- Hosted runner default image: `{0}`' -f $acquireValues['hosted-runner-default-image'])
+              '- Backend bundle acquisition passed with the hosted-runner contract'
               '- PowerShell facade scripts parsed successfully'
               '- Branch-protection drift script parsed successfully'
               '- Consumer PR-diagnostics example workflows linted successfully'
