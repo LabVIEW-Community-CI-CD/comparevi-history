@@ -204,7 +204,6 @@ jobs:
           results_dir: tests/results/_comparevi-history-published/major/history
           detailed: true
           render_report: true
-          keep_artifacts_on_no_diff: true
           invoke_script_path: tests/results/_comparevi-history-published/major/Invoke-LVCompare.stub.ps1
 
       - name: Assert major published consumer outputs
@@ -311,7 +310,6 @@ jobs:
           results_dir: tests/results/_comparevi-history-published/immutable/history
           detailed: true
           render_report: true
-          keep_artifacts_on_no_diff: true
           invoke_script_path: tests/results/_comparevi-history-published/immutable/Invoke-LVCompare.stub.ps1
 
       - name: Assert immutable published consumer outputs

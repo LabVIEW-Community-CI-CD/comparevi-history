@@ -151,7 +151,6 @@ jobs:
           results_dir: tests/results/_comparevi-history-smoke/history
           detailed: true
           render_report: true
-          keep_artifacts_on_no_diff: true
           invoke_script_path: tests/results/_comparevi-history-smoke/Invoke-LVCompare.stub.ps1
 
       - name: Assert external smoke outputs

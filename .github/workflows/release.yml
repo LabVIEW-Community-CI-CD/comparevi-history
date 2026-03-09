@@ -337,7 +337,6 @@ jobs:
           results_dir: tests/results/_comparevi-history-release/history
           detailed: true
           render_report: true
-          keep_artifacts_on_no_diff: true
           comparevi_repository: ${{ needs.validate.outputs.comparevi_repository }}
           comparevi_ref: ${{ needs.validate.outputs.backend_tag }}
           invoke_script_path: tests/results/_comparevi-history-release/Invoke-LVCompare.stub.ps1

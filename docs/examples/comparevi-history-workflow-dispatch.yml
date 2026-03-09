@@ -86,7 +86,6 @@ jobs:
           render_report: true
           detailed: true
           fail_on_diff: false
-          keep_artifacts_on_no_diff: true
           results_dir: tests/results/pr-diagnostics/history
 
       - name: Upload diagnostics artifacts

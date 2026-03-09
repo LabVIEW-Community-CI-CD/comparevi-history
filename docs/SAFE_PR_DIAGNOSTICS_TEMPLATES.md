@@ -70,6 +70,8 @@ keep the default bundle as the starting point for public PR diagnostics.
   the normal released bundle path.
 - Both templates surface the mode bundle in artifacts and summaries through the facade outputs
   `requested-mode-list`, `executed-mode-list`, `mode-manifests-json`, and `mode-summary-markdown`.
+- The published templates intentionally leave `keep_artifacts_on_no_diff` unset so they stay compatible with the
+  currently pinned released backend bundle.
 - `.github/workflows/published-consumer-validation.yml` in this repo validates the published `v1` tag and latest
   immutable tag against `ni/labview-icon-editor` by default and uploads evidence artifacts for both lanes.
 

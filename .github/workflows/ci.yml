@@ -43,6 +43,8 @@ jobs:
 
       - name: Validate backend pin and facade scripts
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'

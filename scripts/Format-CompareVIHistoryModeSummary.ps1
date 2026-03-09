@@ -47,8 +47,8 @@ function Write-MultilineGitHubOutput {
   ) | Out-File -FilePath $Path -Encoding utf8 -Append
 }
 
-$requestedModes = ConvertTo-NormalizedModeList -Value $RequestedModeList
-$executedModes = ConvertTo-NormalizedModeList -Value $ExecutedModeList
+$requestedModes = @(ConvertTo-NormalizedModeList -Value $RequestedModeList)
+$executedModes = @(ConvertTo-NormalizedModeList -Value $ExecutedModeList)
 
 $modeEntries = @()
 if (-not [string]::IsNullOrWhiteSpace($ModeManifestsJson)) {
