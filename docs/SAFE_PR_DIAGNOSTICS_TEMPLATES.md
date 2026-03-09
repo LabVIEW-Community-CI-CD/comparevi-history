@@ -37,6 +37,16 @@ keep the default bundle as the starting point for public PR diagnostics.
 - Run both patterns only on trusted Windows runners that already satisfy the backend LabVIEW and LVCompare
   prerequisites.
 
+## Fork Adoption and Upstream Alignment
+
+- Treat `ni/labview-icon-editor` as the canonical consumer surface when validating template behavior or comparing
+  repository-relative VI paths.
+- Downstream forks such as `svelderrainruiz/labview-icon-editor` should keep the workflow files aligned to upstream
+  `develop` unless they intentionally diverge on diagnostics policy.
+- The published templates are repo-local by design: they resolve the pull request head repository dynamically, so the
+  same workflow file can live in upstream or in a fork and still inspect fork-authored PR heads safely from a trusted
+  maintainer-controlled runner.
+
 ## Do Not Use These Patterns
 
 - Do not run `comparevi-history` directly from `pull_request` on public fork PRs. The facade intentionally fails closed
@@ -58,7 +68,12 @@ keep the default bundle as the starting point for public PR diagnostics.
   `fetch-depth: 0` so the facade can traverse commit history deterministically.
 - Both templates keep maintainer-only override inputs unset. That aligns with the trust guard and keeps consumers on
   the normal released bundle path.
-- Both templates surface the mode bundle in artifacts and summaries so maintainers can see the exact coverage that ran.
+- Both templates surface the mode bundle in artifacts and summaries through the facade outputs
+  `requested-mode-list`, `executed-mode-list`, `mode-manifests-json`, and `mode-summary-markdown`.
+- The published templates intentionally leave `keep_artifacts_on_no_diff` unset so they stay compatible with the
+  currently pinned released backend bundle.
+- `.github/workflows/published-consumer-validation.yml` in this repo validates the published `v1` tag and latest
+  immutable tag against `ni/labview-icon-editor` by default and uploads evidence artifacts for both lanes.
 
 ## Recommended Adoption
 

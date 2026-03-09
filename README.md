@@ -60,6 +60,8 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - `manifest-path`
 - `results-dir`
 - `mode-count`
+- `requested-mode-list`
+- `executed-mode-list`
 - `total-processed`
 - `total-diffs`
 - `stop-reason`
@@ -68,6 +70,7 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - `bucket-counts-json`
 - `mode-manifests-json`
 - `mode-list`
+- `mode-summary-markdown`
 - `flag-list`
 - `history-report-md`
 - `history-report-html`
@@ -79,6 +82,8 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - Treat this action as a trusted-runner workflow primitive. Real VI History diagnostics should run only on Windows runners that you control and that already satisfy the LabVIEW/LVCompare prerequisites of the backend tooling.
 - The action fails closed on `pull_request` and `pull_request_target` events for forked repositories. For public repositories, use comment-gated or maintainer-dispatched workflows for PR diagnostics instead of running the facade directly on fork PR events.
 - Consumer-ready public PR diagnostics templates are published in `docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md`. The published default mode bundle is `default,attributes,front-panel,block-diagram` so public diagnostics cover more than a single broad lane.
+- Reviewer-facing consumers can use `requested-mode-list`, `executed-mode-list`, and `mode-summary-markdown` to surface
+  the exact bundle and per-mode counts in PR comments or step summaries without reparsing raw manifests first.
 - `comparevi_repository`, `comparevi_ref`, and `invoke_script_path` are maintainer-only overrides. The action rejects them when the PR context is not provably repo-local and trusted, and normal consumer workflows should leave them at their defaults.
 - When `comparevi_ref` targets a published backend release tag, the action stays on the bundle path. When a maintainer points `comparevi_ref` at an unreleased branch/commit/SHA, the action falls back to a source checkout for that explicit override only.
 - Do not expose this action to untrusted fork pull requests with write-scoped tokens or secrets. `pull_request_target` against a fork is treated as unsafe by default because the facade assumes trusted refs and a trusted runner.
@@ -110,6 +115,9 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
   - `smoke-local` from `.github/workflows/smoke.yml`
   - `smoke-external` from `.github/workflows/smoke.yml`
 - `smoke.yml` runs on pull requests to `main`, pushes to `main`, and manual dispatch so the public facade contract is covered before merge and after publish.
+- `.github/workflows/published-consumer-validation.yml` validates the released `v1` tag and the latest immutable facade
+  tag against `ni/labview-icon-editor` by default, while still allowing aligned downstream forks to override the
+  consumer repository/ref explicitly.
 - `release.yml` validates itself on pull requests that touch release plumbing and remains the only path that should publish immutable tags or advance `v1`.
 - The branch protection source of truth is `.github/branch-protection-main.json`.
 - `branch-protection-drift.yml` runs weekly and on maintainer dispatch to compare the live `main` protection settings with `.github/branch-protection-main.json`, upload the expected/live snapshots, and fail with a remediation command if drift is detected.

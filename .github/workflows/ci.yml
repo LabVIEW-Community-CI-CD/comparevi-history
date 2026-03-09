@@ -43,6 +43,8 @@ jobs:
 
       - name: Validate backend pin and facade scripts
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -72,7 +74,10 @@ jobs:
           foreach ($path in @(
             'scripts/Resolve-CompareVIHistoryBackend.ps1',
             'scripts/Acquire-CompareVIToolsBundle.ps1',
+            'scripts/Resolve-CompareVIHistoryPublishedRefs.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
+            'scripts/Format-CompareVIHistoryModeSummary.ps1',
+            'scripts/Assert-CompareVIHistoryPublishedRun.ps1',
             'scripts/Write-CompareVIHistorySmokeStub.ps1',
             'scripts/Test-CompareVIHistoryBranchProtection.ps1'
           )) {
@@ -106,13 +111,17 @@ jobs:
               '- PowerShell facade scripts parsed successfully'
               '- Branch-protection drift script parsed successfully'
               '- Consumer PR-diagnostics example workflows linted successfully'
+              '- Published consumer validation helpers parsed successfully'
               '- Generated smoke stub parsed successfully'
             ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           }
 
-      - name: Validate trust guard scenarios
+      - name: Validate comparevi-history script seams
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           & "$PWD/scripts/Test-CompareVIHistoryTrust.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryPublishedRefs.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryModeSummary.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryPublishedRun.ps1"
