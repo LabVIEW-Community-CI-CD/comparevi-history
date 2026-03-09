@@ -79,7 +79,7 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 
 ## Trust boundaries
 
-- Treat this action as a trusted-runner workflow primitive. Real VI History diagnostics should run only on Windows runners that you control and that already satisfy the LabVIEW/LVCompare prerequisites of the backend tooling.
+- Treat this action as a trusted-runner workflow primitive. Real VI History diagnostics should run only on trusted maintainer-controlled runners, either on self-hosted Windows with the backend prerequisites already installed or through a hosted NI Linux container path wired by a repo-local adapter such as `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1`.
 - The action fails closed on `pull_request` and `pull_request_target` events for forked repositories. For public repositories, use comment-gated or maintainer-dispatched workflows for PR diagnostics instead of running the facade directly on fork PR events.
 - Consumer-ready public PR diagnostics templates are published in `docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md`. The published default mode bundle is `default,attributes,front-panel,block-diagram` so public diagnostics cover more than a single broad lane.
 - Reviewer-facing consumers can use `requested-mode-list`, `executed-mode-list`, and `mode-summary-markdown` to surface
@@ -87,6 +87,7 @@ The facade forwards the underlying history outputs from `compare-vi-cli-action`,
 - `comparevi_repository`, `comparevi_ref`, and `invoke_script_path` are maintainer-only overrides. The action rejects them when the PR context is not provably repo-local and trusted, and normal consumer workflows should leave them at their defaults.
 - When `comparevi_ref` targets a published backend release tag, the action stays on the bundle path. When a maintainer points `comparevi_ref` at an unreleased branch/commit/SHA, the action falls back to a source checkout for that explicit override only.
 - Do not expose this action to untrusted fork pull requests with write-scoped tokens or secrets. `pull_request_target` against a fork is treated as unsafe by default because the facade assumes trusted refs and a trusted runner.
+- The published PR-diagnostics templates in `docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md` prefer `ubuntu-latest` plus a serial `docker pull` of `nationalinstruments/labview:2026q1-linux`, because that matches the fork-ready hosted-runner path validated in downstream consumers.
 - Hosted smoke coverage in this repo uses an LVCompare stub on `windows-latest`. That proves the facade contract and cross-repo wiring, but it is not a substitute for trusted-runner production use.
 
 ## Release mapping

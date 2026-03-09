@@ -1,7 +1,8 @@
 # Safe PR Diagnostics Templates
 
 These templates show how to use `comparevi-history` safely in public repositories without violating the facade trust
-guard, and they default to a broader mode bundle than a single `default` pass.
+guard. They default to a broader mode bundle than a single `default` pass, and they assume a GitHub-hosted Linux
+runner that pre-pulls the NI container image before invoking a repo-local hosted-runner adapter.
 
 ## Published Templates
 
@@ -34,8 +35,8 @@ keep the default bundle as the starting point for public PR diagnostics.
 - Use the comment-gated template when you want a slash command such as
   `/comparevi-history Tooling/deployment/VIP_Post-Install Custom Action.vi --modes default,attributes,front-panel,block-diagram`
   to trigger diagnostics from a trusted maintainer comment.
-- Run both patterns only on trusted Windows runners that already satisfy the backend LabVIEW and LVCompare
-  prerequisites.
+- Run both patterns on trusted maintainer-controlled workflows that pre-pull the hosted NI Linux image serially and use
+  a repo-local adapter such as `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1`.
 
 ## Fork Adoption and Upstream Alignment
 
@@ -45,7 +46,7 @@ keep the default bundle as the starting point for public PR diagnostics.
   `develop` unless they intentionally diverge on diagnostics policy.
 - The published templates are repo-local by design: they resolve the pull request head repository dynamically, so the
   same workflow file can live in upstream or in a fork and still inspect fork-authored PR heads safely from a trusted
-  maintainer-controlled runner.
+  maintainer-controlled hosted runner.
 
 ## Do Not Use These Patterns
 
@@ -62,14 +63,21 @@ keep the default bundle as the starting point for public PR diagnostics.
 
 - The maintainer-dispatched template uses `LabVIEW-Community-CI-CD/comparevi-history@v1`. That is the right default
   when you want compatible updates after each reviewed facade release.
-- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.0.3`. That is the right default when
-  you want the public PR diagnostics surface frozen to a known immutable release.
+- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.0.4`. That is the right default when
+  you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
+  immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
 - Both templates resolve the PR head repository and head SHA from the GitHub API, then check out that exact SHA with
   `fetch-depth: 0` so the facade can traverse commit history deterministically.
 - Both templates keep maintainer-only override inputs unset. That aligns with the trust guard and keeps consumers on
   the normal released bundle path.
+- Both templates pre-pull `nationalinstruments/labview:2026q1-linux` and route execution through
+  `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1` so consumers use the hosted NI Linux contract instead of a
+  repo-specific self-hosted Windows assumption.
 - Both templates surface the mode bundle in artifacts and summaries through the facade outputs
   `requested-mode-list`, `executed-mode-list`, `mode-manifests-json`, and `mode-summary-markdown`.
+- The comment-gated template writes the diagnostics summary to the step summary first, then attempts to publish the PR
+  comment. If the repository token cannot create the comment, the workflow keeps the diagnostics job green and records
+  the fallback in the step summary instead of masking a successful compare run as infrastructure failure.
 - The published templates intentionally leave `keep_artifacts_on_no_diff` unset so they stay compatible with the
   currently pinned released backend bundle.
 - `.github/workflows/published-consumer-validation.yml` in this repo validates the published `v1` tag and latest
@@ -80,5 +88,6 @@ keep the default bundle as the starting point for public PR diagnostics.
 1. Start with the maintainer-dispatched template when your project is new to VI History diagnostics.
 2. Keep the default multi-mode bundle unless you have a documented reason to narrow it.
 3. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
-   comments on a trusted runner.
+   comments on a trusted hosted runner.
 4. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
+

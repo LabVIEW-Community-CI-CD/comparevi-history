@@ -17,6 +17,11 @@ on:
       - scripts/Resolve-CompareVIHistoryPublishedRefs.ps1
       - scripts/Format-CompareVIHistoryModeSummary.ps1
       - scripts/Assert-CompareVIHistoryPublishedRun.ps1
+      - scripts/Sync-CompareVIHistoryPublishedTemplates.ps1
+      - scripts/Test-CompareVIHistoryTemplateContracts.ps1
+      - docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md
+      - docs/examples/comparevi-history-workflow-dispatch.yml
+      - docs/examples/comparevi-history-comment-gated.yml
   workflow_dispatch:
     inputs:
       backend_ref:
@@ -429,9 +434,10 @@ jobs:
           set -euo pipefail
 
           printf '%s\n' "$BACKEND_TAG" > comparevi-backend-ref.txt
+          pwsh -NoLogo -NoProfile -File scripts/Sync-CompareVIHistoryPublishedTemplates.ps1 -ImmutableTag "$IMMUTABLE_TAG" > /dev/null
 
-          if ! git diff --quiet -- comparevi-backend-ref.txt; then
-            git add comparevi-backend-ref.txt
+          if ! git diff --quiet -- comparevi-backend-ref.txt docs/examples/comparevi-history-comment-gated.yml docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md; then
+            git add comparevi-backend-ref.txt docs/examples/comparevi-history-comment-gated.yml docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md
             git commit -m "Release comparevi-history $IMMUTABLE_TAG (#1)"
           fi
 
@@ -454,6 +460,7 @@ jobs:
           - Backend source SHA for that tag is \`${BACKEND_SHA}\`
           - \`${IMMUTABLE_TAG}\` is the immutable facade tag for this backend mapping
           - \`${MAJOR_TAG}\` advances only after smoke and release publication succeed
+          - Published comment-gated template now points at \`${IMMUTABLE_TAG}\`
           EOF
 
           echo "target-sha=$target_sha" >> "$GITHUB_OUTPUT"
