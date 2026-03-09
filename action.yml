@@ -130,9 +130,18 @@ outputs:
   mode-manifests-json:
     description: "JSON summary of per-mode manifests."
     value: ${{ steps.run.outputs['mode-manifests-json'] }}
+  requested-mode-list:
+    description: "Normalized comma-separated list of requested modes."
+    value: ${{ steps.run.outputs['requested-mode-list'] }}
+  executed-mode-list:
+    description: "Normalized comma-separated list of executed modes."
+    value: ${{ steps.run.outputs['executed-mode-list'] }}
   mode-list:
     description: "Comma-separated list of executed modes."
     value: ${{ steps.run.outputs['mode-list'] }}
+  mode-summary-markdown:
+    description: "Reviewer-facing markdown summary of the requested and executed mode bundle."
+    value: ${{ steps.mode_summary.outputs['mode-summary-markdown'] }}
   flag-list:
     description: "Comma-separated list of compare flags."
     value: ${{ steps.run.outputs['flag-list'] }}
@@ -302,3 +311,19 @@ runs:
         }
 
         & "${{ github.action_path }}/scripts/Invoke-CompareVIHistoryFacade.ps1" @invokeArgs
+
+    - id: mode_summary
+      name: Format reviewer mode summary
+      shell: pwsh
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        & "${{ github.action_path }}/scripts/Format-CompareVIHistoryModeSummary.ps1" `
+          -RequestedModeList '${{ steps.run.outputs['requested-mode-list'] }}' `
+          -ExecutedModeList '${{ steps.run.outputs['executed-mode-list'] }}' `
+          -ModeManifestsJson '${{ steps.run.outputs['mode-manifests-json'] }}' `
+          -TotalProcessed '${{ steps.run.outputs['total-processed'] }}' `
+          -TotalDiffs '${{ steps.run.outputs['total-diffs'] }}' `
+          -StopReason '${{ steps.run.outputs['stop-reason'] }}' `
+          -GitHubOutputPath $env:GITHUB_OUTPUT

@@ -127,10 +127,11 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1.0.2
           TARGET_PATH: ${{ steps.request.outputs['target-path'] }}
-          REQUESTED_MODES: ${{ steps.request.outputs['compare-modes'] }}
-          EXECUTED_MODES: ${{ steps.history.outputs['mode-list'] }}
+          REQUESTED_MODES: ${{ steps.history.outputs['requested-mode-list'] }}
+          EXECUTED_MODES: ${{ steps.history.outputs['executed-mode-list'] }}
           TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
           TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
+          MODE_SUMMARY_MARKDOWN: ${{ steps.history.outputs['mode-summary-markdown'] }}
           STEP_CONCLUSION: ${{ steps.history.conclusion }}
           IS_FORK: ${{ steps.request.outputs['is-fork'] }}
         run: |
@@ -156,6 +157,10 @@ jobs:
           - Total diffs: `$env:TOTAL_DIFFS`
           - Step conclusion: `$env:STEP_CONCLUSION`
           - PR head is fork: `$env:IS_FORK`
+
+          ### Mode coverage
+          $env:MODE_SUMMARY_MARKDOWN
+
           - Run: $runUrl
           "@.Trim()
 

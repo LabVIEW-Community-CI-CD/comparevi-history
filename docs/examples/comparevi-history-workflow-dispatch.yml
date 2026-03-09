@@ -104,11 +104,12 @@ jobs:
           ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1
           PR_NUMBER: ${{ inputs.pull_request_number }}
           TARGET_PATH: ${{ inputs.target_path }}
-          REQUESTED_MODES: ${{ inputs.compare_modes }}
-          EXECUTED_MODES: ${{ steps.history.outputs['mode-list'] }}
+          REQUESTED_MODES: ${{ steps.history.outputs['requested-mode-list'] }}
+          EXECUTED_MODES: ${{ steps.history.outputs['executed-mode-list'] }}
           TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
           TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
           RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
+          MODE_SUMMARY_MARKDOWN: ${{ steps.history.outputs['mode-summary-markdown'] }}
           IS_FORK: ${{ steps.pr.outputs['is-fork'] }}
         run: |
           Set-StrictMode -Version Latest
@@ -128,4 +129,8 @@ jobs:
             ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
             ('- PR head is fork: `{0}`' -f $env:IS_FORK)
             ('- Run URL: {0}' -f $runUrl)
+            ''
+            '### Mode coverage'
+            ''
+            $env:MODE_SUMMARY_MARKDOWN
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

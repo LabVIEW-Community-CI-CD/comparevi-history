@@ -13,6 +13,10 @@ on:
       - scripts/Write-CompareVIHistorySmokeStub.ps1
       - README.md
       - comparevi-backend-ref.txt
+      - .github/workflows/published-consumer-validation.yml
+      - scripts/Resolve-CompareVIHistoryPublishedRefs.ps1
+      - scripts/Format-CompareVIHistoryModeSummary.ps1
+      - scripts/Assert-CompareVIHistoryPublishedRun.ps1
   workflow_dispatch:
     inputs:
       backend_ref:
@@ -36,7 +40,7 @@ on:
       consumer_repository:
         description: External consumer repository for smoke coverage
         required: false
-        default: svelderrainruiz/labview-icon-editor
+        default: ni/labview-icon-editor
         type: string
       consumer_ref:
         description: Ref for the external consumer smoke checkout
@@ -96,7 +100,7 @@ jobs:
           $immutableTag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_IMMUTABLE_TAG } else { "v0.0.$env:GITHUB_RUN_NUMBER" }
           $majorTag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_MAJOR_TAG } else { 'v1' }
           $compareviRepository = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_COMPAREVI_REPOSITORY } else { 'LabVIEW-Community-CI-CD/compare-vi-cli-action' }
-          $consumerRepository = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_CONSUMER_REPOSITORY } else { 'svelderrainruiz/labview-icon-editor' }
+          $consumerRepository = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_CONSUMER_REPOSITORY } else { 'ni/labview-icon-editor' }
           $consumerRef = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_CONSUMER_REF } else { 'develop' }
           $publish = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { [string]$env:INPUT_PUBLISH } else { 'false' }
 
@@ -328,10 +332,12 @@ jobs:
           target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
           start_ref: HEAD
           max_pairs: 1
-          mode: default
+          max_signal_pairs: 5
+          mode: default,attributes,front-panel,block-diagram
           results_dir: tests/results/_comparevi-history-release/history
           detailed: true
           render_report: true
+          keep_artifacts_on_no_diff: true
           comparevi_repository: ${{ needs.validate.outputs.comparevi_repository }}
           comparevi_ref: ${{ needs.validate.outputs.backend_tag }}
           invoke_script_path: tests/results/_comparevi-history-release/Invoke-LVCompare.stub.ps1
@@ -339,57 +345,55 @@ jobs:
       - name: Assert external smoke outputs
         shell: pwsh
         env:
+          ACTION_REF: comparevi-history@workspace
+          TARGET_PATH: Tooling/deployment/VIP_Post-Install Custom Action.vi
+          EXPECTED_MODE_LIST: default,attributes,front-panel,block-diagram
           MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
           RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
+          MODE_COUNT: ${{ steps.history.outputs['mode-count'] }}
+          MODE_LIST: ${{ steps.history.outputs['mode-list'] }}
+          REQUESTED_MODE_LIST: ${{ steps.history.outputs['requested-mode-list'] }}
+          EXECUTED_MODE_LIST: ${{ steps.history.outputs['executed-mode-list'] }}
+          MODE_MANIFESTS_JSON: ${{ steps.history.outputs['mode-manifests-json'] }}
           HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
           HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
           TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
           TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
+          STOP_REASON: ${{ steps.history.outputs['stop-reason'] }}
+          ARTIFACT_NAME: comparevi-history-release-external-${{ github.run_id }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          foreach ($path in @($env:MANIFEST_PATH, $env:RESULTS_DIR, $env:HISTORY_REPORT_MD, $env:HISTORY_REPORT_HTML)) {
-            if ([string]::IsNullOrWhiteSpace($path)) {
-              throw 'Expected facade output path was empty.'
-            }
-          }
-
-          if (-not (Test-Path -LiteralPath $env:MANIFEST_PATH -PathType Leaf)) {
-            throw "Manifest not found: $env:MANIFEST_PATH"
-          }
-          if (-not (Test-Path -LiteralPath $env:RESULTS_DIR -PathType Container)) {
-            throw "Results directory not found: $env:RESULTS_DIR"
-          }
-          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_MD -PathType Leaf)) {
-            throw "Markdown report not found: $env:HISTORY_REPORT_MD"
-          }
-          if (-not (Test-Path -LiteralPath $env:HISTORY_REPORT_HTML -PathType Leaf)) {
-            throw "HTML report not found: $env:HISTORY_REPORT_HTML"
-          }
-
-          if ([string]::IsNullOrWhiteSpace($env:TOTAL_PROCESSED) -or [int]$env:TOTAL_PROCESSED -lt 1) {
-            throw "Expected total-processed >= 1. Actual: $($env:TOTAL_PROCESSED)"
-          }
-
-          @(
-            '## comparevi-history external release smoke'
-            ''
-            ('- Consumer repo: `{0}@{1}`' -f '${{ needs.validate.outputs.consumer_repository }}', '${{ needs.validate.outputs.consumer_ref }}')
-            '- Target path: `Tooling/deployment/VIP_Post-Install Custom Action.vi`'
-            ('- Manifest: `{0}`' -f $env:MANIFEST_PATH)
-            ('- Results dir: `{0}`' -f $env:RESULTS_DIR)
-            ('- Markdown report: `{0}`' -f $env:HISTORY_REPORT_MD)
-            ('- HTML report: `{0}`' -f $env:HISTORY_REPORT_HTML)
-            ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
-            ('- Total diffs: `{0}`' -f $env:TOTAL_DIFFS)
-          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          & "$PWD/scripts/Assert-CompareVIHistoryPublishedRun.ps1" `
+            -ActionRef $env:ACTION_REF `
+            -ConsumerRepository '${{ needs.validate.outputs.consumer_repository }}' `
+            -ConsumerRef '${{ needs.validate.outputs.consumer_ref }}' `
+            -TargetPath $env:TARGET_PATH `
+            -ExpectedModeList $env:EXPECTED_MODE_LIST `
+            -ManifestPath $env:MANIFEST_PATH `
+            -ResultsDir $env:RESULTS_DIR `
+            -ModeCount $env:MODE_COUNT `
+            -ModeList $env:MODE_LIST `
+            -RequestedModeList $env:REQUESTED_MODE_LIST `
+            -ExecutedModeList $env:EXECUTED_MODE_LIST `
+            -ModeManifestsJson $env:MODE_MANIFESTS_JSON `
+            -HistoryReportMd $env:HISTORY_REPORT_MD `
+            -HistoryReportHtml $env:HISTORY_REPORT_HTML `
+            -TotalProcessed $env:TOTAL_PROCESSED `
+            -TotalDiffs $env:TOTAL_DIFFS `
+            -StopReason $env:STOP_REASON `
+            -ArtifactName $env:ARTIFACT_NAME `
+            -EvidencePath 'labview-icon-editor/tests/results/_comparevi-history-release/published-evidence.json' `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY
 
       - name: Upload external release smoke artifacts
         uses: actions/upload-artifact@v5
         with:
           name: comparevi-history-release-external-${{ github.run_id }}
-          path: ${{ steps.history.outputs['results-dir'] }}/**
+          path: |
+            ${{ steps.history.outputs['results-dir'] }}/**
+            labview-icon-editor/tests/results/_comparevi-history-release/published-evidence.json
           if-no-files-found: error
 
   publish:
@@ -501,3 +505,20 @@ jobs:
             echo "- Backend tag: \`${BACKEND_TAG}\`"
             echo "- Backend ref: \`${BACKEND_SHA}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  published-consumer:
+    name: release-published-consumer
+    if: ${{ needs.validate.outputs.publish == 'true' }}
+    needs:
+      - validate
+      - publish
+    uses: ./.github/workflows/published-consumer-validation.yml
+    with:
+      consumer_repository: ${{ needs.validate.outputs.consumer_repository }}
+      consumer_ref: ${{ needs.validate.outputs.consumer_ref }}
+      target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
+      compare_modes: default,attributes,front-panel,block-diagram
+      max_pairs: '5'
+      max_signal_pairs: '5'
+      latest_immutable_tag: ${{ needs.validate.outputs.immutable_tag }}
+    secrets: inherit
