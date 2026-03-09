@@ -45,23 +45,32 @@ $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
 $readme = Get-Content -LiteralPath $readmePath -Raw
 
 Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Manual template must use ubuntu-latest.'
+Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*default:\s+attributes,front-panel,block-diagram\s*$' -Message 'Manual template must default to explicit scoped modes.'
 Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Manual template must pin the NI Linux image.'
 Assert-Match -Content $manualTemplate -Pattern 'docker pull "\$COMPAREVI_NI_LINUX_IMAGE"' -Message 'Manual template must pre-pull the NI Linux image.'
 Assert-Match -Content $manualTemplate -Pattern 'invoke_script_path:\s+Tooling/Invoke-CompareVIHistoryHostedNILinux\.ps1' -Message 'Manual template must use the hosted NI Linux invoke adapter.'
-Assert-Match -Content $manualTemplate -Pattern 'Container image' -Message 'Manual template summary must surface the container image.'
+Assert-Match -Content $manualTemplate -Pattern 'New-CompareVIHistoryDiagnosticsBody\.ps1' -Message 'Manual template must use the bundled diagnostics body helper.'
+Assert-Match -Content $manualTemplate -Pattern '-Variant\s+manual' -Message 'Manual template must invoke the manual diagnostics body variant.'
+Assert-Match -Content $manualTemplate -Pattern '-ContainerImage\s+\$env:COMPAREVI_NI_LINUX_IMAGE' -Message 'Manual template must pass the pinned container image into the bundled diagnostics body helper.'
 
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
+Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*DEFAULT_COMPARE_MODES:\s+attributes,front-panel,block-diagram\s*$' -Message 'Comment-gated template must default to explicit scoped modes.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Comment-gated template must pin the NI Linux image.'
 Assert-Match -Content $commentTemplate -Pattern 'docker pull "\$COMPAREVI_NI_LINUX_IMAGE"' -Message 'Comment-gated template must pre-pull the NI Linux image.'
 Assert-Match -Content $commentTemplate -Pattern 'invoke_script_path:\s+Tooling/Invoke-CompareVIHistoryHostedNILinux\.ps1' -Message 'Comment-gated template must use the hosted NI Linux invoke adapter.'
 Assert-Match -Content $commentTemplate -Pattern 'Resource not accessible by integration' -Message 'Comment-gated template must recognize permission-denied PR comment failures.'
 Assert-Match -Content $commentTemplate -Pattern 'PR comment publication was denied by the repository token' -Message 'Comment-gated template must warn on denied PR comment publication.'
 Assert-Match -Content $commentTemplate -Pattern 'PR comment publication: `skipped`' -Message 'Comment-gated template must record skipped PR comment publication in the step summary.'
+Assert-Match -Content $commentTemplate -Pattern "Mode 'default' is not supported by comparevi-history public diagnostics" -Message 'Comment-gated template must reject aggregate default mode.'
+Assert-Match -Content $commentTemplate -Pattern 'New-CompareVIHistoryDiagnosticsBody\.ps1' -Message 'Comment-gated template must use the bundled diagnostics body helper.'
+Assert-Match -Content $commentTemplate -Pattern '-Variant\s+comment-gated' -Message 'Comment-gated template must invoke the comment-gated diagnostics body variant.'
+Assert-Match -Content $commentTemplate -Pattern '-ContainerImage\s+\$env:COMPAREVI_NI_LINUX_IMAGE' -Message 'Comment-gated template must pass the pinned container image into the bundled diagnostics body helper.'
 Assert-Match -Content $releaseWorkflow -Pattern 'scripts/Sync-CompareVIHistoryPublishedTemplates\.ps1' -Message 'Release workflow must include the published template sync script.'
 Assert-Match -Content $releaseWorkflow -Pattern 'Published comment-gated template now points at' -Message 'Release notes must mention the published comment-gated template pin.'
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'nationalinstruments/labview:2026q1-linux' -Message 'README must mention the published hosted NI Linux image path.'
+Assert-Match -Content $readme -Pattern 'aggregate aliases such as `default`, `full`, and `all` are intentionally excluded' -Message 'README must document the explicit public-mode contract.'
 
 $facadeRefMatch = [regex]::Match($commentTemplate, '(?m)^\s*FACADE_REF:\s*(v[0-9]+\.[0-9]+\.[0-9]+)\s*$')
 $usesRefMatch = [regex]::Match($commentTemplate, '(?m)^\s*uses:\s+LabVIEW-Community-CI-CD/comparevi-history@(v[0-9]+\.[0-9]+\.[0-9]+)\s*$')

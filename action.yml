@@ -32,7 +32,7 @@ inputs:
   mode:
     description: "Comma/semicolon list of compare modes."
     required: false
-    default: "default"
+    default: "attributes,front-panel,block-diagram"
   results_dir:
     description: "Results directory relative to the caller repository root unless absolute."
     required: false
@@ -142,6 +142,9 @@ outputs:
   mode-summary-markdown:
     description: "Reviewer-facing markdown summary of the requested and executed mode bundle."
     value: ${{ steps.mode_summary.outputs['mode-summary-markdown'] }}
+  history-summary-json:
+    description: "Rendered history summary JSON path."
+    value: ${{ steps.run.outputs['history-summary-json'] }}
   flag-list:
     description: "Comma-separated list of compare flags."
     value: ${{ steps.run.outputs['flag-list'] }}

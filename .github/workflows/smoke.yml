@@ -54,7 +54,7 @@ jobs:
           target_path: fixtures/vi-stage/bd-cosmetic/Head.vi
           start_ref: HEAD
           max_pairs: 1
-          mode: default
+          mode: attributes,front-panel,block-diagram
           results_dir: tests/results/_facade-smoke/history
           detailed: true
           render_report: true
@@ -147,7 +147,7 @@ jobs:
           start_ref: HEAD
           max_pairs: 1
           max_signal_pairs: 5
-          mode: default,attributes,front-panel,block-diagram
+          mode: attributes,front-panel,block-diagram
           results_dir: tests/results/_comparevi-history-smoke/history
           detailed: true
           render_report: true
@@ -160,7 +160,7 @@ jobs:
           CONSUMER_REPOSITORY: ni/labview-icon-editor
           CONSUMER_REF: develop
           TARGET_PATH: Tooling/deployment/VIP_Post-Install Custom Action.vi
-          EXPECTED_MODE_LIST: default,attributes,front-panel,block-diagram
+          EXPECTED_MODE_LIST: attributes,front-panel,block-diagram
           MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
           RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
           MODE_COUNT: ${{ steps.history.outputs['mode-count'] }}

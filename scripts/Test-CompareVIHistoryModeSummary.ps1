@@ -10,7 +10,7 @@ try {
   $githubOutputPath = Join-Path $tempRoot 'github-output.txt'
   $modeJson = @(
     [ordered]@{
-      mode = 'default'
+      mode = 'attributes'
       processed = 2
       diffs = 1
       signalDiffs = 1
@@ -30,8 +30,8 @@ try {
   ) | ConvertTo-Json -Depth 5 -Compress
 
   $summary = & $scriptPath `
-    -RequestedModeList 'default,attributes' `
-    -ExecutedModeList 'attributes,default' `
+    -RequestedModeList 'attributes,front-panel' `
+    -ExecutedModeList 'front-panel,attributes' `
     -ModeManifestsJson $modeJson `
     -TotalProcessed '2' `
     -TotalDiffs '1' `
@@ -39,10 +39,10 @@ try {
     -OutputPath $outputPath `
     -GitHubOutputPath $githubOutputPath
 
-  if ($summary -notmatch 'Requested modes: `attributes, default`') {
+  if ($summary -notmatch 'Requested modes: `attributes, front-panel`') {
     throw 'Summary did not include normalized requested modes.'
   }
-  if ($summary -notmatch '\| default \| 2 \| 1 \| 1 \| 0 \| 0 \| ok \|') {
+  if ($summary -notmatch '\| attributes \| 2 \| 1 \| 1 \| 0 \| 0 \| ok \|') {
     throw 'Summary did not include per-mode table row.'
   }
   if (-not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
@@ -55,7 +55,7 @@ try {
   }
 
   $legacyModeJson = [ordered]@{
-    mode = 'default'
+    mode = 'block-diagram'
     processed = 1
     diffs = 1
     status = 'ok'
@@ -68,10 +68,10 @@ try {
     -TotalProcessed '1' `
     -TotalDiffs '1'
 
-  if ($legacySummary -notmatch 'Requested modes: `default`') {
+  if ($legacySummary -notmatch 'Requested modes: `block-diagram`') {
     throw 'Legacy summary did not derive requested modes from mode-manifests-json.'
   }
-  if ($legacySummary -notmatch '\| default \| 1 \| 1 \| 0 \| 0 \| 0 \| ok \|') {
+  if ($legacySummary -notmatch '\| block-diagram \| 1 \| 1 \| 0 \| 0 \| 0 \| ok \|') {
     throw 'Legacy summary did not fall back missing per-mode fields to zero.'
   }
 } finally {

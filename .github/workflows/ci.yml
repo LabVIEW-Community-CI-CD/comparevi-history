@@ -102,6 +102,7 @@ jobs:
             'scripts/Acquire-CompareVIToolsBundle.ps1',
             'scripts/Resolve-CompareVIHistoryPublishedRefs.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
+            'scripts/Resolve-CompareVIHistoryPublicModes.ps1',
             'scripts/Format-CompareVIHistoryModeSummary.ps1',
             'scripts/Assert-CompareVIHistoryPublishedRun.ps1',
             'scripts/Sync-CompareVIHistoryPublishedTemplates.ps1',
@@ -153,6 +154,7 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           & "$PWD/scripts/Test-CompareVIHistoryTrust.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryPublicModes.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryPublishedRefs.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryModeSummary.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryPublishedRun.ps1"

@@ -242,7 +242,7 @@ jobs:
           target_path: fixtures/vi-stage/bd-cosmetic/Head.vi
           start_ref: HEAD
           max_pairs: 1
-          mode: default
+          mode: attributes,front-panel,block-diagram
           results_dir: tests/results/_facade-release/local
           detailed: true
           render_report: true
@@ -338,7 +338,7 @@ jobs:
           start_ref: HEAD
           max_pairs: 1
           max_signal_pairs: 5
-          mode: default,attributes,front-panel,block-diagram
+          mode: attributes,front-panel,block-diagram
           results_dir: tests/results/_comparevi-history-release/history
           detailed: true
           render_report: true
@@ -351,7 +351,7 @@ jobs:
         env:
           ACTION_REF: comparevi-history@workspace
           TARGET_PATH: Tooling/deployment/VIP_Post-Install Custom Action.vi
-          EXPECTED_MODE_LIST: default,attributes,front-panel,block-diagram
+          EXPECTED_MODE_LIST: attributes,front-panel,block-diagram
           MANIFEST_PATH: ${{ steps.history.outputs['manifest-path'] }}
           RESULTS_DIR: ${{ steps.history.outputs['results-dir'] }}
           MODE_COUNT: ${{ steps.history.outputs['mode-count'] }}
@@ -523,7 +523,7 @@ jobs:
       consumer_repository: ${{ needs.validate.outputs.consumer_repository }}
       consumer_ref: ${{ needs.validate.outputs.consumer_ref }}
       target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
-      compare_modes: default,attributes,front-panel,block-diagram
+      compare_modes: attributes,front-panel,block-diagram
       max_pairs: '5'
       max_signal_pairs: '5'
       latest_immutable_tag: ${{ needs.validate.outputs.immutable_tag }}

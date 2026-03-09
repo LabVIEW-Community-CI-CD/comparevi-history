@@ -11,7 +11,7 @@ param(
   [Nullable[int]]$MaxSignalPairs,
   [ValidateSet('include','collapse','skip')]
   [string]$NoisePolicy = 'collapse',
-  [string]$Mode = 'default',
+  [string]$Mode,
   [string]$ResultsDir = 'tests/results/ref-compare/history',
   [ValidateSet('html','xml','text')]
   [string]$ReportFormat = 'html',
@@ -83,10 +83,8 @@ try {
     throw "Repository root '$repositoryRootResolved' is not a git checkout. Run actions/checkout before using comparevi-history."
   }
 
-  $modeList = @($Mode -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-  if (-not $modeList -or $modeList.Count -eq 0) {
-    $modeList = @('default')
-  }
+  $modeBundle = & (Join-Path $PSScriptRoot 'Resolve-CompareVIHistoryPublicModes.ps1') -Mode $Mode
+  $modeList = @($modeBundle.modes)
 
   Write-FacadeOutput -Key 'repository-root' -Value $repoTop.Trim() -Path $GitHubOutputPath
 
@@ -98,7 +96,7 @@ try {
       ('- Repository root: `{0}`' -f $repoTop.Trim())
       ('- Tooling root: `{0}`' -f $toolingRootResolved)
       ('- Target path: `{0}`' -f $TargetPath)
-      ('- Modes: `{0}`' -f ($modeList -join ', '))
+      ('- Modes: `{0}`' -f $modeBundle.modeList)
     ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
   }
 

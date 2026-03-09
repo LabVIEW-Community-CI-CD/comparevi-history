@@ -51,7 +51,7 @@ on:
       compare_modes:
         description: Compare mode bundle to validate.
         required: false
-        default: default,attributes,front-panel,block-diagram
+        default: attributes,front-panel,block-diagram
         type: string
       max_pairs:
         description: Maximum adjacent commit pairs to process.
@@ -117,7 +117,7 @@ jobs:
 
           $compareModes = '${{ inputs.compare_modes }}'
           if ([string]::IsNullOrWhiteSpace($compareModes)) {
-            $compareModes = 'default,attributes,front-panel,block-diagram'
+            $compareModes = 'attributes,front-panel,block-diagram'
           }
 
           $maxPairs = '${{ inputs.max_pairs }}'

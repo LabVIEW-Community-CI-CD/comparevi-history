@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      DEFAULT_COMPARE_MODES: default,attributes,front-panel,block-diagram
+      DEFAULT_COMPARE_MODES: attributes,front-panel,block-diagram
       DEFAULT_MAX_PAIRS: '5'
       DEFAULT_MAX_SIGNAL_PAIRS: '5'
       FACADE_REF: v1.0.4
@@ -69,6 +69,31 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($compareModes)) {
             $compareModes = $env:DEFAULT_COMPARE_MODES
           }
+
+          $supportedModes = @('attributes', 'front-panel', 'block-diagram')
+          $rejectedModes = @{
+            default = "Mode 'default' is not supported by comparevi-history public diagnostics because it masks scoped evidence. Use explicit modes: attributes, front-panel, block-diagram."
+            full    = "Mode 'full' is not supported by comparevi-history public diagnostics because it collapses scoped evidence into one aggregate lane. Use explicit modes: attributes, front-panel, block-diagram."
+            all     = "Mode 'all' is not supported by comparevi-history public diagnostics because it aliases the aggregate full lane. Use explicit modes: attributes, front-panel, block-diagram."
+          }
+          $normalizedModes = New-Object System.Collections.Generic.List[string]
+          $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($token in @($compareModes -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+            $normalized = $token.ToLowerInvariant()
+            if ($rejectedModes.ContainsKey($normalized)) {
+              throw $rejectedModes[$normalized]
+            }
+            if ($normalized -notin $supportedModes) {
+              throw "Unsupported comparevi-history public mode '$token'. Supported modes: attributes, front-panel, block-diagram."
+            }
+            if ($seen.Add($normalized)) {
+              $normalizedModes.Add($normalized) | Out-Null
+            }
+          }
+          if ($normalizedModes.Count -eq 0) {
+            throw 'The slash command must resolve to at least one explicit compare mode.'
+          }
+          $compareModes = [string]::Join(',', @($normalizedModes.ToArray()))
 
           $headers = @{
             Accept = 'application/vnd.github+json'
@@ -153,45 +178,37 @@ jobs:
           }
 
           $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-          $summaryLines = @(
+          $toolingPathInput = '${{ steps.history.outputs['tooling-path'] }}'
+          $toolingRoot = if ([System.IO.Path]::IsPathRooted($toolingPathInput)) {
+            [System.IO.Path]::GetFullPath($toolingPathInput)
+          } else {
+            [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $toolingPathInput))
+          }
+          $bodyScript = Join-Path $toolingRoot 'tools' 'New-CompareVIHistoryDiagnosticsBody.ps1'
+          if (-not (Test-Path -LiteralPath $bodyScript -PathType Leaf)) {
+            throw "Diagnostics body helper not found: $bodyScript"
+          }
+
+          $body = & $bodyScript `
+            -Variant comment-gated `
+            -ActionRef $env:ACTION_REF `
+            -IssueNumber $env:ISSUE_NUMBER `
+            -TargetPath $env:TARGET_PATH `
+            -ContainerImage $env:COMPAREVI_NI_LINUX_IMAGE `
+            -RequestedModes $env:REQUESTED_MODES `
+            -ExecutedModes $env:EXECUTED_MODES `
+            -TotalProcessed $env:TOTAL_PROCESSED `
+            -TotalDiffs $env:TOTAL_DIFFS `
+            -StepConclusion $env:STEP_CONCLUSION `
+            -IsFork $env:IS_FORK `
+            -RunUrl $runUrl `
+            -ModeSummaryMarkdown $env:MODE_SUMMARY_MARKDOWN
+
+          @(
             '## comparevi-history comment-gated diagnostics'
             ''
-            ('- Action ref: `{0}`' -f $env:ACTION_REF)
-            ('- Pull request: `#{0}`' -f $env:ISSUE_NUMBER)
-            ('- Target path: `{0}`' -f $env:TARGET_PATH)
-            ('- Container image: `{0}`' -f $env:COMPAREVI_NI_LINUX_IMAGE)
-            ('- Requested modes: `{0}`' -f $env:REQUESTED_MODES)
-            ('- Executed modes: `{0}`' -f $env:EXECUTED_MODES)
-            ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
-            ('- Total diffs: `{0}`' -f $env:TOTAL_DIFFS)
-            ('- Step conclusion: `{0}`' -f $env:STEP_CONCLUSION)
-            ('- PR head is fork: `{0}`' -f $env:IS_FORK)
-            ('- Run URL: {0}' -f $runUrl)
-            ''
-            '### Mode coverage'
-            ''
-            $env:MODE_SUMMARY_MARKDOWN
-          )
-          $summaryLines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-
-          $body = @"
-          comparevi-history diagnostics finished for PR #$env:ISSUE_NUMBER.
-
-          - Action ref: `$env:ACTION_REF`
-          - Target path: `$env:TARGET_PATH`
-          - Container image: `$env:COMPAREVI_NI_LINUX_IMAGE`
-          - Requested modes: `$env:REQUESTED_MODES`
-          - Executed modes: `$env:EXECUTED_MODES`
-          - Total processed: `$env:TOTAL_PROCESSED`
-          - Total diffs: `$env:TOTAL_DIFFS`
-          - Step conclusion: `$env:STEP_CONCLUSION`
-          - PR head is fork: `$env:IS_FORK`
-
-          ### Mode coverage
-          $env:MODE_SUMMARY_MARKDOWN
-
-          - Run: $runUrl
-          "@.Trim()
+            $body
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
           $payload = @{ body = $body } | ConvertTo-Json -Depth 5
           $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/issues/$env:ISSUE_NUMBER/comments"

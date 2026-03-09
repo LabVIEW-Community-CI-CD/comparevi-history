@@ -7,16 +7,16 @@ New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
 try {
   $resultsRoot = Join-Path $tempRoot 'history'
-  $defaultResults = Join-Path $resultsRoot 'default'
   $attributesResults = Join-Path $resultsRoot 'attributes'
-  New-Item -ItemType Directory -Path $defaultResults -Force | Out-Null
+  $frontPanelResults = Join-Path $resultsRoot 'front-panel'
   New-Item -ItemType Directory -Path $attributesResults -Force | Out-Null
+  New-Item -ItemType Directory -Path $frontPanelResults -Force | Out-Null
 
   $manifestPath = Join-Path $resultsRoot 'manifest.json'
   $historyReportMd = Join-Path $resultsRoot 'history-report.md'
   $historyReportHtml = Join-Path $resultsRoot 'history-report.html'
-  $defaultManifestPath = Join-Path $defaultResults 'manifest.json'
   $attributesManifestPath = Join-Path $attributesResults 'manifest.json'
+  $frontPanelManifestPath = Join-Path $frontPanelResults 'manifest.json'
   $evidencePath = Join-Path $resultsRoot 'published-evidence.json'
   $stepSummaryPath = Join-Path $resultsRoot 'summary.md'
 
@@ -24,25 +24,12 @@ try {
   '{}' | Set-Content -LiteralPath $manifestPath -Encoding utf8
   '# report' | Set-Content -LiteralPath $historyReportMd -Encoding utf8
   '<html></html>' | Set-Content -LiteralPath $historyReportHtml -Encoding utf8
-  '{}' | Set-Content -LiteralPath $defaultManifestPath -Encoding utf8
   '{}' | Set-Content -LiteralPath $attributesManifestPath -Encoding utf8
-  'artifact' | Set-Content -LiteralPath (Join-Path $defaultResults 'result.txt') -Encoding utf8
+  '{}' | Set-Content -LiteralPath $frontPanelManifestPath -Encoding utf8
   'artifact' | Set-Content -LiteralPath (Join-Path $attributesResults 'result.txt') -Encoding utf8
+  'artifact' | Set-Content -LiteralPath (Join-Path $frontPanelResults 'result.txt') -Encoding utf8
 
   $modeJson = @(
-    [ordered]@{
-      mode = 'default'
-      slug = 'default'
-      manifest = $defaultManifestPath
-      resultsDir = $defaultResults
-      processed = 1
-      diffs = 1
-      signalDiffs = 0
-      noiseCollapsed = 0
-      errors = 0
-      status = 'ok'
-      stopReason = 'max-pairs'
-    }
     [ordered]@{
       mode = 'attributes'
       slug = 'attributes'
@@ -56,6 +43,19 @@ try {
       status = 'ok'
       stopReason = 'max-pairs'
     }
+    [ordered]@{
+      mode = 'front-panel'
+      slug = 'front-panel'
+      manifest = $frontPanelManifestPath
+      resultsDir = $frontPanelResults
+      processed = 1
+      diffs = 1
+      signalDiffs = 0
+      noiseCollapsed = 0
+      errors = 0
+      status = 'ok'
+      stopReason = 'max-pairs'
+    }
   ) | ConvertTo-Json -Depth 6 -Compress
 
   $evidenceJson = & $scriptPath `
@@ -63,13 +63,13 @@ try {
     -ConsumerRepository 'ni/labview-icon-editor' `
     -ConsumerRef 'develop' `
     -TargetPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi' `
-    -ExpectedModeList 'default,attributes' `
+    -ExpectedModeList 'attributes,front-panel' `
     -ManifestPath $manifestPath `
     -ResultsDir $resultsRoot `
     -ModeCount '2' `
-    -ModeList 'attributes, default' `
-    -RequestedModeList 'default,attributes' `
-    -ExecutedModeList 'attributes,default' `
+    -ModeList 'attributes, front-panel' `
+    -RequestedModeList 'attributes,front-panel' `
+    -ExecutedModeList 'front-panel,attributes' `
     -ModeManifestsJson $modeJson `
     -HistoryReportMd $historyReportMd `
     -HistoryReportHtml $historyReportHtml `
@@ -101,11 +101,11 @@ try {
       -ConsumerRepository 'ni/labview-icon-editor' `
       -ConsumerRef 'develop' `
       -TargetPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi' `
-      -ExpectedModeList 'default,attributes,front-panel' `
+      -ExpectedModeList 'attributes,front-panel,block-diagram' `
       -ManifestPath $manifestPath `
       -ResultsDir $resultsRoot `
       -ModeCount '2' `
-      -ModeList 'attributes, default' `
+      -ModeList 'attributes, front-panel' `
       -ModeManifestsJson $modeJson `
       -HistoryReportMd $historyReportMd `
       -HistoryReportHtml $historyReportHtml `

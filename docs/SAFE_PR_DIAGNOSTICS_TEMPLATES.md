@@ -1,7 +1,7 @@
 # Safe PR Diagnostics Templates
 
 These templates show how to use `comparevi-history` safely in public repositories without violating the facade trust
-guard. They default to a broader mode bundle than a single `default` pass, and they assume a GitHub-hosted Linux
+guard. They default to an explicit scoped mode bundle, and they assume a GitHub-hosted Linux
 runner that pre-pulls the NI container image before invoking a repo-local hosted-runner adapter.
 
 ## Published Templates
@@ -16,24 +16,25 @@ runner that pre-pulls the NI container image before invoking a repo-local hosted
 The published examples default to:
 
 ```text
-default,attributes,front-panel,block-diagram
+attributes,front-panel,block-diagram
 ```
 
 That bundle is intentional:
 
-- `default` keeps the broad baseline compare lane.
 - `attributes` surfaces VI attribute drift explicitly.
 - `front-panel` isolates front-panel changes that often matter in UI-facing PRs.
 - `block-diagram` adds functional and cosmetic block-diagram coverage that a narrow single-mode demo would miss.
+- Aggregate aliases such as `default`, `full`, and `all` are intentionally excluded because they disguise which
+  scoped lane produced the evidence.
 
-If your consumer repository needs a narrower or broader set, adjust the `compare_modes` input or command override, but
-keep the default bundle as the starting point for public PR diagnostics.
+If your consumer repository needs a narrower set, adjust the `compare_modes` input or command override, but keep the
+published explicit bundle as the starting point for public PR diagnostics.
 
 ## Use These Patterns
 
 - Use the maintainer-dispatched template when a maintainer wants to inspect a specific pull request on demand.
 - Use the comment-gated template when you want a slash command such as
-  `/comparevi-history Tooling/deployment/VIP_Post-Install Custom Action.vi --modes default,attributes,front-panel,block-diagram`
+  `/comparevi-history Tooling/deployment/VIP_Post-Install Custom Action.vi --modes attributes,front-panel,block-diagram`
   to trigger diagnostics from a trusted maintainer comment.
 - Run both patterns on trusted maintainer-controlled workflows that pre-pull the hosted NI Linux image serially and use
   a repo-local adapter such as `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1`.
@@ -74,7 +75,11 @@ keep the default bundle as the starting point for public PR diagnostics.
   `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1` so consumers use the hosted NI Linux contract instead of a
   repo-specific self-hosted Windows assumption.
 - Both templates surface the mode bundle in artifacts and summaries through the facade outputs
-  `requested-mode-list`, `executed-mode-list`, `mode-manifests-json`, and `mode-summary-markdown`.
+  `requested-mode-list`, `executed-mode-list`, `mode-manifests-json`, `mode-summary-markdown`, and
+  `history-summary-json`.
+- The comment and step-summary body are rendered through the bundle helper
+  `tools/New-CompareVIHistoryDiagnosticsBody.ps1` resolved from `steps.history.outputs['tooling-path']`, so consumers
+  do not need to copy additional PowerShell helpers into their repositories.
 - The comment-gated template writes the diagnostics summary to the step summary first, then attempts to publish the PR
   comment. If the repository token cannot create the comment, the workflow keeps the diagnostics job green and records
   the fallback in the step summary instead of masking a successful compare run as infrastructure failure.
@@ -86,7 +91,7 @@ keep the default bundle as the starting point for public PR diagnostics.
 ## Recommended Adoption
 
 1. Start with the maintainer-dispatched template when your project is new to VI History diagnostics.
-2. Keep the default multi-mode bundle unless you have a documented reason to narrow it.
+2. Keep the published explicit multi-mode bundle unless you have a documented reason to narrow it.
 3. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
 4. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
