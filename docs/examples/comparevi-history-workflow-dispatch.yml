@@ -29,13 +29,18 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: comparevi-history-${{ github.repository }}-hosted-linux
+  cancel-in-progress: false
 
 jobs:
   comparevi-history-manual:
-    runs-on:
-      - self-hosted
-      - Windows
-      - X64
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      COMPAREVI_NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
     steps:
       - name: Resolve pull request head
         id: pr
@@ -67,6 +72,10 @@ jobs:
             "is-fork=$([bool]$pr.head.repo.fork)"
           ) | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Pre-pull NI Linux image
+        shell: bash
+        run: docker pull "$COMPAREVI_NI_LINUX_IMAGE"
+
       - name: Checkout PR head repository
         uses: actions/checkout@v5
         with:
@@ -87,6 +96,7 @@ jobs:
           detailed: true
           fail_on_diff: false
           results_dir: tests/results/pr-diagnostics/history
+          invoke_script_path: Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1
 
       - name: Upload diagnostics artifacts
         if: ${{ always() && steps.history.outputs['results-dir'] != '' }}
@@ -121,6 +131,7 @@ jobs:
             ('- Action ref: `{0}`' -f $env:ACTION_REF)
             ('- Pull request: `#{0}`' -f $env:PR_NUMBER)
             ('- Target path: `{0}`' -f $env:TARGET_PATH)
+            ('- Container image: `{0}`' -f $env:COMPAREVI_NI_LINUX_IMAGE)
             ('- Requested modes: `{0}`' -f $env:REQUESTED_MODES)
             ('- Executed modes: `{0}`' -f $env:EXECUTED_MODES)
             ('- Total processed: `{0}`' -f $env:TOTAL_PROCESSED)
