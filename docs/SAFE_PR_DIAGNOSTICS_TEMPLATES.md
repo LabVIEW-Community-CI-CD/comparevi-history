@@ -62,7 +62,7 @@ keep the default bundle as the starting point for public PR diagnostics.
 
 - The maintainer-dispatched template uses `LabVIEW-Community-CI-CD/comparevi-history@v1`. That is the right default
   when you want compatible updates after each reviewed facade release.
-- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.0.2`. That is the right default when
+- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.0.3`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release.
 - Both templates resolve the PR head repository and head SHA from the GitHub API, then check out that exact SHA with
   `fetch-depth: 0` so the facade can traverse commit history deterministically.
