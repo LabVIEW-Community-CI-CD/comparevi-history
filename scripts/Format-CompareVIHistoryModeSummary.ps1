@@ -47,12 +47,42 @@ function Write-MultilineGitHubOutput {
   ) | Out-File -FilePath $Path -Encoding utf8 -Append
 }
 
+function Get-EntryValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Entry,
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    $DefaultValue = $null
+  )
+
+  $property = $Entry.PSObject.Properties[$Name]
+  if ($null -eq $property) {
+    return $DefaultValue
+  }
+
+  return $property.Value
+}
+
 $requestedModes = @(ConvertTo-NormalizedModeList -Value $RequestedModeList)
 $executedModes = @(ConvertTo-NormalizedModeList -Value $ExecutedModeList)
 
 $modeEntries = @()
 if (-not [string]::IsNullOrWhiteSpace($ModeManifestsJson)) {
   $modeEntries = @($ModeManifestsJson | ConvertFrom-Json)
+}
+
+if ($requestedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
+  $requestedModes = @(
+    $modeEntries
+    | ForEach-Object { [string](Get-EntryValue -Entry $_ -Name 'mode' -DefaultValue '') }
+    | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    | Sort-Object -Unique
+  )
+}
+
+if ($executedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
+  $executedModes = $requestedModes
 }
 
 $summaryLines = New-Object System.Collections.Generic.List[string]
@@ -71,13 +101,13 @@ if ($modeEntries.Count -gt 0) {
   foreach ($entry in @($modeEntries | Sort-Object -Property @{ Expression = { $_.mode } })) {
     $summaryLines.Add((
       '| {0} | {1} | {2} | {3} | {4} | {5} | {6} |' -f `
-      $entry.mode, `
-      $entry.processed, `
-      $entry.diffs, `
-      $entry.signalDiffs, `
-      $entry.noiseCollapsed, `
-      $entry.errors, `
-      $entry.status
+      (Get-EntryValue -Entry $entry -Name 'mode' -DefaultValue 'unknown'), `
+      (Get-EntryValue -Entry $entry -Name 'processed' -DefaultValue 0), `
+      (Get-EntryValue -Entry $entry -Name 'diffs' -DefaultValue 0), `
+      (Get-EntryValue -Entry $entry -Name 'signalDiffs' -DefaultValue 0), `
+      (Get-EntryValue -Entry $entry -Name 'noiseCollapsed' -DefaultValue 0), `
+      (Get-EntryValue -Entry $entry -Name 'errors' -DefaultValue 0), `
+      (Get-EntryValue -Entry $entry -Name 'status' -DefaultValue 'unknown')
     ))
   }
 }

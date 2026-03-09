@@ -53,6 +53,27 @@ try {
   if ($githubOutput -notmatch 'mode-summary-markdown<<') {
     throw 'GitHub output did not include mode-summary-markdown.'
   }
+
+  $legacyModeJson = [ordered]@{
+    mode = 'default'
+    processed = 1
+    diffs = 1
+    status = 'ok'
+  } | ConvertTo-Json -Depth 4 -Compress
+
+  $legacySummary = & $scriptPath `
+    -RequestedModeList '' `
+    -ExecutedModeList '' `
+    -ModeManifestsJson $legacyModeJson `
+    -TotalProcessed '1' `
+    -TotalDiffs '1'
+
+  if ($legacySummary -notmatch 'Requested modes: `default`') {
+    throw 'Legacy summary did not derive requested modes from mode-manifests-json.'
+  }
+  if ($legacySummary -notmatch '\| default \| 1 \| 1 \| 0 \| 0 \| 0 \| ok \|') {
+    throw 'Legacy summary did not fall back missing per-mode fields to zero.'
+  }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

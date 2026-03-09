@@ -70,6 +70,23 @@ function Assert-ExistingPath {
   }
 }
 
+function Get-EntryValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Entry,
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    $DefaultValue = $null
+  )
+
+  $property = $Entry.PSObject.Properties[$Name]
+  if ($null -eq $property) {
+    return $DefaultValue
+  }
+
+  return $property.Value
+}
+
 $expectedModes = ConvertTo-NormalizedModeList -Value $ExpectedModeList
 if ($expectedModes.Count -eq 0) {
   throw 'ExpectedModeList must resolve to at least one mode.'
@@ -133,12 +150,13 @@ if ($artifactFiles.Count -lt 1) {
 }
 
 foreach ($entry in $modeEntries) {
-  if ($null -eq $entry.mode -or [string]::IsNullOrWhiteSpace([string]$entry.mode)) {
+  $modeName = [string](Get-EntryValue -Entry $entry -Name 'mode' -DefaultValue '')
+  if ([string]::IsNullOrWhiteSpace($modeName)) {
     throw 'Mode manifest entry contained an empty mode value.'
   }
 
-  Assert-ExistingPath -Path ([string]$entry.manifest) -PathType Leaf -Label "Mode manifest for $($entry.mode)"
-  Assert-ExistingPath -Path ([string]$entry.resultsDir) -PathType Container -Label "Mode results directory for $($entry.mode)"
+  Assert-ExistingPath -Path ([string](Get-EntryValue -Entry $entry -Name 'manifest' -DefaultValue '')) -PathType Leaf -Label "Mode manifest for $modeName"
+  Assert-ExistingPath -Path ([string](Get-EntryValue -Entry $entry -Name 'resultsDir' -DefaultValue '')) -PathType Container -Label "Mode results directory for $modeName"
 }
 
 $evidence = [ordered]@{
@@ -165,17 +183,17 @@ $evidence = [ordered]@{
   modes             = @(
     foreach ($entry in $modeEntries) {
       [ordered]@{
-        mode           = [string]$entry.mode
-        slug           = [string]$entry.slug
-        manifest       = [string]$entry.manifest
-        resultsDir     = [string]$entry.resultsDir
-        processed      = $entry.processed
-        diffs          = $entry.diffs
-        signalDiffs    = $entry.signalDiffs
-        noiseCollapsed = $entry.noiseCollapsed
-        errors         = $entry.errors
-        status         = [string]$entry.status
-        stopReason     = [string]$entry.stopReason
+        mode           = [string](Get-EntryValue -Entry $entry -Name 'mode' -DefaultValue '')
+        slug           = [string](Get-EntryValue -Entry $entry -Name 'slug' -DefaultValue '')
+        manifest       = [string](Get-EntryValue -Entry $entry -Name 'manifest' -DefaultValue '')
+        resultsDir     = [string](Get-EntryValue -Entry $entry -Name 'resultsDir' -DefaultValue '')
+        processed      = Get-EntryValue -Entry $entry -Name 'processed' -DefaultValue 0
+        diffs          = Get-EntryValue -Entry $entry -Name 'diffs' -DefaultValue 0
+        signalDiffs    = Get-EntryValue -Entry $entry -Name 'signalDiffs' -DefaultValue 0
+        noiseCollapsed = Get-EntryValue -Entry $entry -Name 'noiseCollapsed' -DefaultValue 0
+        errors         = Get-EntryValue -Entry $entry -Name 'errors' -DefaultValue 0
+        status         = [string](Get-EntryValue -Entry $entry -Name 'status' -DefaultValue 'unknown')
+        stopReason     = [string](Get-EntryValue -Entry $entry -Name 'stopReason' -DefaultValue '')
       }
     }
   )
