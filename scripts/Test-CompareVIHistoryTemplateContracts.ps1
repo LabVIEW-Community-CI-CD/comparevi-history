@@ -5,6 +5,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $manualTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-workflow-dispatch.yml'
 $commentTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-comment-gated.yml'
 $safeTemplatesPath = Join-Path $repoRoot 'docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md'
+$publishedValidationWorkflowPath = Join-Path $repoRoot '.github/workflows/published-consumer-validation.yml'
+$smokeWorkflowPath = Join-Path $repoRoot '.github/workflows/smoke.yml'
 $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
 $readmePath = Join-Path $repoRoot 'README.md'
 $exampleTargetsPath = Join-Path $repoRoot 'docs/examples/comparevi-history-consumer-targets.json'
@@ -57,6 +59,8 @@ function Assert-Equal {
 $manualTemplate = Get-Content -LiteralPath $manualTemplatePath -Raw
 $commentTemplate = Get-Content -LiteralPath $commentTemplatePath -Raw
 $safeTemplates = Get-Content -LiteralPath $safeTemplatesPath -Raw
+$publishedValidationWorkflow = Get-Content -LiteralPath $publishedValidationWorkflowPath -Raw
+$smokeWorkflow = Get-Content -LiteralPath $smokeWorkflowPath -Raw
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
 $readme = Get-Content -LiteralPath $readmePath -Raw
 $exampleTargets = Get-Content -LiteralPath $exampleTargetsPath -Raw
@@ -94,6 +98,15 @@ Assert-Match -Content $safeTemplates -Pattern 'attributes,front-panel,block-diag
 Assert-Match -Content $safeTemplates -Pattern '\.github/comparevi-history-targets\.json' -Message 'Safe template docs must document the checked-in target catalog path.'
 Assert-Match -Content $safeTemplates -Pattern 'public-comment-path' -Message 'Safe template docs must point consumers at the action-owned comment output.'
 Assert-Match -Content $safeTemplates -Pattern 'public-step-summary-path' -Message 'Safe template docs must point consumers at the action-owned step summary output.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern '\.github/comparevi-history-targets\.json' -Message 'Published validation must synthesize a checked-in-style target catalog path.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_spec_path:\s+\.github/comparevi-history-targets\.json' -Message 'Published validation must route target_spec_path into the action.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_id:\s+published-consumer-target' -Message 'Published validation must route a stable target id into the action.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern 'history-summary-json' -Message 'Published validation must consume the action-owned history summary output.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern 'public-comment-path' -Message 'Published validation must consume the action-owned public comment output.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern 'public-step-summary-path' -Message 'Published validation must consume the action-owned public step summary output.'
+Assert-Match -Content $smokeWorkflow -Pattern 'comparevi-backend-ref\.txt' -Message 'Smoke workflow must resolve the repo-pinned backend release tag.'
+Assert-Match -Content $releaseWorkflow -Pattern 'comparevi-backend-ref\.txt' -Message 'Release workflow must read comparevi-backend-ref.txt.'
+Assert-Match -Content $releaseWorkflow -Pattern "tooling-source'\] -ne 'bundle'" -Message 'Release workflow must fail closed when the resolved backend is not a bundle release.'
 Assert-Match -Content $releaseWorkflow -Pattern 'scripts/Sync-CompareVIHistoryPublishedTemplates\.ps1' -Message 'Release workflow must include the published template sync script.'
 Assert-Match -Content $releaseWorkflow -Pattern 'Published comment-gated template now points at' -Message 'Release notes must mention the published comment-gated template pin.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/consumer-targets@v1' -Message 'README must document the target catalog contract.'
@@ -101,6 +114,8 @@ Assert-Match -Content $readme -Pattern 'comparevi-history/public-run@v1' -Messag
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'public-comment-path' -Message 'README must document the action-owned public comment output.'
 Assert-Match -Content $readme -Pattern 'attributes`, `front-panel`, and `block-diagram' -Message 'README must document explicit public modes only.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/issues/24' -Message 'README must point at the comparevi-history platform-boundary epic.'
+Assert-NotMatch -Content $readme -Pattern 'compare-vi-cli-action/issues/841' -Message 'README must not point at the legacy compare-vi-cli-action tracking epic.'
 
 $facadeRefMatch = [regex]::Match($commentTemplate, '(?m)^\s*FACADE_REF:\s*(v[0-9]+\.[0-9]+\.[0-9]+)\s*$')
 $usesRefMatch = [regex]::Match($commentTemplate, '(?m)^\s*uses:\s+LabVIEW-Community-CI-CD/comparevi-history@(v[0-9]+\.[0-9]+\.[0-9]+)\s*$')

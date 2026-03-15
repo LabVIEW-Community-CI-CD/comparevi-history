@@ -204,8 +204,9 @@ Do not copy backend renderers or repo-local history execution logic into consume
 - `smoke.yml` runs on pull requests to `main`, pushes to `main`, and manual dispatch so the public platform contract is
   covered before merge and after publish.
 - `.github/workflows/published-consumer-validation.yml` validates the released `v1` tag and the latest immutable facade
-  tag against `ni/labview-icon-editor` by default, while still allowing aligned downstream forks to override the
-  consumer repository/ref explicitly.
+  tag against a checked-out external consumer repository by writing a temporary
+  `.github/comparevi-history-targets.json` catalog and consuming the action-owned public outputs from that synthesized
+  target.
 - `release.yml` validates itself on pull requests that touch release plumbing and remains the only path that should
   publish immutable tags or advance `v1`.
 - The branch protection source of truth is `.github/branch-protection-main.json`.
@@ -232,4 +233,4 @@ gh api repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main/protection 
 - Consumer repositories should stay thin: checked-in target catalogs, workflow trigger wiring, and repo-local policy.
 - For unreleased backend testing, maintainers may still override `comparevi_ref` in a trusted context. That path is
   intentionally explicit and source-coupled.
-- Tracking epic: https://github.com/LabVIEW-Community-CI-CD/compare-vi-cli-action/issues/841
+- Tracking epic: https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24
