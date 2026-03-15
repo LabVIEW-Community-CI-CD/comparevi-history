@@ -51,7 +51,7 @@ on:
       compare_modes:
         description: Compare mode bundle to validate.
         required: false
-        default: default,attributes,front-panel,block-diagram
+        default: attributes,front-panel,block-diagram
         type: string
       max_pairs:
         description: Maximum adjacent commit pairs to process.
@@ -117,7 +117,7 @@ jobs:
 
           $compareModes = '${{ inputs.compare_modes }}'
           if ([string]::IsNullOrWhiteSpace($compareModes)) {
-            $compareModes = 'default,attributes,front-panel,block-diagram'
+            $compareModes = 'attributes,front-panel,block-diagram'
           }
 
           $maxPairs = '${{ inputs.max_pairs }}'
@@ -191,12 +191,45 @@ jobs:
           $stubPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/tests/results/_comparevi-history-published/major/Invoke-LVCompare.stub.ps1'
           & "$env:GITHUB_WORKSPACE/validation-support/scripts/Write-CompareVIHistorySmokeStub.ps1" -DestinationPath $stubPath
 
+      - name: Write consumer target catalog
+        shell: pwsh
+        env:
+          TARGET_PATH: ${{ needs.plan.outputs.target_path }}
+          COMPARE_MODES: ${{ needs.plan.outputs.compare_modes }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $targetCatalogPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/.github/comparevi-history-targets.json'
+          New-Item -ItemType Directory -Path (Split-Path -Parent $targetCatalogPath) -Force | Out-Null
+          $modes = @(
+            $env:COMPARE_MODES -split '[,;]' |
+              ForEach-Object { $_.Trim().ToLowerInvariant() } |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          )
+          $catalog = [ordered]@{
+            schema = 'comparevi-history/consumer-targets@v1'
+            defaultTargetId = 'published-consumer-target'
+            targets = @(
+              [ordered]@{
+                id = 'published-consumer-target'
+                path = $env:TARGET_PATH
+                publicModes = $modes
+                reviewerSurface = [ordered]@{
+                  variants = @('manual')
+                }
+              }
+            )
+          }
+          $catalog | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $targetCatalogPath -Encoding utf8
+
       - name: Run comparevi-history major facade
         id: history
         uses: ./published-facade
         with:
           repository_root: labview-icon-editor
-          target_path: ${{ needs.plan.outputs.target_path }}
+          target_spec_path: .github/comparevi-history-targets.json
+          target_id: published-consumer-target
           start_ref: HEAD
           max_pairs: ${{ needs.plan.outputs.max_pairs }}
           max_signal_pairs: ${{ needs.plan.outputs.max_signal_pairs }}
@@ -204,6 +237,10 @@ jobs:
           results_dir: tests/results/_comparevi-history-published/major/history
           detailed: true
           render_report: true
+          reviewer_surface: manual
+          reviewer_pull_request_number: published-major-${{ github.run_id }}
+          reviewer_is_fork: false
+          container_image: stubbed-windows-smoke
           invoke_script_path: tests/results/_comparevi-history-published/major/Invoke-LVCompare.stub.ps1
 
       - name: Assert major published consumer outputs
@@ -221,11 +258,18 @@ jobs:
           REQUESTED_MODE_LIST: ${{ steps.history.outputs['requested-mode-list'] }}
           EXECUTED_MODE_LIST: ${{ steps.history.outputs['executed-mode-list'] }}
           MODE_MANIFESTS_JSON: ${{ steps.history.outputs['mode-manifests-json'] }}
+          HISTORY_SUMMARY_JSON: ${{ steps.history.outputs['history-summary-json'] }}
           HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
           HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
           TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
           TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
           STOP_REASON: ${{ steps.history.outputs['stop-reason'] }}
+          REQUEST_PATH: ${{ steps.history.outputs['request-path'] }}
+          PUBLIC_RUN_PATH: ${{ steps.history.outputs['public-run-path'] }}
+          PUBLIC_COMMENT_PATH: ${{ steps.history.outputs['public-comment-path'] }}
+          PUBLIC_STEP_SUMMARY_PATH: ${{ steps.history.outputs['public-step-summary-path'] }}
+          FINAL_STATUS: ${{ steps.history.outputs['final-status'] }}
+          FINAL_REASON: ${{ steps.history.outputs['final-reason'] }}
           ARTIFACT_NAME: comparevi-history-published-major-${{ github.run_id }}
         run: |
           Set-StrictMode -Version Latest
@@ -244,11 +288,18 @@ jobs:
             -RequestedModeList $env:REQUESTED_MODE_LIST `
             -ExecutedModeList $env:EXECUTED_MODE_LIST `
             -ModeManifestsJson $env:MODE_MANIFESTS_JSON `
+            -HistorySummaryJson $env:HISTORY_SUMMARY_JSON `
             -HistoryReportMd $env:HISTORY_REPORT_MD `
             -HistoryReportHtml $env:HISTORY_REPORT_HTML `
             -TotalProcessed $env:TOTAL_PROCESSED `
             -TotalDiffs $env:TOTAL_DIFFS `
             -StopReason $env:STOP_REASON `
+            -RequestPath $env:REQUEST_PATH `
+            -PublicRunPath $env:PUBLIC_RUN_PATH `
+            -PublicCommentPath $env:PUBLIC_COMMENT_PATH `
+            -PublicStepSummaryPath $env:PUBLIC_STEP_SUMMARY_PATH `
+            -FinalStatus $env:FINAL_STATUS `
+            -FinalReason $env:FINAL_REASON `
             -ArtifactName $env:ARTIFACT_NAME `
             -EvidencePath 'labview-icon-editor/tests/results/_comparevi-history-published/major/published-evidence.json' `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
@@ -297,12 +348,45 @@ jobs:
           $stubPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/tests/results/_comparevi-history-published/immutable/Invoke-LVCompare.stub.ps1'
           & "$env:GITHUB_WORKSPACE/validation-support/scripts/Write-CompareVIHistorySmokeStub.ps1" -DestinationPath $stubPath
 
+      - name: Write consumer target catalog
+        shell: pwsh
+        env:
+          TARGET_PATH: ${{ needs.plan.outputs.target_path }}
+          COMPARE_MODES: ${{ needs.plan.outputs.compare_modes }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $targetCatalogPath = Join-Path $env:GITHUB_WORKSPACE 'labview-icon-editor/.github/comparevi-history-targets.json'
+          New-Item -ItemType Directory -Path (Split-Path -Parent $targetCatalogPath) -Force | Out-Null
+          $modes = @(
+            $env:COMPARE_MODES -split '[,;]' |
+              ForEach-Object { $_.Trim().ToLowerInvariant() } |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          )
+          $catalog = [ordered]@{
+            schema = 'comparevi-history/consumer-targets@v1'
+            defaultTargetId = 'published-consumer-target'
+            targets = @(
+              [ordered]@{
+                id = 'published-consumer-target'
+                path = $env:TARGET_PATH
+                publicModes = $modes
+                reviewerSurface = [ordered]@{
+                  variants = @('manual')
+                }
+              }
+            )
+          }
+          $catalog | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $targetCatalogPath -Encoding utf8
+
       - name: Run comparevi-history immutable facade
         id: history
         uses: ./published-facade
         with:
           repository_root: labview-icon-editor
-          target_path: ${{ needs.plan.outputs.target_path }}
+          target_spec_path: .github/comparevi-history-targets.json
+          target_id: published-consumer-target
           start_ref: HEAD
           max_pairs: ${{ needs.plan.outputs.max_pairs }}
           max_signal_pairs: ${{ needs.plan.outputs.max_signal_pairs }}
@@ -310,6 +394,10 @@ jobs:
           results_dir: tests/results/_comparevi-history-published/immutable/history
           detailed: true
           render_report: true
+          reviewer_surface: manual
+          reviewer_pull_request_number: published-immutable-${{ github.run_id }}
+          reviewer_is_fork: false
+          container_image: stubbed-windows-smoke
           invoke_script_path: tests/results/_comparevi-history-published/immutable/Invoke-LVCompare.stub.ps1
 
       - name: Assert immutable published consumer outputs
@@ -327,11 +415,18 @@ jobs:
           REQUESTED_MODE_LIST: ${{ steps.history.outputs['requested-mode-list'] }}
           EXECUTED_MODE_LIST: ${{ steps.history.outputs['executed-mode-list'] }}
           MODE_MANIFESTS_JSON: ${{ steps.history.outputs['mode-manifests-json'] }}
+          HISTORY_SUMMARY_JSON: ${{ steps.history.outputs['history-summary-json'] }}
           HISTORY_REPORT_MD: ${{ steps.history.outputs['history-report-md'] }}
           HISTORY_REPORT_HTML: ${{ steps.history.outputs['history-report-html'] }}
           TOTAL_PROCESSED: ${{ steps.history.outputs['total-processed'] }}
           TOTAL_DIFFS: ${{ steps.history.outputs['total-diffs'] }}
           STOP_REASON: ${{ steps.history.outputs['stop-reason'] }}
+          REQUEST_PATH: ${{ steps.history.outputs['request-path'] }}
+          PUBLIC_RUN_PATH: ${{ steps.history.outputs['public-run-path'] }}
+          PUBLIC_COMMENT_PATH: ${{ steps.history.outputs['public-comment-path'] }}
+          PUBLIC_STEP_SUMMARY_PATH: ${{ steps.history.outputs['public-step-summary-path'] }}
+          FINAL_STATUS: ${{ steps.history.outputs['final-status'] }}
+          FINAL_REASON: ${{ steps.history.outputs['final-reason'] }}
           ARTIFACT_NAME: comparevi-history-published-immutable-${{ github.run_id }}
         run: |
           Set-StrictMode -Version Latest
@@ -350,11 +445,18 @@ jobs:
             -RequestedModeList $env:REQUESTED_MODE_LIST `
             -ExecutedModeList $env:EXECUTED_MODE_LIST `
             -ModeManifestsJson $env:MODE_MANIFESTS_JSON `
+            -HistorySummaryJson $env:HISTORY_SUMMARY_JSON `
             -HistoryReportMd $env:HISTORY_REPORT_MD `
             -HistoryReportHtml $env:HISTORY_REPORT_HTML `
             -TotalProcessed $env:TOTAL_PROCESSED `
             -TotalDiffs $env:TOTAL_DIFFS `
             -StopReason $env:STOP_REASON `
+            -RequestPath $env:REQUEST_PATH `
+            -PublicRunPath $env:PUBLIC_RUN_PATH `
+            -PublicCommentPath $env:PUBLIC_COMMENT_PATH `
+            -PublicStepSummaryPath $env:PUBLIC_STEP_SUMMARY_PATH `
+            -FinalStatus $env:FINAL_STATUS `
+            -FinalReason $env:FINAL_REASON `
             -ArtifactName $env:ARTIFACT_NAME `
             -EvidencePath 'labview-icon-editor/tests/results/_comparevi-history-published/immutable/published-evidence.json' `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null

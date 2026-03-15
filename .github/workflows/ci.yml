@@ -91,7 +91,7 @@ jobs:
             }
           }
 
-          foreach ($requiredOutput in @('tooling-path', 'hosted-runner-script-path', 'hosted-runner-default-image')) {
+          foreach ($requiredOutput in @('tooling-path', 'hosted-runner-script-path', 'hosted-runner-default-image', 'diagnostics-renderer-script-path')) {
             if (-not $acquireValues.ContainsKey($requiredOutput) -or [string]::IsNullOrWhiteSpace([string]$acquireValues[$requiredOutput])) {
               throw "Bundle acquisition did not emit required output '$requiredOutput'."
             }
@@ -101,8 +101,10 @@ jobs:
             'scripts/Resolve-CompareVIHistoryBackend.ps1',
             'scripts/Acquire-CompareVIToolsBundle.ps1',
             'scripts/Resolve-CompareVIHistoryPublishedRefs.ps1',
+            'scripts/Resolve-CompareVIHistoryRequest.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
             'scripts/Format-CompareVIHistoryModeSummary.ps1',
+            'scripts/Write-CompareVIHistoryPublicRun.ps1',
             'scripts/Assert-CompareVIHistoryPublishedRun.ps1',
             'scripts/Sync-CompareVIHistoryPublishedTemplates.ps1',
             'scripts/Write-CompareVIHistorySmokeStub.ps1',
@@ -138,6 +140,7 @@ jobs:
               ('- Backend bundle asset: `{0}`' -f $bundleAsset.name)
               ('- Hosted runner script path: `{0}`' -f $acquireValues['hosted-runner-script-path'])
               ('- Hosted runner default image: `{0}`' -f $acquireValues['hosted-runner-default-image'])
+              ('- Diagnostics renderer script path: `{0}`' -f $acquireValues['diagnostics-renderer-script-path'])
               '- Backend bundle acquisition passed with the hosted-runner contract'
               '- PowerShell facade scripts parsed successfully'
               '- Branch-protection drift script parsed successfully'
@@ -154,6 +157,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & "$PWD/scripts/Test-CompareVIHistoryTrust.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryPublishedRefs.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryRequest.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryModeSummary.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryPublicRun.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryPublishedRun.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryTemplateContracts.ps1"

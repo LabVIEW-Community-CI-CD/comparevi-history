@@ -1,5 +1,5 @@
 name: "CompareVI History"
-description: "Short-name facade for Compare VI History workflows backed by compare-vi-cli-action."
+description: "Consumer-facing VI history platform surface backed by compare-vi-cli-action."
 author: "LabVIEW Community CI/CD"
 branding:
   icon: "git-merge"
@@ -7,14 +7,31 @@ branding:
 
 inputs:
   target_path:
-    description: "Repository-relative VI path to inspect."
-    required: true
+    description: "Legacy repository-relative VI path to inspect. Prefer target_spec_path plus target_id for consumer workflows."
+    required: false
+    default: ""
+  target_spec_path:
+    description: "Consumer-owned target catalog path checked into the caller repository."
+    required: false
+    default: ""
+  target_id:
+    description: "Target identifier from the consumer target catalog."
+    required: false
+    default: ""
   start_ref:
     description: "Branch, tag, or commit to inspect."
     required: false
     default: "HEAD"
   end_ref:
     description: "Optional end ref."
+    required: false
+    default: ""
+  source_branch_ref:
+    description: "Optional source branch ref for branch-budget enforcement."
+    required: false
+    default: ""
+  max_branch_commits:
+    description: "Optional maximum source-branch commit budget."
     required: false
     default: ""
   max_pairs:
@@ -30,15 +47,43 @@ inputs:
     required: false
     default: "collapse"
   mode:
-    description: "Comma/semicolon list of compare modes."
+    description: "Comma/semicolon list of compare modes. Public workflows must use only explicit scoped modes."
     required: false
-    default: "default"
+    default: ""
   results_dir:
     description: "Results directory relative to the caller repository root unless absolute."
     required: false
     default: "tests/results/ref-compare/history"
   repository_root:
     description: "Optional caller repository root when checkout is not at github.workspace."
+    required: false
+    default: ""
+  consumer_repository:
+    description: "Consumer repository slug recorded in the normalized request receipt."
+    required: false
+    default: ""
+  consumer_ref:
+    description: "Consumer ref recorded in the normalized request receipt."
+    required: false
+    default: ""
+  reviewer_surface:
+    description: "Reviewer surface to render: none, manual, or comment-gated."
+    required: false
+    default: "none"
+  reviewer_issue_number:
+    description: "Issue number for comment-gated reviewer surfaces."
+    required: false
+    default: ""
+  reviewer_pull_request_number:
+    description: "Pull request number for manual reviewer surfaces."
+    required: false
+    default: ""
+  reviewer_is_fork:
+    description: "Whether the current reviewer surface is operating on a fork head."
+    required: false
+    default: ""
+  container_image:
+    description: "Container image or execution plane string to include in rendered reviewer outputs."
     required: false
     default: ""
   comparevi_repository:
@@ -99,13 +144,43 @@ outputs:
     value: ${{ steps.tooling.outputs['tooling-path'] }}
   repository-root:
     description: "Resolved caller repository root."
-    value: ${{ steps.run.outputs['repository-root'] }}
+    value: ${{ steps.request.outputs['repository-root'] || steps.run.outputs['repository-root'] }}
+  consumer-repository:
+    description: "Consumer repository recorded in the normalized request."
+    value: ${{ steps.request.outputs['consumer-repository'] }}
+  consumer-ref:
+    description: "Consumer ref recorded in the normalized request."
+    value: ${{ steps.request.outputs['consumer-ref'] }}
+  target-id:
+    description: "Resolved target identifier from the consumer target catalog."
+    value: ${{ steps.request.outputs['target-id'] }}
+  target-spec-path:
+    description: "Resolved consumer target catalog path."
+    value: ${{ steps.request.outputs['target-spec-path'] }}
+  target-path:
+    description: "Resolved target path recorded by the backend."
+    value: ${{ steps.run.outputs['target-path'] || steps.request.outputs['target-path'] }}
+  request-path:
+    description: "Normalized comparevi-history request receipt path."
+    value: ${{ steps.request.outputs['request-path'] }}
+  public-run-path:
+    description: "comparevi-history public run receipt path."
+    value: ${{ steps.public_run.outputs['public-run-path'] || steps.request.outputs['public-run-path'] }}
+  public-comment-path:
+    description: "Rendered public comment markdown path."
+    value: ${{ steps.public_run.outputs['public-comment-path'] || steps.request.outputs['public-comment-path'] }}
+  public-step-summary-path:
+    description: "Rendered public step-summary markdown path."
+    value: ${{ steps.public_run.outputs['public-step-summary-path'] || steps.request.outputs['public-step-summary-path'] }}
   manifest-path:
     description: "Aggregate history manifest path."
     value: ${{ steps.run.outputs['manifest-path'] }}
   results-dir:
     description: "Resolved history results directory."
-    value: ${{ steps.run.outputs['results-dir'] }}
+    value: ${{ steps.run.outputs['results-dir'] || steps.request.outputs['results-dir'] }}
+  history-summary-json:
+    description: "Stable backend facade summary JSON path."
+    value: ${{ steps.public_run.outputs['history-summary-json'] }}
   mode-count:
     description: "Number of compare modes executed."
     value: ${{ steps.run.outputs['mode-count'] }}
@@ -118,9 +193,12 @@ outputs:
   stop-reason:
     description: "Aggregate stop reason from the backend."
     value: ${{ steps.run.outputs['stop-reason'] }}
-  target-path:
-    description: "Resolved target path recorded by the backend."
-    value: ${{ steps.run.outputs['target-path'] }}
+  final-status:
+    description: "Final comparevi-history platform status."
+    value: ${{ steps.public_run.outputs['final-status'] }}
+  final-reason:
+    description: "Final comparevi-history platform reason."
+    value: ${{ steps.public_run.outputs['final-reason'] }}
   category-counts-json:
     description: "JSON payload of comparison categories."
     value: ${{ steps.run.outputs['category-counts-json'] }}
@@ -132,7 +210,7 @@ outputs:
     value: ${{ steps.run.outputs['mode-manifests-json'] }}
   requested-mode-list:
     description: "Normalized comma-separated list of requested modes."
-    value: ${{ steps.run.outputs['requested-mode-list'] }}
+    value: ${{ steps.run.outputs['requested-mode-list'] || steps.request.outputs['requested-mode-list'] }}
   executed-mode-list:
     description: "Normalized comma-separated list of executed modes."
     value: ${{ steps.run.outputs['executed-mode-list'] }}
@@ -252,8 +330,8 @@ runs:
 
         "tooling-path=$toolingPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-    - id: run
-      name: Run VI History facade
+    - id: request
+      name: Normalize comparevi-history request
       shell: pwsh
       run: |
         Set-StrictMode -Version Latest
@@ -268,30 +346,87 @@ runs:
           [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $repositoryRootInput))
         }
 
+        $requestArgs = @{
+          RepositoryRoot         = $repositoryRoot
+          TargetPath             = '${{ inputs.target_path }}'
+          TargetSpecPath         = '${{ inputs.target_spec_path }}'
+          TargetId               = '${{ inputs.target_id }}'
+          StartRef               = '${{ inputs.start_ref }}'
+          NoisePolicy            = '${{ inputs.noise_policy }}'
+          Mode                   = '${{ inputs.mode }}'
+          ResultsDir             = '${{ inputs.results_dir }}'
+          ReportFormat           = '${{ inputs.report_format }}'
+          RenderReport           = [System.Convert]::ToBoolean('${{ inputs.render_report }}')
+          FailFast               = [System.Convert]::ToBoolean('${{ inputs.fail_fast }}')
+          FailOnDiff             = [System.Convert]::ToBoolean('${{ inputs.fail_on_diff }}')
+          Quiet                  = [System.Convert]::ToBoolean('${{ inputs.quiet }}')
+          Detailed               = [System.Convert]::ToBoolean('${{ inputs.detailed }}')
+          KeepArtifactsOnNoDiff  = [System.Convert]::ToBoolean('${{ inputs.keep_artifacts_on_no_diff }}')
+          IncludeMergeParents    = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
+          ConsumerRepository     = '${{ inputs.consumer_repository }}'
+          ConsumerRef            = '${{ inputs.consumer_ref }}'
+          SourceBranchRef        = '${{ inputs.source_branch_ref }}'
+          ReviewerSurface        = '${{ inputs.reviewer_surface }}'
+          ReviewerIssueNumber    = '${{ inputs.reviewer_issue_number }}'
+          ReviewerPullRequestNumber = '${{ inputs.reviewer_pull_request_number }}'
+          ReviewerIsFork         = '${{ inputs.reviewer_is_fork }}'
+          ContainerImage         = '${{ inputs.container_image }}'
+          GitHubOutputPath       = $env:GITHUB_OUTPUT
+          StepSummaryPath        = $env:GITHUB_STEP_SUMMARY
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ inputs.end_ref }}')) {
+          $requestArgs.EndRef = '${{ inputs.end_ref }}'
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ inputs.max_pairs }}')) {
+          $requestArgs.MaxPairs = [int]'${{ inputs.max_pairs }}'
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ inputs.max_signal_pairs }}')) {
+          $requestArgs.MaxSignalPairs = [int]'${{ inputs.max_signal_pairs }}'
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ inputs.compare_timeout_seconds }}')) {
+          $requestArgs.CompareTimeoutSeconds = [int]'${{ inputs.compare_timeout_seconds }}'
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ inputs.max_branch_commits }}')) {
+          $requestArgs.MaxBranchCommits = [int]'${{ inputs.max_branch_commits }}'
+        }
+
+        & "${{ github.action_path }}/scripts/Resolve-CompareVIHistoryRequest.ps1" @requestArgs | Out-Null
+
+    - id: run
+      name: Run VI History facade
+      continue-on-error: true
+      shell: pwsh
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        $repositoryRoot = '${{ steps.request.outputs['repository-root'] }}'
         $toolingPathInput = '${{ steps.tooling.outputs['tooling-path'] }}'
         $toolingRoot = if ([System.IO.Path]::IsPathRooted($toolingPathInput)) {
           [System.IO.Path]::GetFullPath($toolingPathInput)
         } else {
           [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $toolingPathInput))
         }
+
         $invokeArgs = @{
-          RepositoryRoot       = $repositoryRoot
-          ToolingRoot          = $toolingRoot
-          TargetPath           = '${{ inputs.target_path }}'
-          StartRef             = '${{ inputs.start_ref }}'
-          NoisePolicy          = '${{ inputs.noise_policy }}'
-          Mode                 = '${{ inputs.mode }}'
-          ResultsDir           = '${{ inputs.results_dir }}'
-          ReportFormat         = '${{ inputs.report_format }}'
-          RenderReport         = [System.Convert]::ToBoolean('${{ inputs.render_report }}')
-          FailFast             = [System.Convert]::ToBoolean('${{ inputs.fail_fast }}')
-          FailOnDiff           = [System.Convert]::ToBoolean('${{ inputs.fail_on_diff }}')
-          Quiet                = [System.Convert]::ToBoolean('${{ inputs.quiet }}')
-          Detailed             = [System.Convert]::ToBoolean('${{ inputs.detailed }}')
-          KeepArtifactsOnNoDiff = [System.Convert]::ToBoolean('${{ inputs.keep_artifacts_on_no_diff }}')
-          IncludeMergeParents  = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
-          GitHubOutputPath     = $env:GITHUB_OUTPUT
-          StepSummaryPath      = $env:GITHUB_STEP_SUMMARY
+          RepositoryRoot          = $repositoryRoot
+          ToolingRoot             = $toolingRoot
+          TargetPath              = '${{ steps.request.outputs['target-path'] }}'
+          StartRef                = '${{ inputs.start_ref }}'
+          NoisePolicy             = '${{ inputs.noise_policy }}'
+          Mode                    = '${{ steps.request.outputs['requested-mode-list'] }}'
+          ResultsDir              = '${{ steps.request.outputs['results-dir'] }}'
+          ReportFormat            = '${{ inputs.report_format }}'
+          RenderReport            = [System.Convert]::ToBoolean('${{ inputs.render_report }}')
+          FailFast                = [System.Convert]::ToBoolean('${{ inputs.fail_fast }}')
+          FailOnDiff              = [System.Convert]::ToBoolean('${{ inputs.fail_on_diff }}')
+          Quiet                   = [System.Convert]::ToBoolean('${{ inputs.quiet }}')
+          Detailed                = [System.Convert]::ToBoolean('${{ inputs.detailed }}')
+          KeepArtifactsOnNoDiff   = [System.Convert]::ToBoolean('${{ inputs.keep_artifacts_on_no_diff }}')
+          IncludeMergeParents     = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
+          GitHubOutputPath        = $env:GITHUB_OUTPUT
+          StepSummaryPath         = $env:GITHUB_STEP_SUMMARY
         }
 
         if (-not [string]::IsNullOrWhiteSpace('${{ inputs.end_ref }}')) {
@@ -309,21 +444,79 @@ runs:
         if (-not [string]::IsNullOrWhiteSpace('${{ inputs.invoke_script_path }}')) {
           $invokeArgs.InvokeScriptPath = '${{ inputs.invoke_script_path }}'
         }
+        if (-not [string]::IsNullOrWhiteSpace('${{ steps.request.outputs['source-branch-ref'] }}')) {
+          $invokeArgs.SourceBranchRef = '${{ steps.request.outputs['source-branch-ref'] }}'
+        }
+        if (-not [string]::IsNullOrWhiteSpace('${{ steps.request.outputs['max-branch-commits'] }}')) {
+          $invokeArgs.MaxBranchCommits = [int]'${{ steps.request.outputs['max-branch-commits'] }}'
+        }
 
         & "${{ github.action_path }}/scripts/Invoke-CompareVIHistoryFacade.ps1" @invokeArgs
 
     - id: mode_summary
       name: Format reviewer mode summary
+      if: ${{ always() }}
       shell: pwsh
       run: |
         Set-StrictMode -Version Latest
         $ErrorActionPreference = 'Stop'
 
         & "${{ github.action_path }}/scripts/Format-CompareVIHistoryModeSummary.ps1" `
-          -RequestedModeList '${{ steps.run.outputs['requested-mode-list'] }}' `
+          -RequestedModeList '${{ steps.run.outputs['requested-mode-list'] || steps.request.outputs['requested-mode-list'] }}' `
           -ExecutedModeList '${{ steps.run.outputs['executed-mode-list'] }}' `
           -ModeManifestsJson '${{ steps.run.outputs['mode-manifests-json'] }}' `
           -TotalProcessed '${{ steps.run.outputs['total-processed'] }}' `
           -TotalDiffs '${{ steps.run.outputs['total-diffs'] }}' `
           -StopReason '${{ steps.run.outputs['stop-reason'] }}' `
-          -GitHubOutputPath $env:GITHUB_OUTPUT
+          -GitHubOutputPath $env:GITHUB_OUTPUT | Out-Null
+
+    - id: public_run
+      name: Write comparevi-history public run receipt
+      if: ${{ always() }}
+      shell: pwsh
+      env:
+        ACTION_REF: ${{ github.action_repository }}@${{ github.action_ref }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        $toolingPathInput = '${{ steps.tooling.outputs['tooling-path'] }}'
+        $toolingRoot = if ([System.IO.Path]::IsPathRooted($toolingPathInput)) {
+          [System.IO.Path]::GetFullPath($toolingPathInput)
+        } else {
+          [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $toolingPathInput))
+        }
+
+        & "${{ github.action_path }}/scripts/Write-CompareVIHistoryPublicRun.ps1" `
+          -RequestPath '${{ steps.request.outputs['request-path'] }}' `
+          -ToolingRoot $toolingRoot `
+          -CompareviRepository '${{ inputs.comparevi_repository }}' `
+          -CompareviRef '${{ steps.resolve.outputs['comparevi-ref'] }}' `
+          -ToolingSource '${{ steps.resolve.outputs['tooling-source'] }}' `
+          -ActionRef $env:ACTION_REF `
+          -HistorySummaryJson '${{ steps.run.outputs['history-summary-json'] }}' `
+          -ManifestPath '${{ steps.run.outputs['manifest-path'] }}' `
+          -ResultsDir '${{ steps.run.outputs['results-dir'] || steps.request.outputs['results-dir'] }}' `
+          -HistoryReportMd '${{ steps.run.outputs['history-report-md'] }}' `
+          -HistoryReportHtml '${{ steps.run.outputs['history-report-html'] }}' `
+          -RequestedModeList '${{ steps.run.outputs['requested-mode-list'] || steps.request.outputs['requested-mode-list'] }}' `
+          -ExecutedModeList '${{ steps.run.outputs['executed-mode-list'] }}' `
+          -ModeSummaryMarkdown '${{ steps.mode_summary.outputs['mode-summary-markdown'] }}' `
+          -ModeCount '${{ steps.run.outputs['mode-count'] }}' `
+          -TotalProcessed '${{ steps.run.outputs['total-processed'] }}' `
+          -TotalDiffs '${{ steps.run.outputs['total-diffs'] }}' `
+          -StopReason '${{ steps.run.outputs['stop-reason'] }}' `
+          -RunOutcome '${{ steps.run.outcome }}' `
+          -RunConclusion '${{ steps.run.conclusion }}' `
+          -RunUrl $env:RUN_URL `
+          -GitHubOutputPath $env:GITHUB_OUTPUT `
+          -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+    - name: Fail when VI History facade failed
+      if: ${{ steps.run.outcome == 'failure' }}
+      shell: pwsh
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+        throw "comparevi-history facade failed: ${{ steps.public_run.outputs['final-reason'] }}"

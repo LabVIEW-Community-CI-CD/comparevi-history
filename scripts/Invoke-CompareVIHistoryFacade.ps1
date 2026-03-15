@@ -6,6 +6,8 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$TargetPath,
   [string]$StartRef = 'HEAD',
+  [string]$SourceBranchRef,
+  [Nullable[int]]$MaxBranchCommits,
   [string]$EndRef,
   [Nullable[int]]$MaxPairs,
   [Nullable[int]]$MaxSignalPairs,
@@ -121,6 +123,12 @@ try {
 
   if (-not [string]::IsNullOrWhiteSpace($EndRef)) {
     $invokeArgs.EndRef = $EndRef
+  }
+  if (-not [string]::IsNullOrWhiteSpace($SourceBranchRef)) {
+    $invokeArgs.SourceBranchRef = $SourceBranchRef
+  }
+  if ($null -ne $MaxBranchCommits) {
+    $invokeArgs.MaxBranchCommits = [int]$MaxBranchCommits
   }
   if ($null -ne $MaxPairs) {
     $invokeArgs.MaxPairs = [int]$MaxPairs

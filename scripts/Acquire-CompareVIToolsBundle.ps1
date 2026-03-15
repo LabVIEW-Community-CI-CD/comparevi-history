@@ -107,6 +107,9 @@ try {
   if (-not ($metadata.PSObject.Properties['consumerContract'] -and $metadata.consumerContract.PSObject.Properties['hostedNiLinuxRunner'])) {
     throw "CompareVI.Tools bundle '$BundleAssetName' does not publish consumerContract.hostedNiLinuxRunner."
   }
+  if (-not ($metadata.PSObject.Properties['consumerContract'] -and $metadata.consumerContract.PSObject.Properties['diagnosticsCommentRenderer'])) {
+    throw "CompareVI.Tools bundle '$BundleAssetName' does not publish consumerContract.diagnosticsCommentRenderer."
+  }
 
   $hostedRunnerContract = $metadata.consumerContract.hostedNiLinuxRunner
   $hostedRunnerScriptPath = [string]$hostedRunnerContract.entryScriptPath
@@ -128,6 +131,12 @@ try {
     throw "CompareVI.Tools bundle '$BundleAssetName' published an empty hostedNiLinuxRunner.defaultImage."
   }
 
+  $diagnosticsRendererContract = $metadata.consumerContract.diagnosticsCommentRenderer
+  $diagnosticsRendererScriptPath = [string]$diagnosticsRendererContract.entryScriptPath
+  if ([string]::IsNullOrWhiteSpace($diagnosticsRendererScriptPath)) {
+    throw "CompareVI.Tools bundle '$BundleAssetName' published an empty diagnosticsCommentRenderer.entryScriptPath."
+  }
+
   $requiredRelativePaths = New-Object System.Collections.Generic.List[string]
   foreach ($relativePath in @(
     'README.md',
@@ -143,7 +152,7 @@ try {
     }
   }
 
-  foreach ($relativePath in @($hostedRunnerScriptPath) + @($hostedRunnerSupportPaths)) {
+  foreach ($relativePath in @($hostedRunnerScriptPath, $diagnosticsRendererScriptPath) + @($hostedRunnerSupportPaths)) {
     if (-not $requiredRelativePaths.Contains($relativePath)) {
       $requiredRelativePaths.Add($relativePath) | Out-Null
     }
@@ -173,6 +182,7 @@ try {
   Write-ActionOutput -Key 'bundle-source-sha' -Value ([string]$metadata.source.sha)
   Write-ActionOutput -Key 'hosted-runner-script-path' -Value $hostedRunnerScriptPath
   Write-ActionOutput -Key 'hosted-runner-default-image' -Value $hostedRunnerDefaultImage
+  Write-ActionOutput -Key 'diagnostics-renderer-script-path' -Value $diagnosticsRendererScriptPath
 
   if ($StepSummaryPath) {
     @(
@@ -185,6 +195,7 @@ try {
       ('- Bundle source SHA: `{0}`' -f $metadata.source.sha)
       ('- Hosted runner script: `{0}`' -f $hostedRunnerScriptPath)
       ('- Hosted runner image: `{0}`' -f $hostedRunnerDefaultImage)
+      ('- Diagnostics renderer script: `{0}`' -f $diagnosticsRendererScriptPath)
     ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
   }
 } finally {

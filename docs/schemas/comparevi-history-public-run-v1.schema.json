@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-public-run-v1.schema.json",
+  "title": "comparevi-history public run v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "requestPath",
+    "request",
+    "backend",
+    "outputs",
+    "summary",
+    "replay"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/public-run@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "requestPath": {
+      "type": "string"
+    },
+    "request": {
+      "type": "object"
+    },
+    "backend": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref",
+        "toolingPath",
+        "toolingSource",
+        "historyFacadeSchema"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "toolingPath": {
+          "type": "string"
+        },
+        "toolingSource": {
+          "type": "string"
+        },
+        "historyFacadeSchema": {
+          "const": "comparevi-tools/history-facade@v1"
+        },
+        "historySummaryPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diagnosticsRendererPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": [
+        "resultsDir",
+        "manifestPath",
+        "historySummaryJson",
+        "historyReportMd",
+        "historyReportHtml",
+        "publicCommentPath",
+        "publicStepSummaryPath"
+      ],
+      "properties": {
+        "resultsDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manifestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historySummaryJson": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historyReportMd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "historyReportHtml": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicCommentPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicStepSummaryPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "requestedModes",
+        "executedModes",
+        "finalStatus",
+        "finalReason"
+      ],
+      "properties": {
+        "modeCount": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "requestedModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "executedModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "totalProcessed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "totalDiffs": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stopReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finalStatus": {
+          "type": "string"
+        },
+        "finalReason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "replay": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
