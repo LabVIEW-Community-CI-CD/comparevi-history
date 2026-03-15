@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       target_path:
-        description: Repository-relative VI path to inspect.
+        description: Repository-relative VI path used to synthesize a temporary consumer target catalog during validation.
         required: false
         type: string
       compare_modes:
@@ -44,7 +44,7 @@ on:
         default: develop
         type: string
       target_path:
-        description: Repository-relative VI path to inspect.
+        description: Repository-relative VI path used to synthesize a temporary consumer target catalog during validation.
         required: false
         default: Tooling/deployment/VIP_Post-Install Custom Action.vi
         type: string
