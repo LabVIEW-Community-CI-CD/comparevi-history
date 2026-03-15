@@ -23,12 +23,19 @@ param(
   [string]$HistoryReportMd,
   [Parameter(Mandatory = $true)]
   [string]$HistoryReportHtml,
+  [string]$HistorySummaryJson,
   [Parameter(Mandatory = $true)]
   [string]$TotalProcessed,
   [string]$TotalDiffs,
   [string]$StopReason,
   [string]$RequestedModeList,
   [string]$ExecutedModeList,
+  [string]$RequestPath,
+  [string]$PublicRunPath,
+  [string]$PublicCommentPath,
+  [string]$PublicStepSummaryPath,
+  [string]$FinalStatus,
+  [string]$FinalReason,
   [string]$ArtifactName,
   [string]$EvidencePath,
   [string]$StepSummaryPath
@@ -120,6 +127,21 @@ Assert-ExistingPath -Path $ManifestPath -PathType Leaf -Label 'Manifest'
 Assert-ExistingPath -Path $ResultsDir -PathType Container -Label 'Results directory'
 Assert-ExistingPath -Path $HistoryReportMd -PathType Leaf -Label 'Markdown report'
 Assert-ExistingPath -Path $HistoryReportHtml -PathType Leaf -Label 'HTML report'
+if (-not [string]::IsNullOrWhiteSpace($HistorySummaryJson)) {
+  Assert-ExistingPath -Path $HistorySummaryJson -PathType Leaf -Label 'History summary JSON'
+}
+if (-not [string]::IsNullOrWhiteSpace($RequestPath)) {
+  Assert-ExistingPath -Path $RequestPath -PathType Leaf -Label 'Request receipt'
+}
+if (-not [string]::IsNullOrWhiteSpace($PublicRunPath)) {
+  Assert-ExistingPath -Path $PublicRunPath -PathType Leaf -Label 'Public run receipt'
+}
+if (-not [string]::IsNullOrWhiteSpace($PublicCommentPath)) {
+  Assert-ExistingPath -Path $PublicCommentPath -PathType Leaf -Label 'Public comment body'
+}
+if (-not [string]::IsNullOrWhiteSpace($PublicStepSummaryPath)) {
+  Assert-ExistingPath -Path $PublicStepSummaryPath -PathType Leaf -Label 'Public step summary'
+}
 
 if ([string]::IsNullOrWhiteSpace($TotalProcessed) -or [int]$TotalProcessed -lt 1) {
   throw "Expected TotalProcessed >= 1. Actual: $TotalProcessed"
@@ -159,6 +181,23 @@ foreach ($entry in $modeEntries) {
   Assert-ExistingPath -Path ([string](Get-EntryValue -Entry $entry -Name 'resultsDir' -DefaultValue '')) -PathType Container -Label "Mode results directory for $modeName"
 }
 
+$publicRunSummary = $null
+if (-not [string]::IsNullOrWhiteSpace($PublicRunPath)) {
+  $publicRunSummary = Get-Content -LiteralPath $PublicRunPath -Raw | ConvertFrom-Json -Depth 20
+  if ([string]$publicRunSummary.schema -ne 'comparevi-history/public-run@v1') {
+    throw "Public run schema mismatch. Actual: $($publicRunSummary.schema)"
+  }
+  if ($publicRunSummary.backend.historyFacadeSchema -ne 'comparevi-tools/history-facade@v1') {
+    throw "Public run backend facade schema mismatch. Actual: $($publicRunSummary.backend.historyFacadeSchema)"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($FinalStatus) -and $publicRunSummary.summary.finalStatus -ne $FinalStatus) {
+    throw "Public run final status mismatch. Expected '$FinalStatus', actual '$($publicRunSummary.summary.finalStatus)'."
+  }
+  if (-not [string]::IsNullOrWhiteSpace($FinalReason) -and $publicRunSummary.summary.finalReason -ne $FinalReason) {
+    throw "Public run final reason mismatch. Expected '$FinalReason', actual '$($publicRunSummary.summary.finalReason)'."
+  }
+}
+
 $evidence = [ordered]@{
   schema            = 'comparevi-history/published-consumer-evidence@v1'
   generatedAtUtc    = [DateTime]::UtcNow.ToString('o')
@@ -175,11 +214,19 @@ $evidence = [ordered]@{
   stopReason        = $StopReason
   manifestPath      = $ManifestPath
   resultsDir        = $ResultsDir
+  historySummaryJson = $HistorySummaryJson
   historyReportMd   = $HistoryReportMd
   historyReportHtml = $HistoryReportHtml
+  requestPath       = $RequestPath
+  publicRunPath     = $PublicRunPath
+  publicCommentPath = $PublicCommentPath
+  publicStepSummaryPath = $PublicStepSummaryPath
+  finalStatus       = $FinalStatus
+  finalReason       = $FinalReason
   artifactName      = $ArtifactName
   artifactFileCount = $artifactFiles.Count
   modeSummaryMarkdown = $modeSummary
+  publicRun         = if ($null -eq $publicRunSummary) { $null } else { $publicRunSummary }
   modes             = @(
     foreach ($entry in $modeEntries) {
       [ordered]@{

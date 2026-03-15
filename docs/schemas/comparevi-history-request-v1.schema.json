@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-request-v1.schema.json",
+  "title": "comparevi-history request v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "consumer",
+    "target",
+    "history",
+    "reviewerSurface",
+    "results"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/request@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumer": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref",
+        "repositoryRoot"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "repositoryRoot": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "targetSpec": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "path",
+        "targetId"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "targetId": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "requestedModes"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "requestedModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "publicModes": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "enum": [
+              "attributes",
+              "front-panel",
+              "block-diagram"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "history": {
+      "type": "object",
+      "required": [
+        "startRef",
+        "resultsDir",
+        "renderReport",
+        "reportFormat",
+        "noisePolicy"
+      ],
+      "properties": {
+        "startRef": {
+          "type": "string"
+        },
+        "endRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceBranchRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxBranchCommits": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "maxPairs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "maxSignalPairs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "noisePolicy": {
+          "type": "string"
+        },
+        "resultsDir": {
+          "type": "string"
+        },
+        "renderReport": {
+          "type": "boolean"
+        },
+        "reportFormat": {
+          "type": "string"
+        },
+        "failFast": {
+          "type": "boolean"
+        },
+        "failOnDiff": {
+          "type": "boolean"
+        },
+        "quiet": {
+          "type": "boolean"
+        },
+        "detailed": {
+          "type": "boolean"
+        },
+        "keepArtifactsOnNoDiff": {
+          "type": "boolean"
+        },
+        "includeMergeParents": {
+          "type": "boolean"
+        },
+        "compareTimeoutSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewerSurface": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "manual",
+            "comment-gated"
+          ]
+        },
+        "issueNumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pullRequestNumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isFork": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "containerImage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "results": {
+      "type": "object",
+      "required": [
+        "resultsDir",
+        "publicRoot",
+        "requestPath",
+        "publicRunPath",
+        "publicCommentPath",
+        "publicStepSummaryPath"
+      ],
+      "properties": {
+        "resultsDir": {
+          "type": "string"
+        },
+        "publicRoot": {
+          "type": "string"
+        },
+        "requestPath": {
+          "type": "string"
+        },
+        "publicRunPath": {
+          "type": "string"
+        },
+        "publicCommentPath": {
+          "type": "string"
+        },
+        "publicStepSummaryPath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

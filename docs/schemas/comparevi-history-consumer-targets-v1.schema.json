@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-consumer-targets-v1.schema.json",
+  "title": "comparevi-history consumer targets v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "targets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/consumer-targets@v1"
+    },
+    "defaultTargetId": {
+      "type": "string"
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "publicModes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "publicModes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "attributes",
+                "front-panel",
+                "block-diagram"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "history": {
+            "type": "object",
+            "properties": {
+              "startRef": {
+                "type": "string"
+              },
+              "branchBudget": {
+                "type": "object",
+                "properties": {
+                  "sourceBranchRef": {
+                    "type": "string"
+                  },
+                  "maxCommitCount": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "reviewerSurface": {
+            "type": "object",
+            "properties": {
+              "variants": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "manual",
+                    "comment-gated"
+                  ]
+                },
+                "uniqueItems": true
+              },
+              "commentCommand": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
