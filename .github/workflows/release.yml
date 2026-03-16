@@ -17,6 +17,8 @@ on:
       - scripts/Resolve-CompareVIHistoryPublishedRefs.ps1
       - scripts/Format-CompareVIHistoryModeSummary.ps1
       - scripts/Assert-CompareVIHistoryPublishedRun.ps1
+      - scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1
+      - scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1
       - scripts/Sync-CompareVIHistoryPublishedTemplates.ps1
       - scripts/Test-CompareVIHistoryTemplateContracts.ps1
       - docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md
@@ -75,6 +77,9 @@ jobs:
       consumer_repository: ${{ steps.plan.outputs.consumer_repository }}
       consumer_ref: ${{ steps.plan.outputs.consumer_ref }}
       current_backend_ref: ${{ steps.plan.outputs.current_backend_ref }}
+      release_content_ready: ${{ steps.readiness.outputs.release-content-ready }}
+      preparation_required: ${{ steps.readiness.outputs.preparation-required }}
+      changed_file_count: ${{ steps.readiness.outputs.changed-file-count }}
     steps:
       - name: Checkout facade repo
         uses: actions/checkout@v5
@@ -194,11 +199,30 @@ jobs:
             "current_backend_ref=$currentBackendRef"
           ) | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Check release publish readiness
+        id: readiness
+        shell: pwsh
+        env:
+          BACKEND_TAG: ${{ steps.plan.outputs.backend_tag }}
+          IMMUTABLE_TAG: ${{ steps.plan.outputs.immutable_tag }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$PWD/scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1" `
+            -BackendTag $env:BACKEND_TAG `
+            -ImmutableTag $env:IMMUTABLE_TAG `
+            -OutputPath 'release-readiness.json' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
       - name: Upload release plan artifact
         uses: actions/upload-artifact@v5
         with:
           name: comparevi-history-release-plan-${{ github.run_id }}
-          path: release-plan.json
+          path: |
+            release-plan.json
+            release-readiness.json
           if-no-files-found: error
 
       - name: Summarize release plan
@@ -216,6 +240,9 @@ jobs:
             echo "- Major tag: \`${{ steps.plan.outputs.major_tag }}\`"
             echo "- External consumer: \`${{ steps.plan.outputs.consumer_repository }}@${{ steps.plan.outputs.consumer_ref }}\`"
             echo "- Publish: \`${{ steps.plan.outputs.publish }}\`"
+            echo "- Release content ready on \`main\`: \`${{ steps.readiness.outputs.release-content-ready }}\`"
+            echo "- Publish prep required: \`${{ steps.readiness.outputs.preparation-required }}\`"
+            echo "- Changed file count: \`${{ steps.readiness.outputs.changed-file-count }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   smoke-local:
@@ -414,14 +441,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure git identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-      - name: Update backend pin and create release notes
+      - name: Verify publish content and create release notes
         id: prepare
         shell: bash
         env:
@@ -433,13 +453,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          printf '%s\n' "$BACKEND_TAG" > comparevi-backend-ref.txt
-          pwsh -NoLogo -NoProfile -File scripts/Sync-CompareVIHistoryPublishedTemplates.ps1 -ImmutableTag "$IMMUTABLE_TAG" > /dev/null
-
-          if ! git diff --quiet -- comparevi-backend-ref.txt docs/examples/comparevi-history-comment-gated.yml docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md; then
-            git add comparevi-backend-ref.txt docs/examples/comparevi-history-comment-gated.yml docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md
-            git commit -m "Release comparevi-history $IMMUTABLE_TAG (#1)"
+          git fetch origin main --tags --force
+          current_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          current_head_sha="$(git rev-parse HEAD)"
+          if [ "$current_head_sha" != "$current_main_sha" ]; then
+            echo "Release publish must run from the current origin/main tip. HEAD=$current_head_sha origin/main=$current_main_sha. Rerun release.yml after main stabilizes." >&2
+            exit 1
           fi
+
+          pwsh -NoLogo -NoProfile -File scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1 \
+            -BackendTag "$BACKEND_TAG" \
+            -ImmutableTag "$IMMUTABLE_TAG" \
+            -OutputPath release-readiness.json \
+            -FailIfPreparationRequired \
+            -StepSummaryPath "$GITHUB_STEP_SUMMARY" > /dev/null
 
           target_sha="$(git rev-parse HEAD)"
 
@@ -456,23 +483,23 @@ jobs:
 
           ### Published contract
 
-          - \`comparevi-backend-ref.txt\` now pins backend release tag \`${BACKEND_TAG}\`
+          - \`comparevi-backend-ref.txt\` already pins backend release tag \`${BACKEND_TAG}\`
           - Backend source SHA for that tag is \`${BACKEND_SHA}\`
-          - \`${IMMUTABLE_TAG}\` is the immutable facade tag for this backend mapping
+          - \`${IMMUTABLE_TAG}\` is the immutable facade tag for this already-reviewed backend mapping
           - \`${MAJOR_TAG}\` advances only after smoke and release publication succeed
-          - Published comment-gated template now points at \`${IMMUTABLE_TAG}\`
+          - Published comment-gated template already points at \`${IMMUTABLE_TAG}\`
           EOF
 
           echo "target-sha=$target_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Push release commit and immutable tag
+      - name: Push immutable tag
         shell: bash
         env:
           IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
         run: |
           set -euo pipefail
           git tag "$IMMUTABLE_TAG" "${{ steps.prepare.outputs.target-sha }}"
-          git push --atomic origin HEAD:main "refs/tags/$IMMUTABLE_TAG"
+          git push origin "refs/tags/$IMMUTABLE_TAG"
 
       - name: Create GitHub release
         shell: bash

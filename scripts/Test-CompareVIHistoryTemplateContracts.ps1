@@ -8,6 +8,7 @@ $safeTemplatesPath = Join-Path $repoRoot 'docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md'
 $publishedValidationWorkflowPath = Join-Path $repoRoot '.github/workflows/published-consumer-validation.yml'
 $smokeWorkflowPath = Join-Path $repoRoot '.github/workflows/smoke.yml'
 $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
+$releaseReadinessScriptPath = Join-Path $repoRoot 'scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1'
 $readmePath = Join-Path $repoRoot 'README.md'
 $exampleTargetsPath = Join-Path $repoRoot 'docs/examples/comparevi-history-consumer-targets.json'
 
@@ -62,6 +63,7 @@ $safeTemplates = Get-Content -LiteralPath $safeTemplatesPath -Raw
 $publishedValidationWorkflow = Get-Content -LiteralPath $publishedValidationWorkflowPath -Raw
 $smokeWorkflow = Get-Content -LiteralPath $smokeWorkflowPath -Raw
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
+$releaseReadinessScript = Get-Content -LiteralPath $releaseReadinessScriptPath -Raw
 $readme = Get-Content -LiteralPath $readmePath -Raw
 $exampleTargets = Get-Content -LiteralPath $exampleTargetsPath -Raw
 
@@ -107,14 +109,19 @@ Assert-Match -Content $publishedValidationWorkflow -Pattern 'public-step-summary
 Assert-Match -Content $smokeWorkflow -Pattern 'comparevi-backend-ref\.txt' -Message 'Smoke workflow must resolve the repo-pinned backend release tag.'
 Assert-Match -Content $releaseWorkflow -Pattern 'comparevi-backend-ref\.txt' -Message 'Release workflow must read comparevi-backend-ref.txt.'
 Assert-Match -Content $releaseWorkflow -Pattern "tooling-source'\] -ne 'bundle'" -Message 'Release workflow must fail closed when the resolved backend is not a bundle release.'
-Assert-Match -Content $releaseWorkflow -Pattern 'scripts/Sync-CompareVIHistoryPublishedTemplates\.ps1' -Message 'Release workflow must include the published template sync script.'
-Assert-Match -Content $releaseWorkflow -Pattern 'Published comment-gated template now points at' -Message 'Release notes must mention the published comment-gated template pin.'
+Assert-Match -Content $releaseWorkflow -Pattern 'scripts/Resolve-CompareVIHistoryReleasePublishReadiness\.ps1' -Message 'Release workflow must check publish readiness against already-reviewed main content.'
+Assert-Match -Content $releaseWorkflow -Pattern 'if \[ "\$current_head_sha" != "\$current_main_sha" \]; then' -Message 'Release workflow must verify publish still targets the current origin/main tip before tagging.'
+Assert-Match -Content $releaseWorkflow -Pattern 'Published comment-gated template already points at' -Message 'Release notes must mention the published comment-gated template pin.'
+Assert-Match -Content $releaseWorkflow -Pattern 'git push origin "refs/tags/\$IMMUTABLE_TAG"' -Message 'Release workflow must push only the immutable tag during publish.'
+Assert-NotMatch -Content $releaseWorkflow -Pattern 'git push --atomic origin HEAD:main' -Message 'Release workflow must not push a fresh commit directly to protected main during publish.'
+Assert-Match -Content $releaseReadinessScript -Pattern 'Sync-CompareVIHistoryPublishedTemplates\.ps1' -Message 'Release readiness helper must derive desired publish content through the published template sync script.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/consumer-targets@v1' -Message 'README must document the target catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/public-run@v1' -Message 'README must document the public run contract.'
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'public-comment-path' -Message 'README must document the action-owned public comment output.'
 Assert-Match -Content $readme -Pattern 'attributes`, `front-panel`, and `block-diagram' -Message 'README must document explicit public modes only.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/issues/24' -Message 'README must point at the comparevi-history platform-boundary epic.'
+Assert-Match -Content $readme -Pattern 'merge a\s+prep PR first' -Message 'README must explain the protected-main release prep requirement.'
 Assert-NotMatch -Content $readme -Pattern 'compare-vi-cli-action/issues/841' -Message 'README must not point at the legacy compare-vi-cli-action tracking epic.'
 
 $facadeRefMatch = [regex]::Match($commentTemplate, '(?m)^\s*FACADE_REF:\s*(v[0-9]+\.[0-9]+\.[0-9]+)\s*$')
