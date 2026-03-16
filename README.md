@@ -191,8 +191,13 @@ Do not copy backend renderers or repo-local history execution logic into consume
   - `publish`: `false` for smoke-only rehearsal, `true` for a real release from `main`
 - The workflow resolves `backend_ref` to a backend release tag plus source SHA, runs both local and external smoke
   against that candidate bundle-backed backend, and uploads a release-plan artifact before any publish step runs.
-- When `publish: true`, the workflow then updates `comparevi-backend-ref.txt`, creates the immutable tag, publishes
-  GitHub Release notes with the mapped backend release tag and source SHA, and finally moves `v1`.
+- When `publish: true`, the workflow now verifies that `main` already contains the required `comparevi-backend-ref.txt`
+  and published-template changes for the requested release. If readiness says preparation is still required, merge a
+  prep PR first and rerun the workflow from `main`.
+- Publish also requires the current `main` tip to stay unchanged through smoke. If `main` advances before the publish
+  job runs, rerun the release workflow so the immutable tag maps to the exact `main` commit that passed smoke.
+- Once `main` is already aligned, the workflow creates the immutable tag, publishes GitHub Release notes with the
+  mapped backend release tag and source SHA, and finally moves `v1`.
 - Failure before the final major-tag step leaves `v1` unchanged.
 
 ## Repository policy
@@ -224,7 +229,8 @@ gh api repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main/protection 
 ```
 
 - The policy intentionally relies on required status checks instead of required reviewer gates so the manual release
-  workflow can update `comparevi-backend-ref.txt` and tags after smoke passes.
+  workflow can publish tags from already-reviewed `main` after smoke passes, while repo-content updates still flow
+  through normal pull requests.
 
 ## Notes
 
