@@ -240,3 +240,4 @@ gh api repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main/protection 
 - For unreleased backend testing, maintainers may still override `comparevi_ref` in a trusted context. That path is
   intentionally explicit and source-coupled.
 - Tracking epic: https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24
+- Platform RFC: [`docs/VI_HISTORY_EXPLORATION_PLATFORM_RFC.md`](docs/VI_HISTORY_EXPLORATION_PLATFORM_RFC.md)
