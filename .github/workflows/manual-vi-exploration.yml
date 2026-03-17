@@ -108,6 +108,7 @@ jobs:
       bundle-status: ${{ steps.bundle.outputs['bundle-status'] }}
       bundle-reason: ${{ steps.bundle.outputs['bundle-reason'] }}
       exploration-run-path: ${{ steps.exploration.outputs['exploration-run-path'] }}
+      evidence-graph-path: ${{ steps.exploration.outputs['evidence-graph-path'] }}
       exploration-status: ${{ steps.exploration.outputs['exploration-status'] }}
       exploration-reason: ${{ steps.exploration.outputs['exploration-reason'] }}
       index-md: ${{ steps.exploration.outputs['index-md'] }}
@@ -332,6 +333,7 @@ jobs:
             ${{ steps.plan.outputs['chunk-plan-path'] }}
             ${{ steps.plan.outputs['chunk-receipts-root'] }}
             ${{ steps.exploration.outputs['exploration-run-path'] }}
+            ${{ steps.exploration.outputs['evidence-graph-path'] }}
             ${{ steps.exploration.outputs['index-md'] }}
             ${{ steps.exploration.outputs['index-html'] }}
             ${{ steps.exploration.outputs['timeline-md'] }}

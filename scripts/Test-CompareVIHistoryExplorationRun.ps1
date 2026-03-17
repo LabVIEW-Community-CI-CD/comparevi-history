@@ -5,6 +5,7 @@ $catalogScriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryRevisionCata
 $chunkPlanScriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryChunkPlan.ps1'
 $explorationRunScriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryExplorationRun.ps1'
 $schemaPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'docs' 'schemas' 'comparevi-history-exploration-run-v1.schema.json'
+$evidenceGraphSchemaPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'docs' 'schemas' 'comparevi-history-evidence-graph-v1.schema.json'
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("comparevi-history-exploration-run-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
@@ -73,6 +74,9 @@ try {
   if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
     throw 'Exploration run schema file is missing.'
   }
+  if (-not (Test-Path -LiteralPath $evidenceGraphSchemaPath -PathType Leaf)) {
+    throw 'Evidence graph schema file is missing.'
+  }
   if ($explorationRun.discovery.revisionCount -ne 4) {
     throw 'Exploration run revision count mismatch.'
   }
@@ -109,10 +113,46 @@ try {
   if (-not (Test-Path -LiteralPath (Join-Path $resultsDir 'exploration-run.json') -PathType Leaf)) {
     throw 'Exploration run file was not written.'
   }
+  if ($explorationRun.evidence.schema -ne 'comparevi-history/evidence-graph@v1') {
+    throw 'Exploration run evidence schema mismatch.'
+  }
+  if (-not (Test-Path -LiteralPath $explorationRun.evidence.graphPath -PathType Leaf)) {
+    throw 'Evidence graph file was not written.'
+  }
+  if ($explorationRun.outputs.evidenceGraphPath -ne $explorationRun.evidence.graphPath) {
+    throw 'Exploration run evidence graph output mismatch.'
+  }
+
+  $plannedEvidenceGraph = Get-Content -LiteralPath $explorationRun.evidence.graphPath -Raw | ConvertFrom-Json -Depth 64
+  if ($plannedEvidenceGraph.schema -ne 'comparevi-history/evidence-graph@v1') {
+    throw 'Planned evidence graph schema mismatch.'
+  }
+  if ($plannedEvidenceGraph.discovery.revisionCount -ne 4) {
+    throw 'Planned evidence graph revision count mismatch.'
+  }
+  if ($plannedEvidenceGraph.continuity.segmentCount -ne 1 -or $plannedEvidenceGraph.continuity.breakCount -ne 0) {
+    throw 'Planned evidence graph continuity summary mismatch.'
+  }
+  if ($plannedEvidenceGraph.execution.chunkCount -ne 2 -or $plannedEvidenceGraph.execution.status -ne 'planned') {
+    throw 'Planned evidence graph execution summary mismatch.'
+  }
+  if ($plannedEvidenceGraph.surfaces.previewImages.Count -ne 0) {
+    throw 'Planned evidence graph must not invent preview images.'
+  }
+  if ($plannedEvidenceGraph.surfaces.renderSurfaces.Count -lt 2 -or $plannedEvidenceGraph.surfaces.artifactSurfaces.Count -lt 3) {
+    throw 'Planned evidence graph surface references are incomplete.'
+  }
+  if (($plannedEvidenceGraph.surfaces.artifactSurfaces | Where-Object { $_.kind -eq 'exploration-run-json' }).Count -ne 1) {
+    throw 'Planned evidence graph must reference the exploration run artifact.'
+  }
+  if (($plannedEvidenceGraph.continuity.segments[0].revisions | Select-Object -First 1).ordinal -ne 1) {
+    throw 'Planned evidence graph revisions must stay deterministically ordered.'
+  }
 
   $githubOutputs = Get-Content -LiteralPath $githubOutputPath -Raw
   foreach ($requiredKey in @(
       'exploration-run-path=',
+      'evidence-graph-path=',
       'exploration-status=planned',
       'exploration-reason=chunk-plan-ready',
       'index-md=',
@@ -353,6 +393,38 @@ try {
     throw 'Executed exploration run step-summary preview summary mismatch.'
   }
 
+  $executedEvidenceGraph = Get-Content -LiteralPath $executedRun.evidence.graphPath -Raw | ConvertFrom-Json -Depth 64
+  if ($executedEvidenceGraph.execution.status -ne 'partial' -or $executedEvidenceGraph.execution.reason -ne 'one-or-more-chunks-failed') {
+    throw 'Executed evidence graph execution status mismatch.'
+  }
+  if ($executedEvidenceGraph.execution.chunks.Count -ne 2) {
+    throw 'Executed evidence graph chunk count mismatch.'
+  }
+  if (($executedEvidenceGraph.execution.chunks | Where-Object { $_.status -eq 'failed' }).Count -ne 1) {
+    throw 'Executed evidence graph failed chunk count mismatch.'
+  }
+  if ($executedEvidenceGraph.surfaces.categoryCounts.PSObject.Properties.Name -match 'First VI') {
+    throw 'Executed evidence graph category counts must not retain raw comparison identity fragments.'
+  }
+  if ($executedEvidenceGraph.surfaces.comparisonPairs.Count -ne 1 -or $executedEvidenceGraph.surfaces.previewImages.Count -ne 1) {
+    throw 'Executed evidence graph normalized pair/image surfaces mismatch.'
+  }
+  if ($executedEvidenceGraph.surfaces.previewImages[0].relativePath -ne 'chunk-receipts/chunk-001/history/preview-images/cli-image-00.png') {
+    throw 'Executed evidence graph preview image path mismatch.'
+  }
+  if ($executedEvidenceGraph.completeness.finalStatus -ne 'partial' -or $executedEvidenceGraph.completeness.replayStatus -ne 'degraded') {
+    throw 'Executed evidence graph completeness mismatch.'
+  }
+  if (($executedEvidenceGraph.surfaces.renderSurfaces | Where-Object { $_.kind -eq 'history-report-html' }).Count -ne 1) {
+    throw 'Executed evidence graph must surface the chunk HTML report.'
+  }
+  if (($executedEvidenceGraph.surfaces.artifactSurfaces | Where-Object { $_.kind -eq 'mode-summary-json' }).Count -ne 1) {
+    throw 'Executed evidence graph must surface the chunk mode summary JSON.'
+  }
+  if (($executedEvidenceGraph.continuity.segments[0].chunkIds -join ',') -ne 'chunk-001,chunk-002') {
+    throw 'Executed evidence graph must keep segment chunk ordering deterministic.'
+  }
+
   $timelineMarkdown = Get-Content -LiteralPath $executedRun.outputs.timelineMd -Raw
   if ($timelineMarkdown -notmatch [regex]::Escape([string]$chunkPlan.chunks[0].chunkId)) {
     throw 'Timeline markdown must include the executed chunk id.'
@@ -450,6 +522,13 @@ try {
   if ($bundledRun.publication.bundleStatus -ne 'succeeded') {
     throw 'Bundled exploration run publication status mismatch.'
   }
+  $bundledEvidenceGraph = Get-Content -LiteralPath $bundledRun.evidence.graphPath -Raw | ConvertFrom-Json -Depth 64
+  if ($bundledEvidenceGraph.completeness.bundleStatus -ne 'succeeded') {
+    throw 'Bundled evidence graph bundle status mismatch.'
+  }
+  if (($bundledEvidenceGraph.surfaces.artifactSurfaces | Where-Object { $_.kind -eq 'bundle-zip' }).Count -ne 1) {
+    throw 'Bundled evidence graph must surface the published bundle.'
+  }
   $bundledIndexMarkdown = Get-Content -LiteralPath $bundledRun.outputs.indexMd -Raw
   if ($bundledIndexMarkdown -notmatch [regex]::Escape('manual-vi-exploration-bundle.zip')) {
     throw 'Bundled exploration index must link the published bundle.'
@@ -475,6 +554,13 @@ try {
   }
   if ($bundleFailureRun.publication.bundleStatus -ne 'failed') {
     throw 'Bundle failure publication status mismatch.'
+  }
+  $bundleFailureEvidenceGraph = Get-Content -LiteralPath $bundleFailureRun.evidence.graphPath -Raw | ConvertFrom-Json -Depth 64
+  if ($bundleFailureEvidenceGraph.completeness.bundleStatus -ne 'failed' -or $bundleFailureEvidenceGraph.completeness.bundleReason -ne 'bundle-packaging-failed') {
+    throw 'Bundle failure evidence graph publication state mismatch.'
+  }
+  if ($bundleFailureEvidenceGraph.completeness.finalStatus -ne 'partial') {
+    throw 'Bundle failure evidence graph must preserve degraded final status.'
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
