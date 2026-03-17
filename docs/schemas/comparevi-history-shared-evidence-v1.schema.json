@@ -1,0 +1,387 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-shared-evidence-v1.schema.json",
+  "title": "comparevi-history shared evidence v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "source",
+    "consumer",
+    "target",
+    "configuration",
+    "summary",
+    "surfaces",
+    "completeness"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/shared-evidence@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "schema",
+        "path"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "consumer": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "selectedRef",
+        "extension",
+        "targetId"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "selectedRef": {
+          "type": "string"
+        },
+        "extension": {
+          "type": "string"
+        },
+        "targetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "object",
+      "required": [
+        "requestedModes",
+        "noisePolicy",
+        "includeMergeParents"
+      ],
+      "properties": {
+        "requestedModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "noisePolicy": {
+          "type": "string"
+        },
+        "includeMergeParents": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "modeCount",
+        "totalProcessed",
+        "totalDiffs",
+        "stopReason"
+      ],
+      "properties": {
+        "modeCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalProcessed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalDiffs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "stopReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "surfaces": {
+      "type": "object",
+      "required": [
+        "suppressionProfile",
+        "comparisonArtifactCount",
+        "captureCount",
+        "imageArtifactCount",
+        "imageMimeTypes",
+        "categoryCounts",
+        "comparisonPairs",
+        "bucketCounts",
+        "previewImages",
+        "renderSurfaces",
+        "artifactSurfaces"
+      ],
+      "properties": {
+        "suppressionProfile": {
+          "type": "string",
+          "enum": [
+            "unsuppressed",
+            "suppressed",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "comparisonArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageMimeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "categoryCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "comparisonPairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "firstPath",
+              "secondPath",
+              "count"
+            ],
+            "properties": {
+              "firstPath": {
+                "type": "string"
+              },
+              "secondPath": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "bucketCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "previewImages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "scope",
+              "chunkId",
+              "mode",
+              "category",
+              "comparisonPair",
+              "mimeType",
+              "byteLength",
+              "relativePath",
+              "sortKey"
+            ],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "run",
+                  "chunk"
+                ]
+              },
+              "chunkId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mode": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "comparisonPair": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "firstPath",
+                  "secondPath"
+                ],
+                "properties": {
+                  "firstPath": {
+                    "type": "string"
+                  },
+                  "secondPath": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "byteLength": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "sortKey": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "renderSurfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceReference"
+          }
+        },
+        "artifactSurfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceReference"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "completeness": {
+      "type": "object",
+      "required": [
+        "finalStatus",
+        "finalReason",
+        "replayStatus",
+        "replayReason"
+      ],
+      "properties": {
+        "finalStatus": {
+          "type": "string"
+        },
+        "finalReason": {
+          "type": "string"
+        },
+        "replayStatus": {
+          "type": "string"
+        },
+        "replayReason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "surfaceReference": {
+      "type": "object",
+      "required": [
+        "scope",
+        "kind",
+        "chunkId",
+        "relativePath",
+        "pathType",
+        "contentType"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "run",
+            "chunk"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "chunkId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "pathType": {
+          "type": "string",
+          "enum": [
+            "file",
+            "directory"
+          ]
+        },
+        "contentType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -10,6 +10,8 @@ try {
   $resultsRoot = Join-Path $repoRoot 'tests/results/ref-compare/history'
   $publicRoot = Join-Path $resultsRoot 'public'
   $toolingRoot = Join-Path $tempRoot 'tooling'
+  $modeSummaryJsonPath = Join-Path $publicRoot 'mode-summary.json'
+  $modeSummaryPath = Join-Path $publicRoot 'mode-summary.md'
   New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
   New-Item -ItemType Directory -Path $publicRoot -Force | Out-Null
   New-Item -ItemType Directory -Path (Join-Path $toolingRoot 'tools') -Force | Out-Null
@@ -128,6 +130,28 @@ $lines -join "`n"
   '{}' | Set-Content -LiteralPath (Join-Path $resultsRoot 'history-summary.json') -Encoding utf8
   '# report' | Set-Content -LiteralPath (Join-Path $resultsRoot 'history-report.md') -Encoding utf8
   '<html></html>' | Set-Content -LiteralPath (Join-Path $resultsRoot 'history-report.html') -Encoding utf8
+  @'
+{
+  "schema": "comparevi-history/mode-summary@v1",
+  "requestedModes": ["attributes", "front-panel", "block-diagram"],
+  "executedModes": ["attributes", "front-panel", "block-diagram"],
+  "totalProcessed": 5,
+  "totalDiffs": 2,
+  "stopReason": "completed",
+  "suppressionProfile": "unknown",
+  "categoryCounts": {},
+  "comparisonPairs": [],
+  "bucketCounts": {},
+  "previewImages": [],
+  "metadata": {
+    "comparisonArtifactCount": 0,
+    "captureCount": 0,
+    "imageArtifactCount": 0,
+    "imageMimeTypes": []
+  }
+}
+'@ | Set-Content -LiteralPath $modeSummaryJsonPath -Encoding utf8
+  'Requested modes: `attributes, front-panel, block-diagram`' | Set-Content -LiteralPath $modeSummaryPath -Encoding utf8
 
   $githubOutputPath = Join-Path $tempRoot 'public-run-output.txt'
   $publicRunJson = & $scriptPath `
@@ -142,6 +166,8 @@ $lines -join "`n"
     -ResultsDir $resultsRoot `
     -HistoryReportMd (Join-Path $resultsRoot 'history-report.md') `
     -HistoryReportHtml (Join-Path $resultsRoot 'history-report.html') `
+    -ModeSummaryJsonPath $modeSummaryJsonPath `
+    -ModeSummaryPath $modeSummaryPath `
     -RequestedModeList 'attributes,front-panel,block-diagram' `
     -ExecutedModeList 'attributes,front-panel,block-diagram' `
     -ModeSummaryMarkdown 'Requested modes: `attributes, front-panel, block-diagram`' `
@@ -167,6 +193,15 @@ $lines -join "`n"
   if ($publicRun.replay.status -ne 'ready') {
     throw 'Replay status mismatch.'
   }
+  if ($publicRun.outputs.modeSummaryJsonPath -ne $modeSummaryJsonPath) {
+    throw 'Public run mode summary JSON output mismatch.'
+  }
+  if ($publicRun.evidence.schema -ne 'comparevi-history/shared-evidence@v1') {
+    throw 'Public run shared evidence schema mismatch.'
+  }
+  if (-not (Test-Path -LiteralPath $publicRun.evidence.path -PathType Leaf)) {
+    throw 'Shared evidence file was not written.'
+  }
   if (-not (Test-Path -LiteralPath $publicRun.outputs.publicCommentPath -PathType Leaf)) {
     throw 'Public comment body was not written.'
   }
@@ -178,9 +213,13 @@ $lines -join "`n"
   if ($publicComment -notmatch 'Requested modes') {
     throw 'Rendered public comment did not include the renderer output.'
   }
+  $sharedEvidence = Get-Content -LiteralPath $publicRun.evidence.path -Raw | ConvertFrom-Json -Depth 64
+  if ($sharedEvidence.source.schema -ne 'comparevi-history/public-run@v1') {
+    throw 'Shared evidence source schema mismatch.'
+  }
 
   $githubOutputs = Get-Content -LiteralPath $githubOutputPath -Raw
-  foreach ($requiredKey in @('history-summary-json=', 'public-run-path=', 'public-comment-path=', 'public-step-summary-path=', 'final-status=succeeded', 'final-reason=completed')) {
+  foreach ($requiredKey in @('history-summary-json=', 'public-run-path=', 'shared-evidence-path=', 'public-comment-path=', 'public-step-summary-path=', 'final-status=succeeded', 'final-reason=completed')) {
     if ($githubOutputs -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."
     }
@@ -193,6 +232,8 @@ $lines -join "`n"
     -CompareviRepository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
     -CompareviRef 'v0.6.3-tools.8' `
     -ToolingSource 'bundle' `
+    -ModeSummaryJsonPath $modeSummaryJsonPath `
+    -ModeSummaryPath $modeSummaryPath `
     -RunOutcome 'failure' `
     -RunConclusion 'failure' `
     -GitHubOutputPath $failureOutputPath

@@ -202,6 +202,9 @@ $outputs | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
   if (-not (Test-Path -LiteralPath $receipt.outputs.publicRunPath -PathType Leaf)) {
     throw 'Public run receipt was not written.'
   }
+  if (-not (Test-Path -LiteralPath $receipt.outputs.sharedEvidencePath -PathType Leaf)) {
+    throw 'Shared evidence receipt was not written.'
+  }
   if (-not (Test-Path -LiteralPath $receipt.outputs.historySummaryJson -PathType Leaf)) {
     throw 'History summary JSON was not written.'
   }

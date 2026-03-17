@@ -345,6 +345,8 @@ $publicRunOutputPath = Join-Path $resultsDirResolved 'public-run.out'
   -ResultsDir ([string]$runValues['results-dir']) `
   -HistoryReportMd ([string]$runValues['history-report-md']) `
   -HistoryReportHtml ([string]$runValues['history-report-html']) `
+  -ModeSummaryJsonPath $modeSummaryJsonPath `
+  -ModeSummaryPath $modeSummaryPath `
   -RequestedModeList ([string]$runValues['requested-mode-list']) `
   -ExecutedModeList ([string]$runValues['executed-mode-list']) `
   -ModeSummaryMarkdown $modeSummaryMarkdown `
@@ -385,6 +387,7 @@ $localReceipt = [ordered]@{
     revisionCatalogPath = [string]$catalogValues['revision-catalog-path']
     requestPath = [string]$requestValues['request-path']
     publicRunPath = [string]$publicRunValues['public-run-path']
+    sharedEvidencePath = [string]$publicRunValues['shared-evidence-path']
     publicStepSummaryPath = [string]$publicRunValues['public-step-summary-path']
     historySummaryJson = [string]$publicRunValues['history-summary-json']
     historyReportMd = [string]$runValues['history-report-md']

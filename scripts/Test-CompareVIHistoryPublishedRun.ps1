@@ -22,6 +22,7 @@ try {
   $stepSummaryPath = Join-Path $resultsRoot 'summary.md'
   $requestPath = Join-Path $resultsRoot 'request.json'
   $publicRunPath = Join-Path $resultsRoot 'public-run.json'
+  $sharedEvidencePath = Join-Path $resultsRoot 'shared-evidence.json'
   $publicCommentPath = Join-Path $resultsRoot 'comment.md'
   $publicStepSummaryPath = Join-Path $resultsRoot 'public-step-summary.md'
 
@@ -42,9 +43,63 @@ try {
   "summary": {
     "finalStatus": "succeeded",
     "finalReason": "completed"
+  },
+  "evidence": {
+    "schema": "comparevi-history/shared-evidence@v1",
+    "path": "__SHARED_EVIDENCE_PATH__"
   }
 }
-'@ | Set-Content -LiteralPath $publicRunPath -Encoding utf8
+'@.Replace('__SHARED_EVIDENCE_PATH__', ($sharedEvidencePath -replace '\\', '/')) | Set-Content -LiteralPath $publicRunPath -Encoding utf8
+  @'
+{
+  "schema": "comparevi-history/shared-evidence@v1",
+  "generatedAtUtc": "2026-03-17T00:00:00Z",
+  "source": {
+    "schema": "comparevi-history/public-run@v1",
+    "path": "__PUBLIC_RUN_PATH__"
+  },
+  "consumer": {
+    "repository": "ni/labview-icon-editor",
+    "ref": "develop"
+  },
+  "target": {
+    "path": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+    "selectedRef": "HEAD",
+    "extension": ".vi",
+    "targetId": null
+  },
+  "configuration": {
+    "requestedModes": ["default", "attributes"],
+    "noisePolicy": "collapse",
+    "includeMergeParents": false
+  },
+  "summary": {
+    "modeCount": 2,
+    "totalProcessed": 1,
+    "totalDiffs": 1,
+    "stopReason": "max-pairs"
+  },
+  "surfaces": {
+    "suppressionProfile": "unknown",
+    "comparisonArtifactCount": 0,
+    "captureCount": 0,
+    "imageArtifactCount": 0,
+    "imageMimeTypes": [],
+    "categoryCounts": {},
+    "comparisonPairs": [],
+    "bucketCounts": {},
+    "previewImages": [],
+    "renderSurfaces": [],
+    "artifactSurfaces": []
+  },
+  "completeness": {
+    "finalStatus": "succeeded",
+    "finalReason": "completed",
+    "replayStatus": "ready",
+    "replayReason": "history-summary-present"
+  }
+}
+'@.Replace('__PUBLIC_RUN_PATH__', ($publicRunPath -replace '\\', '/')) | Set-Content -LiteralPath $sharedEvidencePath -Encoding utf8
   'comment' | Set-Content -LiteralPath $publicCommentPath -Encoding utf8
   'summary' | Set-Content -LiteralPath $publicStepSummaryPath -Encoding utf8
   'artifact' | Set-Content -LiteralPath (Join-Path $defaultResults 'result.txt') -Encoding utf8
@@ -100,6 +155,7 @@ try {
     -StopReason 'max-pairs' `
     -RequestPath $requestPath `
     -PublicRunPath $publicRunPath `
+    -SharedEvidencePath $sharedEvidencePath `
     -PublicCommentPath $publicCommentPath `
     -PublicStepSummaryPath $publicStepSummaryPath `
     -FinalStatus 'succeeded' `

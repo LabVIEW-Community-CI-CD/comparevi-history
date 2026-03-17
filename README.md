@@ -34,6 +34,8 @@ Legacy direct invocation remains available for maintainers:
 - Invokes the existing backend history facade and preserves `comparevi-tools/history-facade@v1` as the backend
   summary surface.
 - Emits `comparevi-history/public-run@v1` plus stable public artifact paths for comments, step summaries, and replay.
+- Emits `comparevi-history/shared-evidence@v1` as the canonical cross-entrypoint evidence receipt that both curated PR
+  diagnostics and manual exploration can share without sharing policy wrappers.
 - Renders reviewer-facing markdown from the bundled helper resolved through `tooling-path` instead of copied inline
   consumer scripts.
 - Verifies the downloaded bundle against the published release digest before extraction.
@@ -100,6 +102,7 @@ The action preserves the existing backend outputs and adds the public platform r
 - `target-path`
 - `request-path`
 - `public-run-path`
+- `shared-evidence-path`
 - `public-comment-path`
 - `public-step-summary-path`
 - `manifest-path`
@@ -118,6 +121,7 @@ The action preserves the existing backend outputs and adds the public platform r
 - `executed-mode-list`
 - `mode-list`
 - `mode-summary-markdown`
+- `mode-summary-json-path`
 - `flag-list`
 - `history-report-md`
 - `history-report-html`
@@ -127,6 +131,7 @@ The action preserves the existing backend outputs and adds the public platform r
 
 Manual exploration workflows emit additive planning receipts alongside the action outputs:
 
+- `shared-evidence.json` (`comparevi-history/shared-evidence@v1`)
 - `revision-catalog.json` (`comparevi-history/revision-catalog@v1`)
 - `chunk-plan.json`
 - `chunk-receipts/`
@@ -157,6 +162,8 @@ The current execution slice stays additive on top of the discovery-first baselin
 - the platform keeps unsuppressed LVCompare output in-band and surfaces deterministic metadata summaries for capture
   artifacts such as images instead of collapsing them into generic noise counts
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
+- the platform emits `shared-evidence.json` as the shared machine-readable evidence core that manual exploration and
+  curated PR diagnostics can both surface
 - the platform emits `evidence-graph.json` as the canonical unsuppressed evidence contract for downstream processing
 - the platform keeps `categoryCounts` semantic and emits structured `comparisonPairs` separately so HTML-rendered
   compare identity fragments remain machine-readable instead of leaking into category keys
@@ -242,7 +249,7 @@ Do not copy backend renderers or repo-local history execution logic into consume
   Aggregate aliases such as `default`, `full`, and `all` are not part of the public platform contract.
 - Consumer-ready public PR diagnostics templates are published in `docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md`.
 - Reviewer-facing consumers should use `public-comment-path`, `public-step-summary-path`, `public-run-path`, and
-  `history-summary-json` instead of rebuilding comments from raw backend manifests.
+  `shared-evidence-path` instead of rebuilding evidence from raw backend manifests.
 - `comparevi_repository`, `comparevi_ref`, and `invoke_script_path` are maintainer-only overrides. The action rejects
   them when the PR context is not provably repo-local and trusted, and normal consumer workflows should leave them at
   their defaults.
