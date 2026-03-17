@@ -39,6 +39,11 @@ Legacy direct invocation remains available for maintainers:
 - Emits `comparevi-history/changed-vi-discovery@v1` as the changed-VI discovery receipt for automatic PR diagnostics.
 - Emits `comparevi-history/pr-run@v1` as the aggregate pull-request diagnostics receipt that points reviewers and
   downstream processors at per-target public-run and shared-evidence surfaces.
+- Emits `comparevi-history/changed-vi-discovery@v2` as the dynamic changed-VI discovery receipt for automatic PR
+  diagnostics that operate on raw repo-relative paths without a checked-in target catalog.
+- Emits `comparevi-history/pr-run@v2` as the aggregate pull-request diagnostics receipt for the dynamic changed-VI PR
+  surface, including `selectedTargets`, artifact index paths, and sticky-comment publication inputs.
+- Emits `comparevi-history/pr-comment-publication@v1` as the `workflow_run` publication receipt for sticky PR comments.
 - Renders reviewer-facing markdown from the bundled helper resolved through `tooling-path` instead of copied inline
   consumer scripts.
 - Verifies the downloaded bundle against the published release digest before extraction.
@@ -198,38 +203,69 @@ available, and degrades the final exploration run instead of hiding the packagin
 Because reusable workflows do not automatically expose the called workflow repository as a local checkout, the consumer
 wrapper should keep `platform_ref` aligned with the same release ref used in the `uses:` pin.
 
-## Automatic pull request diagnostics workflow
+## Automatic pull request diagnostics workflows
 
-Trusted consumer repositories can expose automatic PR diagnostics for changed VIs through the reusable workflow
+Trusted consumer repositories can expose automatic PR diagnostics for changed VIs through the standard dynamic-path PR
+surface:
+
+- execution reusable workflow:
+  [`./.github/workflows/pull-request-diagnostics-auto.yml`](.github/workflows/pull-request-diagnostics-auto.yml)
+- publication reusable workflow:
+  [`./.github/workflows/pull-request-diagnostics-publish.yml`](.github/workflows/pull-request-diagnostics-publish.yml)
+- thin consumer execution wrapper:
+  [`docs/examples/comparevi-history-pull-request-diagnostics-auto.yml`](docs/examples/comparevi-history-pull-request-diagnostics-auto.yml)
+- thin consumer publication wrapper:
+  [`docs/examples/comparevi-history-pull-request-diagnostics-publish.yml`](docs/examples/comparevi-history-pull-request-diagnostics-publish.yml)
+- checked-in dynamic PR policy source:
+  [`docs/examples/comparevi-history-pr-policy-v2.json`](docs/examples/comparevi-history-pr-policy-v2.json)
+
+The standard changed-VI PR surface is intentionally policy-driven and consumer-thin:
+
+- the execution workflow discovers changed `.vi` files from the live pull request context and writes
+  `changed-vi-discovery.json` (`comparevi-history/changed-vi-discovery@v2`)
+- `discovery.selectionMode = dynamic-paths`, so changed files do not need to exist in
+  `.github/comparevi-history-targets.json`
+- the trusted PR policy stays on the pull request base checkout, not the candidate head checkout
+- the trusted consumer-local hosted NI Linux adapter stays on the pull request base checkout, not the candidate head
+  checkout
+- the candidate head checkout supplies the repository root and file content for execution
+- `selectedTargets[]` records the deterministic synthetic target id, normalized repo-relative path, explicit public mode
+  list, and resolved `sourceBranchRef` from the pull request base
+- `maxChangedViCount = 10` is the default fail-closed overflow contract for the standard dynamic PR surface
+- the execution workflow keeps `NoisePolicy=include` so artifact-hosted evidence is unsuppressed
+- each selected target reuses the existing `request.json`, `public-run.json`, `shared-evidence.json`, and
+  reviewer-facing artifact paths without inventing a second backend execution contract
+- the execution workflow aggregates those per-target runs into `pr-run.json`, `pr-comment.md`, `pr-step-summary.md`,
+  `index.md`, and `index.html`
+- the publication workflow runs on `workflow_run`, downloads the execution artifact bundle, and creates or updates one
+  sticky PR comment without checking out or executing candidate PR code
+- same-repo pull requests can auto-run immediately
+- fork pull requests can auto-run on the read-only `pull_request` execution workflow and then publish the sticky PR
+  comment from the privileged `workflow_run` publisher
+
+This keeps consumer repositories thin while giving reviewers one stable entrypoint:
+
+- the PR comment is the sticky entrypoint
+- the full unsuppressed review surface stays in the artifact-hosted `index.md` and `index.html`
+- execution remains bundle-backed and platform-owned
+- consumer repositories own only the checked-in policy file, branch trigger wiring, and permissions policy
+
+### Legacy catalog-matched PR diagnostics workflow
+
+The earlier catalog-matched PR surface remains available and additive through the reusable workflow
 [`./.github/workflows/pull-request-diagnostics.yml`](.github/workflows/pull-request-diagnostics.yml) plus a thin
 consumer wrapper such as
 [`docs/examples/comparevi-history-pull-request-diagnostics.yml`](docs/examples/comparevi-history-pull-request-diagnostics.yml)
 and a checked-in PR policy such as
 [`docs/examples/comparevi-history-pr-policy.json`](docs/examples/comparevi-history-pr-policy.json).
 
-The current first slice stays intentionally narrow:
+That legacy slice remains intentionally narrower:
 
-- the platform discovers changed `.vi` files from the live pull request context and writes `changed-vi-discovery.json`
-- the trusted target catalog and trusted PR policy stay on the pull request base checkout, not the candidate head checkout
-- the trusted consumer-local hosted NI Linux adapter stays on the pull request base checkout, not the candidate head
-  checkout
-- the candidate head checkout supplies the repository root and file content for execution
+- target ids still live in `.github/comparevi-history-targets.json`
 - only PR-policy-eligible catalog targets whose `path` matches a changed `.vi` path are executed
-- same-repo pull requests can auto-run immediately
 - cross-repository and fork pull requests fail closed by producing a blocked discovery receipt instead of executing the
   backend unless a maintainer-triggered caller explicitly sets `allow_trusted_fork_execution: true` and the checked-in
   PR policy allows `trust.forkBehavior = maintainer-dispatch`
-- each matched target reuses the existing `request.json`, `public-run.json`, `shared-evidence.json`, and reviewer
-  artifact path without inventing a second backend execution contract
-- the workflow aggregates those per-target runs into `pr-run.json`, `pr-comment.md`, and `pr-step-summary.md`
-- publication of pull-request comments remains a later policy slice; this first workflow writes the deterministic
-  comment body but does not post it automatically
-
-This keeps consumer repositories thin while the automatic PR surface stabilizes:
-
-- target ids still live in `.github/comparevi-history-targets.json`
-- PR path filters, allowlists, mode narrowing, branch-budget defaults, and reviewer-surface toggles live in `.github/comparevi-history-pr-policy.json`
-- execution remains bundle-backed and platform-owned
 - reviewer-facing consumers get stable receipt and markdown paths before comment publication policy is widened
 
 ## Local manual exploration fast loop
@@ -334,16 +370,42 @@ Do not copy backend renderers or repo-local history execution logic into consume
 
 ## Pull request policy
 
-Automatic PR diagnostics consumers should also check in a PR policy using `comparevi-history/pr-policy@v1`. The example source of truth in this repository is [`docs/examples/comparevi-history-pr-policy.json`](docs/examples/comparevi-history-pr-policy.json). Consumer repos should copy that pattern into `.github/comparevi-history-pr-policy.json` and keep automatic PR policy there:
+Automatic PR diagnostics consumers can check in either of two PR policy contracts, depending on which PR surface they
+want to expose:
 
-- include/exclude path globs for changed VI discovery
-- allowed target ids for automatic PR execution
-- maximum changed-VI count per run
-- unmatched changed-VI fail-closed behavior
-- public mode narrowing for reviewer surfaces
-- branch-budget defaults and no-diff artifact policy
-- reviewer comment and step-summary emission toggles
-- trust defaults for fork PR blocking or maintainer-dispatched fallback eligibility
+- legacy catalog-matched policy:
+  [`docs/examples/comparevi-history-pr-policy.json`](docs/examples/comparevi-history-pr-policy.json)
+  (`comparevi-history/pr-policy@v1`)
+- standard dynamic changed-VI policy:
+  [`docs/examples/comparevi-history-pr-policy-v2.json`](docs/examples/comparevi-history-pr-policy-v2.json)
+  (`comparevi-history/pr-policy@v2`)
+
+Consumer repos should copy the chosen pattern into `.github/comparevi-history-pr-policy.json` and keep automatic PR
+policy there:
+
+- `comparevi-history/pr-policy@v1`
+  - include/exclude path globs for changed VI discovery
+  - allowed target ids for automatic PR execution
+  - maximum changed-VI count per run
+  - unmatched changed-VI fail-closed behavior
+  - public mode narrowing for reviewer surfaces
+  - branch-budget defaults and no-diff artifact policy
+  - reviewer comment and step-summary emission toggles
+  - trust defaults for fork PR blocking or maintainer-dispatched fallback eligibility
+- `comparevi-history/pr-policy@v2`
+  - `discovery.selectionMode = dynamic-paths`
+  - `includePaths = ["**/*.vi"]`
+  - `excludePaths = []`
+  - `maxChangedViCount = 10`
+  - `overflowBehavior = block`
+  - `execution.publicModes = ["attributes","front-panel","block-diagram"]`
+  - `execution.noisePolicy = include`
+  - `execution.history.sourceBranchRefStrategy = pull-request-base`
+  - `execution.history.keepArtifactsOnNoDiff = true`
+  - `reviewerSurface.emitCommentBody = true`
+  - `reviewerSurface.emitStepSummary = true`
+  - `reviewerSurface.fullSurface = artifact-index`
+  - `trust.forkBehavior = hosted-auto`
 
 ## Trust boundaries
 
@@ -351,18 +413,25 @@ Automatic PR diagnostics consumers should also check in a PR policy using `compa
   maintainer-controlled runners, either on self-hosted Windows with the backend prerequisites already installed or
   through a hosted NI Linux container path wired by a repo-local adapter such as
   `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1`.
-- The action fails closed on `pull_request` and `pull_request_target` events for forked repositories. For public
-  repositories, use comment-gated or maintainer-dispatched workflows for PR diagnostics instead of running the facade
-  directly on fork PR events.
-- Automatic PR diagnostics reusable workflows should only auto-run on same-repo `pull_request` events. Fork and other
-  cross-repository pull requests should block and point reviewers at maintainer-dispatched or comment-gated trusted
-  flows instead of executing the backend automatically.
+- The single-run action still fails closed on `pull_request` and `pull_request_target` events for forked repositories.
+  For public repositories, do not run the action directly on untrusted fork PR events.
+- The legacy catalog-matched PR diagnostics reusable workflow still blocks fork and other cross-repository pull
+  requests unless a maintainer-triggered caller explicitly enables the documented fallback path.
+- The standard dynamic changed-VI PR surface splits execution and publication:
+  - `pull_request` execution runs with read-only permissions, resolves the trusted base checkout plus candidate head
+    checkout, and uploads the full artifact-hosted review surface
+  - `workflow_run` publication runs with `actions: read`, `contents: read`, and `pull-requests: write`, downloads the
+    execution artifact, and updates one sticky PR comment without checking out or executing candidate PR code
+- That split keeps fork PR support compatible with GitHub's read-only `pull_request` token model while preserving a
+  reviewer-facing sticky PR comment through the privileged publisher.
 - Public reviewer surfaces accept only explicit scoped modes: `attributes`, `front-panel`, and `block-diagram`.
   Aggregate aliases such as `default`, `full`, and `all` are not part of the public platform contract.
 - Consumer-ready public PR diagnostics templates are published in `docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md`.
 - Reviewer-facing consumers should use `public-comment-path`, `public-step-summary-path`, `public-run-path`, and
   `shared-evidence-path` instead of rebuilding evidence from raw backend manifests. Automatic PR diagnostics also expose
-  `changed-vi-discovery.json` and `pr-run.json` for aggregate pull-request automation.
+  `changed-vi-discovery.json` and `pr-run.json` for aggregate pull-request automation. The standard dynamic path also
+  uses `selectedTargets[]`, `index.md`, `index.html`, and `comparevi-history/pr-comment-publication@v1` for sticky PR
+  comment publication.
 - `comparevi_repository`, `comparevi_ref`, and `invoke_script_path` are maintainer-only overrides. The action rejects
   them when the PR context is not provably repo-local and trusted, and normal consumer workflows should leave them at
   their defaults.

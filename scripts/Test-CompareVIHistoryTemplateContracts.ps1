@@ -4,11 +4,15 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $manualTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-workflow-dispatch.yml'
 $pullRequestTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics.yml'
+$pullRequestAutoTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics-auto.yml'
+$pullRequestPublishTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics-publish.yml'
 $commentTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-comment-gated.yml'
 $manualExplorationTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-manual-vi-exploration.yml'
 $safeTemplatesPath = Join-Path $repoRoot 'docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md'
 $publishedValidationWorkflowPath = Join-Path $repoRoot '.github/workflows/published-consumer-validation.yml'
 $pullRequestWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics.yml'
+$pullRequestAutoWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics-auto.yml'
+$pullRequestPublishWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics-publish.yml'
 $manualExplorationWorkflowPath = Join-Path $repoRoot '.github/workflows/manual-vi-exploration.yml'
 $smokeWorkflowPath = Join-Path $repoRoot '.github/workflows/smoke.yml'
 $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
@@ -16,6 +20,7 @@ $releaseReadinessScriptPath = Join-Path $repoRoot 'scripts/Resolve-CompareVIHist
 $readmePath = Join-Path $repoRoot 'README.md'
 $exampleTargetsPath = Join-Path $repoRoot 'docs/examples/comparevi-history-consumer-targets.json'
 $examplePrPolicyPath = Join-Path $repoRoot 'docs/examples/comparevi-history-pr-policy.json'
+$examplePrPolicyV2Path = Join-Path $repoRoot 'docs/examples/comparevi-history-pr-policy-v2.json'
 $actionPath = Join-Path $repoRoot 'action.yml'
 
 function Assert-Match {
@@ -83,11 +88,15 @@ function Assert-MatchCount {
 
 $manualTemplate = Get-Content -LiteralPath $manualTemplatePath -Raw
 $pullRequestTemplate = Get-Content -LiteralPath $pullRequestTemplatePath -Raw
+$pullRequestAutoTemplate = Get-Content -LiteralPath $pullRequestAutoTemplatePath -Raw
+$pullRequestPublishTemplate = Get-Content -LiteralPath $pullRequestPublishTemplatePath -Raw
 $commentTemplate = Get-Content -LiteralPath $commentTemplatePath -Raw
 $manualExplorationTemplate = Get-Content -LiteralPath $manualExplorationTemplatePath -Raw
 $safeTemplates = Get-Content -LiteralPath $safeTemplatesPath -Raw
 $publishedValidationWorkflow = Get-Content -LiteralPath $publishedValidationWorkflowPath -Raw
 $pullRequestWorkflow = Get-Content -LiteralPath $pullRequestWorkflowPath -Raw
+$pullRequestAutoWorkflow = Get-Content -LiteralPath $pullRequestAutoWorkflowPath -Raw
+$pullRequestPublishWorkflow = Get-Content -LiteralPath $pullRequestPublishWorkflowPath -Raw
 $manualExplorationWorkflow = Get-Content -LiteralPath $manualExplorationWorkflowPath -Raw
 $smokeWorkflow = Get-Content -LiteralPath $smokeWorkflowPath -Raw
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
@@ -95,6 +104,7 @@ $releaseReadinessScript = Get-Content -LiteralPath $releaseReadinessScriptPath -
 $readme = Get-Content -LiteralPath $readmePath -Raw
 $exampleTargets = Get-Content -LiteralPath $exampleTargetsPath -Raw
 $examplePrPolicy = Get-Content -LiteralPath $examplePrPolicyPath -Raw
+$examplePrPolicyV2 = Get-Content -LiteralPath $examplePrPolicyV2Path -Raw
 $actionYaml = Get-Content -LiteralPath $actionPath -Raw
 
 Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Manual template must use ubuntu-latest.'
@@ -113,6 +123,23 @@ Assert-Match -Content $pullRequestTemplate -Pattern 'pr_policy_path:\s+\.github/
 Assert-Match -Content $pullRequestTemplate -Pattern 'results_dir:\s+tests/results/pr-diagnostics/history' -Message 'Pull request template must keep the standard PR diagnostics results root.'
 Assert-Match -Content $pullRequestTemplate -Pattern 'platform_ref:\s+v1' -Message 'Pull request template must keep platform_ref aligned with the workflow pin.'
 Assert-NotMatch -Content $pullRequestTemplate -Pattern 'invoke_script_path:' -Message 'Pull request template must not own the hosted invoke adapter path.'
+
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'LabVIEW-Community-CI-CD/comparevi-history/\.github/workflows/pull-request-diagnostics-auto\.yml@v1' -Message 'Automatic changed-VI template must call the dynamic reusable workflow surface.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'pr_policy_path:\s+\.github/comparevi-history-pr-policy\.json' -Message 'Automatic changed-VI template must consume the checked-in PR policy.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'results_dir:\s+tests/results/pr-diagnostics/history' -Message 'Automatic changed-VI template must keep the standard PR diagnostics results root.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'platform_ref:\s+v1' -Message 'Automatic changed-VI template must keep platform_ref aligned with the workflow pin.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern '(?m)^\s*pull_request:\s*$' -Message 'Automatic changed-VI template must trigger on pull_request.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'release/\*' -Message 'Automatic changed-VI template must cover release branches.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'feature/\*' -Message 'Automatic changed-VI template must cover feature branches.'
+Assert-Match -Content $pullRequestAutoTemplate -Pattern 'hotfix/\*' -Message 'Automatic changed-VI template must cover hotfix branches.'
+Assert-NotMatch -Content $pullRequestAutoTemplate -Pattern 'target_spec_path:' -Message 'Automatic changed-VI template must not require a target catalog.'
+
+Assert-Match -Content $pullRequestPublishTemplate -Pattern 'LabVIEW-Community-CI-CD/comparevi-history/\.github/workflows/pull-request-diagnostics-publish\.yml@v1' -Message 'Publication template must call the reusable publication workflow surface.'
+Assert-Match -Content $pullRequestPublishTemplate -Pattern '(?m)^\s*workflow_run:\s*$' -Message 'Publication template must trigger on workflow_run.'
+Assert-Match -Content $pullRequestPublishTemplate -Pattern '(?m)^\s*actions:\s+read\s*$' -Message 'Publication template must request actions: read.'
+Assert-Match -Content $pullRequestPublishTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Publication template must request pull-requests: write.'
+Assert-Match -Content $pullRequestPublishTemplate -Pattern 'workflow_run_id:\s+\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Publication template must route workflow_run.id into the reusable workflow.'
+Assert-Match -Content $pullRequestPublishTemplate -Pattern 'artifact_name:\s+comparevi-history-pr-diagnostics-\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Publication template must resolve the deterministic execution artifact name.'
 
 Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*vi_path:\s*$' -Message 'Manual exploration template must accept vi_path.'
 Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*default:\s+develop\s*$' -Message 'Manual exploration template must default the consumer ref to develop.'
@@ -175,6 +202,31 @@ Assert-Match -Content $pullRequestWorkflow -Pattern 'comparevi-history-pr-diagno
 Assert-Match -Content $pullRequestWorkflow -Pattern "steps\.aggregate\.outputs\['final-status'\] == 'failed'" -Message 'Pull request workflow must fail closed only on failed aggregate diagnostics.'
 Assert-NotMatch -Content $pullRequestWorkflow -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Pull request workflow must not request PR comment publication permissions in this slice.'
 
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern '(?m)^\s*workflow_call:\s*$' -Message 'Automatic changed-VI workflow must be reusable.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern '(?m)^\s*pr_policy_path:\s*$' -Message 'Automatic changed-VI workflow must accept pr_policy_path.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Automatic changed-VI workflow must pin the NI Linux image.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern 'Write-CompareVIHistoryAutomaticPullRequestDiscovery\.ps1' -Message 'Automatic changed-VI workflow must use the v2 discovery writer.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern 'Invoke-CompareVIHistoryAutomaticPullRequestDiagnostics\.ps1' -Message 'Automatic changed-VI workflow must use the dynamic execution seam.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern 'Write-CompareVIHistoryAutomaticPullRequestRun\.ps1' -Message 'Automatic changed-VI workflow must write the aggregate v2 PR run receipt.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern 'artifact-name' -Message 'Automatic changed-VI workflow must expose the uploaded artifact name.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern 'index-markdown-path' -Message 'Automatic changed-VI workflow must expose the aggregate markdown index.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern 'index-html-path' -Message 'Automatic changed-VI workflow must expose the aggregate HTML index.'
+Assert-Match -Content $pullRequestAutoWorkflow -Pattern "steps\.aggregate\.outputs\['final-status'\] == 'blocked'" -Message 'Automatic changed-VI workflow must fail closed on blocked aggregate diagnostics.'
+Assert-NotMatch -Content $pullRequestAutoWorkflow -Pattern 'target_spec_path:' -Message 'Automatic changed-VI workflow must not accept a target catalog path.'
+Assert-NotMatch -Content $pullRequestAutoWorkflow -Pattern 'max_pairs:' -Message 'Automatic changed-VI workflow must not surface pair caps in the dynamic path.'
+Assert-NotMatch -Content $pullRequestAutoWorkflow -Pattern 'max_signal_pairs:' -Message 'Automatic changed-VI workflow must not surface signal-pair caps in the dynamic path.'
+
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern '(?m)^\s*workflow_call:\s*$' -Message 'Publication workflow must be reusable.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern '(?m)^\s*workflow_run_id:\s*$' -Message 'Publication workflow must accept workflow_run_id.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern '(?m)^\s*artifact_name:\s*$' -Message 'Publication workflow must accept artifact_name.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern '(?m)^\s*actions:\s+read\s*$' -Message 'Publication workflow must request actions: read.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Publication workflow must request pull-requests: write.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern 'Publish-CompareVIHistoryPullRequestComment\.ps1' -Message 'Publication workflow must use the sticky-comment publisher.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern 'continue-on-error:\s+true' -Message 'Publication workflow must preserve outputs and receipts on publish failures.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern 'comparevi-history-pr-diagnostics-publish-' -Message 'Publication workflow must upload publication receipts.'
+Assert-Match -Content $pullRequestPublishWorkflow -Pattern "steps\.publish\.outcome == 'failure'" -Message 'Publication workflow must fail closed on publish failures after receipts upload.'
+Assert-NotMatch -Content $pullRequestPublishWorkflow -Pattern 'candidate-consumer' -Message 'Publication workflow must not check out or execute candidate PR code.'
+
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*DEFAULT_COMPARE_MODES:\s+attributes,front-panel,block-diagram\s*$' -Message 'Comment-gated template must default to explicit public modes only.'
@@ -197,11 +249,23 @@ Assert-Match -Content $exampleTargets -Pattern '"publicModes"' -Message 'Example
 Assert-Match -Content $examplePrPolicy -Pattern 'comparevi-history/pr-policy@v1' -Message 'Example PR policy file must declare the pr-policy schema.'
 Assert-Match -Content $examplePrPolicy -Pattern '"allowedTargetIds"' -Message 'Example PR policy file must declare target allowlists.'
 Assert-Match -Content $examplePrPolicy -Pattern '"publicModes"' -Message 'Example PR policy file must declare public mode policy.'
+Assert-Match -Content $examplePrPolicyV2 -Pattern 'comparevi-history/pr-policy@v2' -Message 'Example dynamic PR policy file must declare the v2 PR policy schema.'
+Assert-Match -Content $examplePrPolicyV2 -Pattern '"selectionMode"\s*:\s*"dynamic-paths"' -Message 'Example dynamic PR policy file must opt into dynamic-path discovery.'
+Assert-Match -Content $examplePrPolicyV2 -Pattern '"includePaths"\s*:\s*\[\s*"\*\*/\*\.vi"' -Message 'Example dynamic PR policy file must include all changed VI paths by default.'
+Assert-Match -Content $examplePrPolicyV2 -Pattern '"maxChangedViCount"\s*:\s*10' -Message 'Example dynamic PR policy file must fail closed at ten changed VIs.'
+Assert-Match -Content $examplePrPolicyV2 -Pattern '"noisePolicy"\s*:\s*"include"' -Message 'Example dynamic PR policy file must default to unsuppressed noise handling.'
+Assert-Match -Content $examplePrPolicyV2 -Pattern '"forkBehavior"\s*:\s*"hosted-auto"' -Message 'Example dynamic PR policy file must allow hosted automatic fork execution.'
 Assert-Match -Content $safeTemplates -Pattern 'attributes,front-panel,block-diagram' -Message 'Safe template docs must document the explicit public mode contract.'
 Assert-Match -Content $safeTemplates -Pattern '\.github/comparevi-history-targets\.json' -Message 'Safe template docs must document the checked-in target catalog path.'
 Assert-Match -Content $safeTemplates -Pattern '\.github/comparevi-history-pr-policy\.json' -Message 'Safe template docs must document the checked-in PR policy path.'
 Assert-Match -Content $safeTemplates -Pattern 'public-comment-path' -Message 'Safe template docs must point consumers at the action-owned comment output.'
 Assert-Match -Content $safeTemplates -Pattern 'public-step-summary-path' -Message 'Safe template docs must point consumers at the action-owned step summary output.'
+Assert-Match -Content $safeTemplates -Pattern 'comparevi-history-pull-request-diagnostics-auto\.yml' -Message 'Safe template docs must document the dynamic changed-VI execution template.'
+Assert-Match -Content $safeTemplates -Pattern 'comparevi-history-pull-request-diagnostics-publish\.yml' -Message 'Safe template docs must document the workflow_run publication template.'
+Assert-Match -Content $safeTemplates -Pattern 'dynamic-paths' -Message 'Safe template docs must document dynamic-path discovery.'
+Assert-Match -Content $safeTemplates -Pattern 'workflow_run' -Message 'Safe template docs must document workflow_run publication.'
+Assert-Match -Content $safeTemplates -Pattern 'hosted-auto' -Message 'Safe template docs must document hosted automatic fork execution.'
+Assert-Match -Content $safeTemplates -Pattern 'sticky comment' -Message 'Safe template docs must document the sticky-comment publication surface.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern '\.github/comparevi-history-targets\.json' -Message 'Published validation must synthesize a checked-in-style target catalog path.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_spec_path:\s+\.github/comparevi-history-targets\.json' -Message 'Published validation must route target_spec_path into the action.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_id:\s+published-consumer-target' -Message 'Published validation must route a stable target id into the action.'
@@ -231,6 +295,10 @@ Assert-Match -Content $readme -Pattern 'comparevi-history/shared-evidence@v1' -M
 Assert-Match -Content $readme -Pattern 'comparevi-history/changed-vi-discovery@v1' -Message 'README must document the changed-VI discovery contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-policy@v1' -Message 'README must document the PR policy contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-run@v1' -Message 'README must document the aggregate pull-request run contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/changed-vi-discovery@v2' -Message 'README must document the dynamic changed-VI discovery contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/pr-policy@v2' -Message 'README must document the dynamic PR policy contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/pr-run@v2' -Message 'README must document the dynamic aggregate pull-request run contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/pr-comment-publication@v1' -Message 'README must document the PR comment publication contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/revision-catalog@v1' -Message 'README must document the revision catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/exploration-run@v1' -Message 'README must document the exploration run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/evidence-graph@v1' -Message 'README must document the canonical evidence graph contract.'
@@ -259,7 +327,10 @@ Assert-Match -Content $readme -Pattern 'VIP_Pre-Install Custom Action\.vi' -Mess
 Assert-Match -Content $readme -Pattern 'bounded teaser surface' -Message 'README must document that the step summary remains bounded.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-manual-vi-exploration\.yml' -Message 'README must point to the manual exploration wrapper example.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics\.yml' -Message 'README must point to the pull request diagnostics wrapper example.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics-auto\.yml' -Message 'README must point to the automatic changed-VI execution wrapper example.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics-publish\.yml' -Message 'README must point to the PR comment publication wrapper example.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pr-policy\.json' -Message 'README must point to the PR policy example.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pr-policy-v2\.json' -Message 'README must point to the dynamic PR policy example.'
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'public-comment-path' -Message 'README must document the action-owned public comment output.'
 Assert-Match -Content $readme -Pattern 'shared-evidence\.json' -Message 'README must document the shared evidence output.'
@@ -267,6 +338,11 @@ Assert-Match -Content $readme -Pattern 'changed-vi-discovery\.json' -Message 'RE
 Assert-Match -Content $readme -Pattern 'pr-run\.json' -Message 'README must document the aggregate PR run output.'
 Assert-Match -Content $readme -Pattern 'same-repo pull requests can auto-run immediately' -Message 'README must document same-repo automatic PR execution.'
 Assert-Match -Content $readme -Pattern 'cross-repository and fork pull requests fail closed' -Message 'README must document blocked cross-repository PR execution.'
+Assert-Match -Content $readme -Pattern 'dynamic-paths' -Message 'README must document dynamic-path discovery for changed VIs.'
+Assert-Match -Content $readme -Pattern 'sticky PR comment' -Message 'README must document sticky PR comment publication.'
+Assert-Match -Content $readme -Pattern 'workflow_run' -Message 'README must document workflow_run-based publication.'
+Assert-Match -Content $readme -Pattern 'selectedTargets' -Message 'README must document selectedTargets in the v2 discovery receipt.'
+Assert-Match -Content $readme -Pattern 'maxChangedViCount = 10' -Message 'README must document the ten-VI overflow contract for the dynamic PR surface.'
 Assert-Match -Content $readme -Pattern 'attributes`, `front-panel`, and `block-diagram' -Message 'README must document explicit public modes only.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/issues/24' -Message 'README must point at the comparevi-history platform-boundary epic.'
 Assert-Match -Content $readme -Pattern 'merge a\s+prep PR first' -Message 'README must explain the protected-main release prep requirement.'

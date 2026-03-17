@@ -1,0 +1,133 @@
+name: pull-request-diagnostics-publish
+
+on:
+  workflow_call:
+    inputs:
+      consumer_repository:
+        description: Consumer repository that owns the pull request receiving the sticky comment.
+        required: false
+        type: string
+      workflow_run_id:
+        description: Completed execution workflow run id whose artifact contains pr-run.json and pr-comment.md.
+        required: true
+        type: string
+      artifact_name:
+        description: Optional execution artifact name override.
+        required: false
+        default: ''
+        type: string
+      results_dir:
+        description: Workflow-owned results root for publication receipts.
+        required: false
+        default: tests/results/pr-diagnostics/publish
+        type: string
+      platform_ref:
+        description: comparevi-history ref to checkout for the platform scripts. Keep aligned with the workflow ref.
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pull-request-diagnostics-publish-${{ github.repository }}-${{ inputs.workflow_run_id }}
+  cancel-in-progress: true
+
+jobs:
+  pull-request-diagnostics-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      publication-receipt-path: ${{ steps.publish.outputs['publication-receipt-path'] }}
+      publication-status: ${{ steps.publish.outputs['publication-status'] }}
+      publication-reason: ${{ steps.publish.outputs['publication-reason'] }}
+      comment-id: ${{ steps.publish.outputs['comment-id'] }}
+      comment-url: ${{ steps.publish.outputs['comment-url'] }}
+      artifact-name: ${{ steps.publish.outputs['artifact-name'] }}
+    steps:
+      - name: Resolve workflow defaults
+        id: defaults
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $consumerRepository = '${{ inputs.consumer_repository }}'
+          if ([string]::IsNullOrWhiteSpace($consumerRepository)) {
+            $consumerRepository = $env:GITHUB_REPOSITORY
+          }
+
+          $platformRef = '${{ inputs.platform_ref }}'
+          if ([string]::IsNullOrWhiteSpace($platformRef)) {
+            if ($env:GITHUB_REPOSITORY -eq 'LabVIEW-Community-CI-CD/comparevi-history') {
+              $platformRef = $env:GITHUB_SHA
+            } else {
+              $platformRef = 'v1'
+            }
+          }
+
+          @(
+            "consumer_repository=$consumerRepository"
+            "platform_ref=$platformRef"
+          ) | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Resolve workflow results root
+        id: results_root
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $resultsRoot = if ([System.IO.Path]::IsPathRooted('${{ inputs.results_dir }}')) {
+            [System.IO.Path]::GetFullPath('${{ inputs.results_dir }}')
+          } else {
+            [System.IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE '${{ inputs.results_dir }}'))
+          }
+
+          New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
+          "results-root=$resultsRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Checkout comparevi-history platform repo
+        uses: actions/checkout@v5
+        with:
+          repository: LabVIEW-Community-CI-CD/comparevi-history
+          ref: ${{ steps.defaults.outputs.platform_ref }}
+          path: platform
+          fetch-depth: 1
+
+      - name: Publish sticky PR comment
+        id: publish
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Publish-CompareVIHistoryPullRequestComment.ps1" `
+            -Repository '${{ steps.defaults.outputs.consumer_repository }}' `
+            -WorkflowRunId '${{ inputs.workflow_run_id }}' `
+            -ArtifactName '${{ inputs.artifact_name }}' `
+            -ResultsDir '${{ steps.results_root.outputs['results-root'] }}' `
+            -GitHubToken $env:GITHUB_TOKEN `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+      - name: Upload publication receipts
+        if: ${{ always() && steps.results_root.outputs['results-root'] != '' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-pr-diagnostics-publish-${{ inputs.workflow_run_id }}
+          path: ${{ steps.results_root.outputs['results-root'] }}/**
+          if-no-files-found: error
+
+      - name: Fail closed on publication failure
+        if: ${{ always() && (steps.publish.outcome == 'failure' || steps.publish.outputs['publication-status'] == 'failed') }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          throw "comparevi-history PR diagnostics publication failed closed with status '${{ steps.publish.outputs['publication-status'] }}' and reason '${{ steps.publish.outputs['publication-reason'] }}'. Review the uploaded publication receipts."

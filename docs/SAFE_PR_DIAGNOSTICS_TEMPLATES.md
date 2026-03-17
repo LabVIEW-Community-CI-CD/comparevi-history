@@ -8,14 +8,20 @@ of repo-local inline comment renderers.
 
 - Maintainer-dispatched template:
   [comparevi-history-workflow-dispatch.yml](examples/comparevi-history-workflow-dispatch.yml)
-- Automatic PR discovery template:
+- Legacy automatic PR discovery template:
   [comparevi-history-pull-request-diagnostics.yml](examples/comparevi-history-pull-request-diagnostics.yml)
+- Automatic changed-VI execution template:
+  [comparevi-history-pull-request-diagnostics-auto.yml](examples/comparevi-history-pull-request-diagnostics-auto.yml)
+- Automatic changed-VI publication template:
+  [comparevi-history-pull-request-diagnostics-publish.yml](examples/comparevi-history-pull-request-diagnostics-publish.yml)
 - Comment-gated template:
   [comparevi-history-comment-gated.yml](examples/comparevi-history-comment-gated.yml)
 - Example consumer target catalog source:
   [comparevi-history-consumer-targets.json](examples/comparevi-history-consumer-targets.json)
-- Example consumer PR policy source:
+- Example legacy consumer PR policy source:
   [comparevi-history-pr-policy.json](examples/comparevi-history-pr-policy.json)
+- Example dynamic consumer PR policy source:
+  [comparevi-history-pr-policy-v2.json](examples/comparevi-history-pr-policy-v2.json)
 
 ## Public Mode Contract
 
@@ -52,9 +58,14 @@ Consumer repositories should not contain:
 ## Use These Patterns
 
 - Use the maintainer-dispatched template when a maintainer wants to inspect a specific pull request on demand.
-- Use the automatic PR discovery template when you want same-repo pull requests to discover changed `.vi` files and run
-  `comparevi-history` automatically for catalog-matched targets without copying orchestration logic into the consumer
-  repository.
+- Use the automatic changed-VI execution template when you want `pull_request` runs to discover changed `.vi` files and
+  run `comparevi-history` automatically for every policy-eligible changed path without copying orchestration logic into
+  the consumer repository.
+- The standard dynamic PR policy uses `discovery.selectionMode = dynamic-paths`.
+- Pair that execution template with the automatic changed-VI publication template so a privileged `workflow_run`
+  publisher can create or update one sticky comment from the prepared `pr-comment.md` artifact.
+- Use the legacy automatic PR discovery template when you still want catalog-matched target ids to gate the automatic PR
+  surface.
 - Use the comment-gated template when you want a slash command such as
   `/comparevi-history vip-post-install-custom-action --modes attributes,front-panel,block-diagram`
   to trigger diagnostics from a trusted maintainer comment.
@@ -68,21 +79,24 @@ Consumer repositories should not contain:
   repository-relative VI paths.
 - Downstream forks such as `svelderrainruiz/labview-icon-editor` should keep the workflow files aligned to upstream
   `develop` unless they intentionally diverge on diagnostics policy.
-- The published templates are fork-safe by design: they resolve the pull request head repository and head SHA from the
-  GitHub API, then run `comparevi-history` against that exact checkout while keeping the public reviewer logic in the
-  pinned action.
+- The published templates are fork-safe by design:
+  - the automatic changed-VI execution template resolves the pull request head repository and head SHA from the GitHub
+    API, then runs `comparevi-history` against that exact checkout with only read-only `pull_request` permissions
+  - the automatic changed-VI publication template runs later on `workflow_run`, downloads the prepared artifact, and
+    updates one sticky comment without checking out or executing candidate PR code
+  - the legacy catalog-matched template keeps its stricter fork guard and remains opt-in for repos that still want that
+    narrower trust posture
 
 ## Do Not Use These Patterns
 
-- Do not run `comparevi-history` directly from `pull_request` on public fork PRs. The action intentionally fails closed
-  there because the event does not prove a trusted runner or trusted refs.
-- Do not expect the automatic PR discovery template to execute on fork or other cross-repository PR heads. In this
-  slice it should produce a blocked discovery receipt and leave trusted execution to the maintainer-dispatched or
-  comment-gated paths. The reusable workflow only permits that fallback when the checked-in PR policy allows
-  `trust.forkBehavior = maintainer-dispatch` and the trusted caller explicitly passes `allow_trusted_fork_execution:
-  true`.
+- Do not run the single-run `comparevi-history` action directly from `pull_request` on public fork PRs. The action
+  intentionally fails closed there because the event does not prove a trusted runner or trusted refs.
 - Do not use `pull_request_target` to run the action automatically against fork content with write-scoped tokens or
   secrets. That crosses the trust boundary the guard is designed to enforce.
+- Do not let the `workflow_run` publisher check out or execute candidate PR code. Its only job is to download the
+  prepared artifact and update the sticky comment.
+- Do not expect the legacy catalog-matched automatic PR discovery template to execute on fork or other cross-repository
+  PR heads unless the documented maintainer-dispatch fallback is used.
 - Do not pin consumer workflows to branch refs such as `@main`, `@develop`, or unpublished SHAs. Use released facade
   refs only.
 - Do not hide the mode list or reviewer renderer inside local wrapper scripts. Public PR diagnostics should resolve the
@@ -93,25 +107,38 @@ Consumer repositories should not contain:
 
 - The maintainer-dispatched template uses `LabVIEW-Community-CI-CD/comparevi-history@v1`. That is the right default
   when you want compatible updates after each reviewed facade release.
-- The automatic PR discovery template uses the reusable workflow surface
+- The legacy automatic PR discovery template uses the reusable workflow surface
   `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics.yml@v1`. That keeps consumer
   repositories thin and leaves changed-VI discovery, trusted base/head orchestration, and aggregate receipt generation
   inside the platform layer.
+- The automatic changed-VI execution template uses the reusable workflow surface
+  `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-auto.yml@v1`. That is the
+  standard public PR surface for repos that want dynamic-path changed-VI execution.
+- The automatic changed-VI publication template uses the reusable workflow surface
+  `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-publish.yml@v1`. It exists so
+  `workflow_run` can publish the sticky comment with `actions: read`, `contents: read`, and `pull-requests: write`
+  without widening the execution workflow token.
 - The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.8`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
   immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
-- The automatic PR discovery template keeps the target catalog and hosted NI Linux adapter on the pull request base
-  checkout while executing against the candidate head checkout. That is the minimum safe split that keeps repo policy
-  trusted without inventing repo-local orchestration code.
-- Both templates resolve the PR head repository and head SHA from the GitHub API, then check out that exact SHA with
-  `fetch-depth: 0` so the backend can traverse commit history deterministically.
-- Both templates keep maintainer-only override inputs unset. That aligns with the trust guard and keeps consumers on the
-  normal released bundle path.
-- Both templates pre-pull `nationalinstruments/labview:2026q1-linux` and route execution through
+- The automatic changed-VI execution template keeps the checked-in PR policy and hosted NI Linux adapter on the pull
+  request base checkout while executing against the candidate head checkout. That is the minimum safe split that keeps
+  repo policy trusted without inventing repo-local orchestration code.
+- Both automatic templates resolve the PR head repository and head SHA from the GitHub API, then check out that exact
+  SHA with `fetch-depth: 0` so the backend can traverse commit history deterministically.
+- Both automatic templates keep maintainer-only override inputs unset. That aligns with the trust guard and keeps
+  consumers on the normal released bundle path.
+- Both automatic templates pre-pull `nationalinstruments/labview:2026q1-linux` and route execution through
   `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1` so consumers use the hosted NI Linux contract instead of a
   repo-specific self-hosted Windows assumption.
-- Both templates expect the consumer repo to define target ids in `.github/comparevi-history-targets.json`.
-- The automatic PR discovery template also expects `.github/comparevi-history-pr-policy.json` when a repo wants changed-VI filters, target allowlists, branch-budget defaults, or reviewer-surface toggles under source control.
+- The legacy automatic PR discovery template and the comment-gated template expect the consumer repo to define target ids
+  in `.github/comparevi-history-targets.json`.
+- The automatic changed-VI execution template expects `.github/comparevi-history-pr-policy.json` using
+  `comparevi-history/pr-policy@v2` when a repo wants dynamic-path discovery, `hosted-auto` fork execution, and the
+  standard `artifact-index` reviewer surface under source control.
+- The automatic changed-VI publication template expects the execution artifact to contain `pr-run.json` and
+  `pr-comment.md`, then updates one sticky comment identified by the stable marker
+  `<!-- comparevi-history:pull-request-diagnostics -->`.
 - The action owns reviewer-facing rendering. Consumers should publish PR comments from `public-comment-path` and append
   `public-step-summary-path` instead of rebuilding markdown inline.
 - The comment-gated template writes the action-owned step summary first, then attempts to publish the PR comment. If the
@@ -124,11 +151,13 @@ Consumer repositories should not contain:
 
 ## Recommended Adoption
 
-1. Check in `.github/comparevi-history-targets.json` and `.github/comparevi-history-pr-policy.json` first.
+1. Check in `.github/comparevi-history-pr-policy.json` first.
 2. Start with the maintainer-dispatched template when your project is new to VI History diagnostics.
-3. Add the automatic PR discovery template when you want same-repo pull requests to run automatically from the checked-
-   in target catalog.
+3. Add the automatic changed-VI execution template plus the `workflow_run` publication template when you want pull
+   requests to run automatically for every changed `.vi`.
 4. Keep the default explicit public mode bundle unless you have a documented reason to narrow it.
-5. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
+5. Add the legacy catalog-matched automatic PR template only if your repo still needs target-id allowlists for
+   automatic PR execution.
+6. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
-6. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
+7. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.

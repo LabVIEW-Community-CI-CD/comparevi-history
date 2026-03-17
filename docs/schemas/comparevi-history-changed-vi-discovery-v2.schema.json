@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-changed-vi-discovery-v2.schema.json",
+  "title": "comparevi-history changed VI discovery receipt v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repository",
+    "eventName",
+    "prPolicy",
+    "executionContext",
+    "pullRequest",
+    "changedViFiles",
+    "excludedViFiles",
+    "selectedTargets",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/changed-vi-discovery@v2"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "eventName": {
+      "const": "pull_request"
+    },
+    "prPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "applied",
+        "discovery",
+        "execution",
+        "reviewerSurface",
+        "trust"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/pr-policy@v2"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "discovery": {
+          "type": "object"
+        },
+        "execution": {
+          "type": "object"
+        },
+        "reviewerSurface": {
+          "type": "object"
+        },
+        "trust": {
+          "type": "object"
+        }
+      }
+    },
+    "executionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionMode",
+        "forkBehavior",
+        "fullSurface"
+      ],
+      "properties": {
+        "selectionMode": {
+          "const": "dynamic-paths"
+        },
+        "forkBehavior": {
+          "const": "hosted-auto"
+        },
+        "fullSurface": {
+          "const": "artifact-index"
+        }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "baseRepository",
+        "baseRef",
+        "baseSha",
+        "headRepository",
+        "headRef",
+        "headSha",
+        "isFork",
+        "changedFileCount"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "htmlUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isFork": {
+          "type": "boolean"
+        },
+        "changedFileCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "changedViFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "currentPath"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "excludedViFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "currentPath",
+          "exclusionReason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exclusionReason": {
+            "type": "string",
+            "enum": [
+              "not-included-by-pr-policy",
+              "excluded-by-pr-policy",
+              "deleted-vi-not-executable",
+              "missing-current-target-path"
+            ]
+          }
+        }
+      }
+    },
+    "selectedTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "targetId",
+          "targetSource",
+          "targetPath",
+          "requestedModes",
+          "requestedModeSource",
+          "history",
+          "keepArtifactsOnNoDiff",
+          "currentPath",
+          "changeStatus"
+        ],
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetSource": {
+            "const": "dynamic-path"
+          },
+          "targetPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestedModes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "attributes",
+                "front-panel",
+                "block-diagram"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "requestedModeSource": {
+            "const": "pr-policy"
+          },
+          "history": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "branchBudget"
+            ],
+            "properties": {
+              "branchBudget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourceBranchRef",
+                  "maxCommitCount",
+                  "source"
+                ],
+                "properties": {
+                  "sourceBranchRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "maxCommitCount": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  },
+                  "source": {
+                    "const": "pull-request-base"
+                  }
+                }
+              }
+            }
+          },
+          "keepArtifactsOnNoDiff": {
+            "type": "boolean"
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changeStatus": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionMode",
+        "executionStatus",
+        "executionReason",
+        "changedViCount",
+        "eligibleChangedViCount",
+        "excludedViCount",
+        "selectedTargetCount",
+        "overflowBehavior",
+        "overflowed",
+        "overflowChangedViCount"
+      ],
+      "properties": {
+        "selectionMode": {
+          "const": "dynamic-paths"
+        },
+        "executionStatus": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "skipped",
+            "blocked"
+          ]
+        },
+        "executionReason": {
+          "type": "string",
+          "enum": [
+            "selected-targets",
+            "pr-policy-not-found",
+            "pr-files-api-limit-exceeded",
+            "max-changed-vi-count-exceeded",
+            "no-vi-files-changed",
+            "no-policy-eligible-vi-files",
+            "no-executable-vi-targets"
+          ]
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eligibleChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excludedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overflowBehavior": {
+          "const": "block"
+        },
+        "overflowed": {
+          "type": "boolean"
+        },
+        "overflowChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
