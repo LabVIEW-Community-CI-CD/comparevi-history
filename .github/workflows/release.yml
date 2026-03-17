@@ -550,7 +550,7 @@ jobs:
       consumer_repository: ${{ needs.validate.outputs.consumer_repository }}
       consumer_ref: ${{ needs.validate.outputs.consumer_ref }}
       target_path: Tooling/deployment/VIP_Post-Install Custom Action.vi
-      compare_modes: default,attributes,front-panel,block-diagram
+      compare_modes: attributes,front-panel,block-diagram
       max_pairs: '5'
       max_signal_pairs: '5'
       latest_immutable_tag: ${{ needs.validate.outputs.immutable_tag }}

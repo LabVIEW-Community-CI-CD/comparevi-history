@@ -13,6 +13,7 @@ $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
 $releaseReadinessScriptPath = Join-Path $repoRoot 'scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1'
 $readmePath = Join-Path $repoRoot 'README.md'
 $exampleTargetsPath = Join-Path $repoRoot 'docs/examples/comparevi-history-consumer-targets.json'
+$actionPath = Join-Path $repoRoot 'action.yml'
 
 function Assert-Match {
   param(
@@ -70,6 +71,7 @@ $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
 $releaseReadinessScript = Get-Content -LiteralPath $releaseReadinessScriptPath -Raw
 $readme = Get-Content -LiteralPath $readmePath -Raw
 $exampleTargets = Get-Content -LiteralPath $exampleTargetsPath -Raw
+$actionYaml = Get-Content -LiteralPath $actionPath -Raw
 
 Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Manual template must use ubuntu-latest.'
 Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Manual template must pin the NI Linux image.'
@@ -125,6 +127,8 @@ Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_id:\s+publis
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'history-summary-json' -Message 'Published validation must consume the action-owned history summary output.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'public-comment-path' -Message 'Published validation must consume the action-owned public comment output.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'public-step-summary-path' -Message 'Published validation must consume the action-owned public step summary output.'
+Assert-Match -Content $publishedValidationWorkflow -Pattern '(?m)^\s*default:\s+attributes,front-panel,block-diagram\s*$' -Message 'Published validation must default to explicit public modes only.'
+Assert-NotMatch -Content $publishedValidationWorkflow -Pattern '(?m)^\s*default:\s+default,attributes,front-panel,block-diagram\s*$' -Message 'Published validation must not default to aggregate aliases for public modes.'
 Assert-Match -Content $smokeWorkflow -Pattern 'comparevi-backend-ref\.txt' -Message 'Smoke workflow must resolve the repo-pinned backend release tag.'
 Assert-Match -Content $releaseWorkflow -Pattern 'comparevi-backend-ref\.txt' -Message 'Release workflow must read comparevi-backend-ref.txt.'
 Assert-Match -Content $releaseWorkflow -Pattern "tooling-source'\] -ne 'bundle'" -Message 'Release workflow must fail closed when the resolved backend is not a bundle release.'
@@ -132,8 +136,11 @@ Assert-Match -Content $releaseWorkflow -Pattern 'scripts/Resolve-CompareVIHistor
 Assert-Match -Content $releaseWorkflow -Pattern 'if \[ "\$current_head_sha" != "\$current_main_sha" \]; then' -Message 'Release workflow must verify publish still targets the current origin/main tip before tagging.'
 Assert-Match -Content $releaseWorkflow -Pattern 'Published comment-gated template already points at' -Message 'Release notes must mention the published comment-gated template pin.'
 Assert-Match -Content $releaseWorkflow -Pattern 'git push origin "refs/tags/\$IMMUTABLE_TAG"' -Message 'Release workflow must push only the immutable tag during publish.'
+Assert-Match -Content $releaseWorkflow -Pattern '(?s)uses:\s+\./\.github/workflows/published-consumer-validation\.yml.*?compare_modes:\s+attributes,front-panel,block-diagram' -Message 'Release workflow must invoke published-consumer validation with explicit public modes only.'
+Assert-NotMatch -Content $releaseWorkflow -Pattern '(?s)uses:\s+\./\.github/workflows/published-consumer-validation\.yml.*?compare_modes:\s+default,attributes,front-panel,block-diagram' -Message 'Release workflow must not invoke published-consumer validation with aggregate aliases.'
 Assert-NotMatch -Content $releaseWorkflow -Pattern 'git push --atomic origin HEAD:main' -Message 'Release workflow must not push a fresh commit directly to protected main during publish.'
 Assert-Match -Content $releaseReadinessScript -Pattern 'Sync-CompareVIHistoryPublishedTemplates\.ps1' -Message 'Release readiness helper must derive desired publish content through the published template sync script.'
+Assert-Match -Content $actionYaml -Pattern '(?s)id:\s+public_run.*if:\s+\$\{\{\s*always\(\)\s*&&\s*steps\.request\.outcome == ''success''\s*&&\s*steps\.request\.outputs\[''request-path''\]\s*!=\s*''''\s*\}\}' -Message 'Action public-run writer must only run when the request receipt exists.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/consumer-targets@v1' -Message 'README must document the target catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/public-run@v1' -Message 'README must document the public run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/revision-catalog@v1' -Message 'README must document the revision catalog contract.'
