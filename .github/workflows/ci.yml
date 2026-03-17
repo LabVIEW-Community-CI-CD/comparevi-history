@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
           ./actionlint -color
           ./actionlint -color \
+            docs/examples/comparevi-history-pull-request-diagnostics.yml \
             docs/examples/comparevi-history-manual-vi-exploration.yml \
             docs/examples/comparevi-history-workflow-dispatch.yml \
             docs/examples/comparevi-history-comment-gated.yml
@@ -104,17 +105,20 @@ jobs:
             'scripts/Resolve-CompareVIHistoryPublishedRefs.ps1',
             'scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Resolve-CompareVIHistoryRequest.ps1',
+            'scripts/Write-CompareVIHistoryPullRequestDiscovery.ps1',
             'scripts/Write-CompareVIHistoryRevisionCatalog.ps1',
             'scripts/Write-CompareVIHistoryChunkPlan.ps1',
             'scripts/Invoke-CompareVIHistoryChunkExecution.ps1',
             'scripts/Write-CompareVIHistoryExplorationBundle.ps1',
             'scripts/Write-CompareVIHistoryExplorationRun.ps1',
             'scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1',
+            'scripts/Invoke-CompareVIHistoryPullRequestDiagnostics.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
             'scripts/Format-CompareVIHistoryModeSummary.ps1',
             'scripts/Write-CompareVIHistorySharedEvidence.ps1',
             'scripts/Write-CompareVIHistoryCorpusIndex.ps1',
             'scripts/Write-CompareVIHistoryDownstreamProcessorSummary.ps1',
+            'scripts/Write-CompareVIHistoryPullRequestRun.ps1',
             'scripts/Write-CompareVIHistoryPublicRun.ps1',
             'scripts/Assert-CompareVIHistoryPublishedRun.ps1',
             'scripts/Sync-CompareVIHistoryPublishedTemplates.ps1',
@@ -181,6 +185,9 @@ jobs:
             'scripts/Test-CompareVIHistoryTrust.ps1',
             'scripts/Test-CompareVIHistoryPublishedRefs.ps1',
             'scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1',
+            'scripts/Test-CompareVIHistoryPullRequestDiscovery.ps1',
+            'scripts/Test-CompareVIHistoryPullRequestDiagnostics.ps1',
+            'scripts/Test-CompareVIHistoryPullRequestRun.ps1',
             'scripts/Test-CompareVIHistoryRequest.ps1',
             'scripts/Test-CompareVIHistoryRevisionCatalog.ps1',
             'scripts/Test-CompareVIHistoryChunkPlan.ps1',

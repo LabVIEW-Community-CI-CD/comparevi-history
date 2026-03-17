@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-pr-run-v1.schema.json",
+  "title": "comparevi-history pull request run receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "pullRequest",
+    "discovery",
+    "outputs",
+    "summary",
+    "targets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/pr-run@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "baseRepository",
+        "baseRef",
+        "baseSha",
+        "headRepository",
+        "headRef",
+        "headSha",
+        "isFork"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "htmlUrl": {
+          "type": ["string", "null"]
+        },
+        "baseRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isFork": {
+          "type": "boolean"
+        }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "path", "status", "reason", "changedViCount", "matchedTargetCount"],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/changed-vi-discovery@v1"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ready", "skipped", "blocked"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matchedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultsDir", "prRunPath", "publicCommentPath", "publicStepSummaryPath"],
+      "properties": {
+        "resultsDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prRunPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicCommentPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicStepSummaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetRunsManifestPath": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finalStatus",
+        "finalReason",
+        "changedViCount",
+        "matchedTargetCount",
+        "executedTargetCount",
+        "failedTargetCount",
+        "totalProcessed",
+        "totalDiffs"
+      ],
+      "properties": {
+        "finalStatus": {
+          "type": "string",
+          "enum": ["succeeded", "skipped", "blocked", "failed"]
+        },
+        "finalReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matchedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalProcessed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["targetId", "targetPath", "finalStatus", "finalReason"],
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "matchKind": {
+            "type": ["string", "null"]
+          },
+          "finalStatus": {
+            "type": "string",
+            "enum": ["succeeded", "failed", "cancelled", "unknown"]
+          },
+          "finalReason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "publicRunPath": {
+            "type": ["string", "null"]
+          },
+          "sharedEvidencePath": {
+            "type": ["string", "null"]
+          },
+          "totalProcessed": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "totalDiffs": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

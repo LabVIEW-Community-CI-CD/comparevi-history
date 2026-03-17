@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-changed-vi-discovery-v1.schema.json",
+  "title": "comparevi-history changed VI discovery receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repository",
+    "eventName",
+    "targetCatalog",
+    "pullRequest",
+    "changedViFiles",
+    "matchedTargets",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/changed-vi-discovery@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "eventName": {
+      "type": "string",
+      "enum": ["pull_request", "pull_request_target"]
+    },
+    "targetCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "path"],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/consumer-targets@v1"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "baseRepository",
+        "baseRef",
+        "baseSha",
+        "headRepository",
+        "headRef",
+        "headSha",
+        "isFork",
+        "changedFileCount"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "htmlUrl": {
+          "type": ["string", "null"]
+        },
+        "baseRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isFork": {
+          "type": "boolean"
+        },
+        "changedFileCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "changedViFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "currentPath"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "matchedTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["targetId", "targetPath", "matchKind", "changeStatus"],
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "publicModes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "matchKind": {
+            "type": "string",
+            "enum": ["current-path", "previous-path"]
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": ["string", "null"]
+          },
+          "changeStatus": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionStatus", "executionReason", "changedViCount", "matchedTargetCount"],
+      "properties": {
+        "executionStatus": {
+          "type": "string",
+          "enum": ["ready", "skipped", "blocked"]
+        },
+        "executionReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matchedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
