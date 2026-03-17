@@ -175,7 +175,8 @@ $outputs | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
   }
 
   $historySummary = Get-Content -LiteralPath $receipt.outputs.historySummaryJson -Raw | ConvertFrom-Json -Depth 8
-  if (-not $historySummary.invokeScriptPath.EndsWith('Tooling\Invoke-CompareVIHistoryHostedNILinux.ps1')) {
+  $normalizedInvokeScriptPath = ([string]$historySummary.invokeScriptPath) -replace '\\', '/'
+  if (-not $normalizedInvokeScriptPath.EndsWith('Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1')) {
     throw 'Default consumer adapter path was not forwarded to the backend.'
   }
 
