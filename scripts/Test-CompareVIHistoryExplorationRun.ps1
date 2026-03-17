@@ -97,6 +97,12 @@ try {
   if (-not (Test-Path -LiteralPath $explorationRun.outputs.timelineHtml -PathType Leaf)) {
     throw 'Timeline HTML was not written for the planned exploration run.'
   }
+  if (-not (Test-Path -LiteralPath $explorationRun.outputs.indexMd -PathType Leaf)) {
+    throw 'Index markdown was not written for the planned exploration run.'
+  }
+  if (-not (Test-Path -LiteralPath $explorationRun.outputs.indexHtml -PathType Leaf)) {
+    throw 'Index HTML was not written for the planned exploration run.'
+  }
   if (-not (Test-Path -LiteralPath (Join-Path $resultsDir 'exploration-run.json') -PathType Leaf)) {
     throw 'Exploration run file was not written.'
   }
@@ -106,6 +112,8 @@ try {
       'exploration-run-path=',
       'exploration-status=planned',
       'exploration-reason=chunk-plan-ready',
+      'index-md=',
+      'index-html=',
       'timeline-md=',
       'timeline-html=',
       'bundle-path='
@@ -122,8 +130,8 @@ try {
 
   $firstReceiptPath = [string]$chunkPlan.chunks[0].outputs.receiptPath
   $secondReceiptPath = [string]$chunkPlan.chunks[1].outputs.receiptPath
-  $firstHistoryDir = Join-Path $tempRoot 'chunk-1-history'
-  $secondHistoryDir = Join-Path $tempRoot 'chunk-2-history'
+  $firstHistoryDir = Join-Path ([string]$chunkPlan.chunks[0].outputs.chunkRoot) 'history'
+  $secondHistoryDir = Join-Path ([string]$chunkPlan.chunks[1].outputs.chunkRoot) 'history'
   New-Item -ItemType Directory -Path $firstHistoryDir -Force | Out-Null
   New-Item -ItemType Directory -Path $secondHistoryDir -Force | Out-Null
   $firstReportMd = Join-Path $firstHistoryDir 'history-report.md'
@@ -244,6 +252,13 @@ try {
   if ($timelineMarkdown -notmatch 'Failure: `Forced compare failure\.?`') {
     throw 'Timeline markdown must include the failed chunk message.'
   }
+  $indexMarkdown = Get-Content -LiteralPath $executedRun.outputs.indexMd -Raw
+  if ($indexMarkdown -notmatch 'comparevi-history manual exploration index') {
+    throw 'Index markdown must include the index heading.'
+  }
+  if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
+    throw 'Index markdown must surface chunk history report navigation.'
+  }
 
   $secondReceipt.status = 'succeeded'
   $secondReceipt.summary.executedModes = @('attributes', 'front-panel', 'block-diagram')
@@ -279,6 +294,10 @@ try {
   }
   if ($bundledRun.publication.bundleStatus -ne 'succeeded') {
     throw 'Bundled exploration run publication status mismatch.'
+  }
+  $bundledIndexMarkdown = Get-Content -LiteralPath $bundledRun.outputs.indexMd -Raw
+  if ($bundledIndexMarkdown -notmatch [regex]::Escape('manual-vi-exploration-bundle.zip')) {
+    throw 'Bundled exploration index must link the published bundle.'
   }
 
   $bundleFailureOutputPath = Join-Path $tempRoot 'exploration-run-bundle-failure-output.txt'

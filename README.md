@@ -131,6 +131,8 @@ Manual exploration workflows emit additive planning receipts alongside the actio
 - `chunk-plan.json`
 - `chunk-receipts/`
 - `exploration-run.json` (`comparevi-history/exploration-run@v1`)
+- `index.md`
+- `index.html`
 - `timeline.md`
 - `timeline.html`
 - `manual-vi-exploration-bundle.zip`
@@ -151,7 +153,8 @@ The current execution slice stays additive on top of the discovery-first baselin
 - the platform plans deterministic chunk receipts/manifests
 - the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
-- the platform writes `timeline.md` and `timeline.html` as the first operator-facing navigation surfaces
+- the platform writes `index.md` and `index.html` as the first operator-facing navigation surfaces
+- the platform also writes `timeline.md` and `timeline.html` for the deeper chunk-by-chunk timeline view
 - the platform packages the timeline, receipts, and per-chunk reports into one deterministic bundle
 - existing curated `target_spec_path` plus `target_id` workflows remain unchanged
 

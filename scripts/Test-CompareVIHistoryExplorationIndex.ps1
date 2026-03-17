@@ -1,0 +1,127 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$catalogScriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryRevisionCatalog.ps1'
+$chunkPlanScriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryChunkPlan.ps1'
+$explorationRunScriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryExplorationRun.ps1'
+$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("comparevi-history-exploration-index-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+
+function Invoke-Git {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositoryRoot,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+
+  $output = & git -C $RepositoryRoot @Arguments 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    throw ([string]::Join([Environment]::NewLine, @($output)))
+  }
+
+  return [string]::Join([Environment]::NewLine, @($output))
+}
+
+try {
+  $repoRoot = Join-Path $tempRoot 'consumer'
+  New-Item -ItemType Directory -Path $repoRoot -Force | Out-Null
+
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('init', '--initial-branch=main') | Out-Null
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('config', 'user.name', 'comparevi-history-test') | Out-Null
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('config', 'user.email', 'comparevi-history-test@example.com') | Out-Null
+
+  $targetDir = Join-Path $repoRoot 'Tooling' 'deployment'
+  New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+
+  foreach ($ordinal in 1..3) {
+    "v$ordinal" | Set-Content -LiteralPath (Join-Path $targetDir 'Target.vi') -Encoding utf8
+    Invoke-Git -RepositoryRoot $repoRoot -Arguments @('add', 'Tooling/deployment/Target.vi') | Out-Null
+    Invoke-Git -RepositoryRoot $repoRoot -Arguments @('commit', '-m', "Revision $ordinal") | Out-Null
+  }
+
+  $resultsDir = Join-Path $tempRoot 'results'
+  & $catalogScriptPath `
+    -RepositoryRoot $repoRoot `
+    -TargetPath 'Tooling/deployment/Target.vi' `
+    -SelectedRef 'HEAD' `
+    -ConsumerRepository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+    -ConsumerRef 'develop' `
+    -ResultsDir $resultsDir | Out-Null
+
+  $chunkPlanJson = & $chunkPlanScriptPath `
+    -RevisionCatalogPath (Join-Path $resultsDir 'revision-catalog.json') `
+    -ChunkPairLimit 2 `
+    -ResultsDir $resultsDir
+  $chunkPlan = $chunkPlanJson | ConvertFrom-Json -Depth 64
+  $chunk = $chunkPlan.chunks[0]
+
+  $chunkRoot = [string]$chunk.outputs.chunkRoot
+  $historyDir = Join-Path $chunkRoot 'history'
+  New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
+  '# history report' | Set-Content -LiteralPath (Join-Path $historyDir 'history-report.md') -Encoding utf8
+  '<html><body>history report</body></html>' | Set-Content -LiteralPath (Join-Path $historyDir 'history-report.html') -Encoding utf8
+  '# mode summary' | Set-Content -LiteralPath (Join-Path $chunkRoot 'mode-summary.md') -Encoding utf8
+
+  $receiptPath = [string]$chunk.outputs.receiptPath
+  $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -Depth 64
+  $receipt.status = 'succeeded'
+  $receipt | Add-Member -NotePropertyName summary -NotePropertyValue ([ordered]@{
+      requestedModes = @('attributes', 'front-panel', 'block-diagram')
+      executedModes = @('attributes', 'front-panel', 'block-diagram')
+      modeCount = 3
+      totalProcessed = [int]$chunk.pairCount
+      totalDiffs = 1
+      stopReason = 'completed'
+      finalStatus = 'succeeded'
+      finalReason = 'completed'
+    }) -Force
+  $receipt.outputs | Add-Member -NotePropertyName historyResultsDir -NotePropertyValue $historyDir -Force
+  $receipt.outputs | Add-Member -NotePropertyName historyReportMd -NotePropertyValue (Join-Path $historyDir 'history-report.md') -Force
+  $receipt.outputs | Add-Member -NotePropertyName historyReportHtml -NotePropertyValue (Join-Path $historyDir 'history-report.html') -Force
+  $receipt.outputs | Add-Member -NotePropertyName modeSummaryPath -NotePropertyValue (Join-Path $chunkRoot 'mode-summary.md') -Force
+  $receipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $receiptPath -Encoding utf8
+
+  $explorationRunJson = & $explorationRunScriptPath `
+    -RevisionCatalogPath (Join-Path $resultsDir 'revision-catalog.json') `
+    -ChunkPlanPath (Join-Path $resultsDir 'chunk-plan.json') `
+    -Modes 'attributes,front-panel,block-diagram' `
+    -NoisePolicy 'collapse'
+  $explorationRun = $explorationRunJson | ConvertFrom-Json -Depth 64
+
+  $indexMd = [string]$explorationRun.outputs.indexMd
+  $indexHtml = [string]$explorationRun.outputs.indexHtml
+  if (-not (Test-Path -LiteralPath $indexMd -PathType Leaf)) {
+    throw 'Index markdown was not written.'
+  }
+  if (-not (Test-Path -LiteralPath $indexHtml -PathType Leaf)) {
+    throw 'Index HTML was not written.'
+  }
+
+  $indexMarkdown = Get-Content -LiteralPath $indexMd -Raw
+  if ($indexMarkdown -notmatch 'comparevi-history manual exploration index') {
+    throw 'Index markdown heading mismatch.'
+  }
+  if ($indexMarkdown -notmatch [regex]::Escape('[timeline.md](timeline.md)')) {
+    throw 'Index markdown must link the timeline markdown surface.'
+  }
+  if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/chunk-receipt.json')) {
+    throw 'Index markdown must link the chunk receipt.'
+  }
+  if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
+    throw 'Index markdown must link the chunk HTML report.'
+  }
+
+  $indexHtmlContent = Get-Content -LiteralPath $indexHtml -Raw
+  if ($indexHtmlContent -notmatch 'comparevi-history manual exploration index') {
+    throw 'Index HTML heading mismatch.'
+  }
+  if ($indexHtmlContent -notmatch [regex]::Escape('href="timeline.html"')) {
+    throw 'Index HTML must link the timeline HTML surface.'
+  }
+  if ($indexHtmlContent -notmatch [regex]::Escape('history-report.html')) {
+    throw 'Index HTML must link the chunk HTML report.'
+  }
+} finally {
+  Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}

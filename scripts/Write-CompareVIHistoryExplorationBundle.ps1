@@ -7,6 +7,8 @@ param(
   [string]$ExplorationRunPath,
   [string]$TimelineMd,
   [string]$TimelineHtml,
+  [string]$IndexMd,
+  [string]$IndexHtml,
   [string]$BundlePath,
   [string]$BundleManifestPath,
   [string]$GitHubOutputPath,
@@ -66,6 +68,28 @@ function Resolve-ExistingPath {
   }
 
   return $resolved
+}
+
+function Get-OptionalPropertyValue {
+  param(
+    [AllowNull()]
+    $InputObject,
+    [Parameter(Mandatory = $true)]
+    [string]$PropertyName,
+    [AllowNull()]
+    $Default = $null
+  )
+
+  if ($null -eq $InputObject) {
+    return $Default
+  }
+
+  $property = $InputObject.PSObject.Properties[$PropertyName]
+  if ($null -eq $property) {
+    return $Default
+  }
+
+  return $property.Value
 }
 
 function Resolve-ChildRelativePath {
@@ -228,8 +252,16 @@ $chunkReceiptsRoot = if ([int]$chunkPlan.summary.chunkCount -eq 0) {
   Split-Path -Parent ([string]$chunkPlan.chunks[0].outputs.chunkRoot)
 }
 $explorationRunPathResolved = Resolve-ExistingPath -Path $ExplorationRunPath -BasePath $resultsDirResolved
-$timelineMdResolved = Resolve-ExistingPath -Path $TimelineMd -BasePath $resultsDirResolved
-$timelineHtmlResolved = Resolve-ExistingPath -Path $TimelineHtml -BasePath $resultsDirResolved
+$explorationRun = if ($null -eq $explorationRunPathResolved) {
+  $null
+} else {
+  Get-Content -LiteralPath $explorationRunPathResolved -Raw | ConvertFrom-Json -Depth 64
+}
+$explorationOutputs = Get-OptionalPropertyValue -InputObject $explorationRun -PropertyName 'outputs'
+$timelineMdResolved = Resolve-ExistingPath -Path $(if ([string]::IsNullOrWhiteSpace($TimelineMd)) { [string](Get-OptionalPropertyValue -InputObject $explorationOutputs -PropertyName 'timelineMd') } else { $TimelineMd }) -BasePath $resultsDirResolved
+$timelineHtmlResolved = Resolve-ExistingPath -Path $(if ([string]::IsNullOrWhiteSpace($TimelineHtml)) { [string](Get-OptionalPropertyValue -InputObject $explorationOutputs -PropertyName 'timelineHtml') } else { $TimelineHtml }) -BasePath $resultsDirResolved
+$indexMdResolved = Resolve-ExistingPath -Path $(if ([string]::IsNullOrWhiteSpace($IndexMd)) { [string](Get-OptionalPropertyValue -InputObject $explorationOutputs -PropertyName 'indexMd') } else { $IndexMd }) -BasePath $resultsDirResolved
+$indexHtmlResolved = Resolve-ExistingPath -Path $(if ([string]::IsNullOrWhiteSpace($IndexHtml)) { [string](Get-OptionalPropertyValue -InputObject $explorationOutputs -PropertyName 'indexHtml') } else { $IndexHtml }) -BasePath $resultsDirResolved
 
 $bundleStatus = 'succeeded'
 $bundleReason = 'bundle-created'
@@ -241,6 +273,8 @@ Add-BundleFile -Map $bundleEntryMap -RootPath $resultsDirResolved -FilePath $chu
 Add-BundleFile -Map $bundleEntryMap -RootPath $resultsDirResolved -FilePath $explorationRunPathResolved
 Add-BundleFile -Map $bundleEntryMap -RootPath $resultsDirResolved -FilePath $timelineMdResolved
 Add-BundleFile -Map $bundleEntryMap -RootPath $resultsDirResolved -FilePath $timelineHtmlResolved
+Add-BundleFile -Map $bundleEntryMap -RootPath $resultsDirResolved -FilePath $indexMdResolved
+Add-BundleFile -Map $bundleEntryMap -RootPath $resultsDirResolved -FilePath $indexHtmlResolved
 Add-BundleDirectory -Map $bundleEntryMap -RootPath $resultsDirResolved -DirectoryPath $chunkReceiptsRoot
 
 $entryNames = @($bundleEntryMap.Keys | Sort-Object)
