@@ -144,6 +144,10 @@ Manual exploration workflows emit additive planning receipts alongside the actio
 - `manual-vi-exploration-bundle.zip`
 - `bundle-manifest.json`
 
+Corpus/downstream-processing pilots can also emit additive processing receipts:
+
+- `downstream-processor-summary.json` (`comparevi-history/downstream-processor-summary@v1`)
+
 ## Manual VI exploration workflow
 
 Trusted consumer repositories can expose arbitrary repo-relative `.vi` exploration through the reusable workflow
@@ -235,6 +239,10 @@ The writer is intentionally contract-first:
 - it paginates targets into `pages/corpus-page-*.json` (`comparevi-history/corpus-page@v1`) so downstream processors can resume by page ordinal
 - it writes `downstream-processing-manifest.json` (`comparevi-history/downstream-processing-manifest@v1`) so other tooling can consume the evidence contract without scraping
   `index.md`, `index.html`, `timeline.md`, or `timeline.html`
+- [`scripts/Write-CompareVIHistoryDownstreamProcessorSummary.ps1`](scripts/Write-CompareVIHistoryDownstreamProcessorSummary.ps1)
+  consumes only `downstream-processing-manifest.json` plus `pages/corpus-page-*.json` and writes
+  `downstream-processor-summary.json` (`comparevi-history/downstream-processor-summary@v1`) for deterministic program
+  consumption
 - it fails closed if the explicit evidence list spans multiple consumer repositories or refs
 - it keeps completeness machine-readable at corpus level and page level instead of hiding degradation behind summary text
 
@@ -257,6 +265,9 @@ Minimum viable pilot after the single-VI evidence model is stable:
 - downstream tools should consume `comparevi-history/shared-evidence@v1`,
   `comparevi-history/evidence-graph@v1`, `comparevi-history/corpus-page@v1`, and
   `comparevi-history/downstream-processing-manifest@v1` directly
+- the first downstream processor stays page-ordinal resumable and surfaces strict page inventory, target inventory,
+  completeness/degradation counts, preview-image totals, and next-page continuation metadata without markdown and HTML
+  scraping
 
 This keeps the first corpus pilot deterministic and unsuppressed without inventing repo-wide generation before the
 single-VI evidence contracts have stabilized.

@@ -1,0 +1,77 @@
+{
+  "schema": "comparevi-history/corpus-index@v1",
+  "generatedAtUtc": "2026-03-17T17:07:24.5162013Z",
+  "corpus": {
+    "repository": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+    "ref": "develop",
+    "selectionMode": "explicit-evidence-list",
+    "pageSize": 2,
+    "targetCount": 2,
+    "sharedEvidenceCount": 2,
+    "evidenceGraphCount": 2
+  },
+  "summary": {
+    "completeTargetCount": 2,
+    "incompleteTargetCount": 0,
+    "degradedTargetCount": 0,
+    "replayReadyTargetCount": 2,
+    "unsuppressedTargetCount": 2,
+    "totalComparisonArtifactCount": 4,
+    "totalImageArtifactCount": 0,
+    "totalPreviewImageCount": 0
+  },
+  "paging": {
+    "pageSize": 2,
+    "pageCount": 1,
+    "continuationMode": "page-ordinal",
+    "continuationRequired": false,
+    "pages": [
+      {
+        "pageOrdinal": 1,
+        "targetCount": 2,
+        "targetOrdinalStart": 1,
+        "targetOrdinalEnd": 2,
+        "relativePath": "pages/corpus-page-001.json",
+        "continuationToken": "page-001"
+      }
+    ]
+  },
+  "targetDigests": [
+    {
+      "targetOrdinal": 1,
+      "targetKey": "LabVIEW-Community-CI-CD/labview-icon-editor-demo|develop|fcb897ba4b9758c8532fdda38e57805e4a785e49|Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "pageOrdinal": 1,
+      "path": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "selectedRef": "fcb897ba4b9758c8532fdda38e57805e4a785e49",
+      "targetId": null,
+      "sharedEvidencePath": "../vip-post-install-custom-action/shared-evidence.json",
+      "evidenceGraphPath": "../vip-post-install-custom-action/evidence-graph.json",
+      "entrypoint": "manual-exploration",
+      "finalStatus": "succeeded",
+      "graphStatus": null,
+      "previewImageCount": 0
+    },
+    {
+      "targetOrdinal": 2,
+      "targetKey": "LabVIEW-Community-CI-CD/labview-icon-editor-demo|develop|fcb897ba4b9758c8532fdda38e57805e4a785e49|Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+      "pageOrdinal": 1,
+      "path": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+      "selectedRef": "fcb897ba4b9758c8532fdda38e57805e4a785e49",
+      "targetId": null,
+      "sharedEvidencePath": "../vip-pre-install-custom-action/shared-evidence.json",
+      "evidenceGraphPath": "../vip-pre-install-custom-action/evidence-graph.json",
+      "entrypoint": "manual-exploration",
+      "finalStatus": "succeeded",
+      "graphStatus": null,
+      "previewImageCount": 0
+    }
+  ],
+  "completeness": {
+    "isComplete": true,
+    "reason": "all-targets-complete"
+  },
+  "downstream": {
+    "schema": "comparevi-history/downstream-processing-manifest@v1",
+    "path": "downstream-processing-manifest.json"
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-downstream-processor-summary-v1.schema.json",
+  "title": "comparevi-history downstream processor summary v1",
+  "type": "object",
+  "required": ["schema", "generatedAtUtc", "source", "corpus", "selection", "inventory", "summary", "completeness"],
+  "properties": {
+    "schema": { "const": "comparevi-history/downstream-processor-summary@v1" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "required": ["manifestSchema", "manifestPath", "acceptedSchemas"],
+      "properties": {
+        "manifestSchema": { "type": "string" },
+        "manifestPath": { "type": "string" },
+        "acceptedSchemas": {
+          "type": "object",
+          "required": ["sharedEvidence", "evidenceGraph", "corpusPage"],
+          "properties": {
+            "sharedEvidence": { "type": "string" },
+            "evidenceGraph": { "type": "string" },
+            "corpusPage": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "corpus": {
+      "type": "object",
+      "required": ["repository", "ref"],
+      "properties": {
+        "repository": { "type": "string" },
+        "ref": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "required": ["requestedStartPageOrdinal", "requestedMaxPages", "availablePageCount", "availableTargetCount", "processedPageCount", "processedTargetCount", "continuationMode", "hasMorePages", "nextPageOrdinal", "nextContinuationToken"],
+      "properties": {
+        "requestedStartPageOrdinal": { "type": "integer", "minimum": 1 },
+        "requestedMaxPages": { "type": ["integer", "null"], "minimum": 1 },
+        "availablePageCount": { "type": "integer", "minimum": 0 },
+        "availableTargetCount": { "type": "integer", "minimum": 0 },
+        "processedPageCount": { "type": "integer", "minimum": 0 },
+        "processedTargetCount": { "type": "integer", "minimum": 0 },
+        "continuationMode": { "type": "string" },
+        "hasMorePages": { "type": "boolean" },
+        "nextPageOrdinal": { "type": ["integer", "null"], "minimum": 1 },
+        "nextContinuationToken": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "inventory": {
+      "type": "object",
+      "required": ["pages", "targets"],
+      "properties": {
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pageOrdinal", "unitId", "relativePath", "targetCount", "targetOrdinalStart", "targetOrdinalEnd", "continuationToken", "status", "isComplete", "reason"],
+            "properties": {
+              "pageOrdinal": { "type": "integer", "minimum": 1 },
+              "unitId": { "type": "string" },
+              "relativePath": { "type": "string" },
+              "targetCount": { "type": "integer", "minimum": 0 },
+              "targetOrdinalStart": { "type": "integer", "minimum": 1 },
+              "targetOrdinalEnd": { "type": "integer", "minimum": 1 },
+              "continuationToken": { "type": "string" },
+              "status": { "type": "string" },
+              "isComplete": { "type": "boolean" },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pageOrdinal", "targetOrdinal", "targetKey", "entrypoint", "path", "selectedRef", "targetId", "finalStatus", "graphStatus", "replayStatus", "suppressionProfile", "previewImageCount", "imageArtifactCount", "comparisonArtifactCount", "continuityStatus", "continuityBreakCount", "segmentCount"],
+            "properties": {
+              "pageOrdinal": { "type": "integer", "minimum": 1 },
+              "targetOrdinal": { "type": "integer", "minimum": 1 },
+              "targetKey": { "type": "string" },
+              "entrypoint": { "type": "string" },
+              "path": { "type": "string" },
+              "selectedRef": { "type": "string" },
+              "targetId": { "type": ["string", "null"] },
+              "finalStatus": { "type": "string" },
+              "graphStatus": { "type": ["string", "null"] },
+              "replayStatus": { "type": "string" },
+              "suppressionProfile": { "type": "string" },
+              "previewImageCount": { "type": "integer", "minimum": 0 },
+              "imageArtifactCount": { "type": "integer", "minimum": 0 },
+              "comparisonArtifactCount": { "type": "integer", "minimum": 0 },
+              "continuityStatus": { "type": "string" },
+              "continuityBreakCount": { "type": "integer", "minimum": 0 },
+              "segmentCount": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["pageCount", "targetCount", "completeTargetCount", "incompleteTargetCount", "degradedTargetCount", "replayReadyTargetCount", "unsuppressedTargetCount", "totalPreviewImageCount", "totalImageArtifactCount", "totalComparisonArtifactCount", "entrypointCounts", "finalStatusCounts", "graphStatusCounts"],
+      "properties": {
+        "pageCount": { "type": "integer", "minimum": 0 },
+        "targetCount": { "type": "integer", "minimum": 0 },
+        "completeTargetCount": { "type": "integer", "minimum": 0 },
+        "incompleteTargetCount": { "type": "integer", "minimum": 0 },
+        "degradedTargetCount": { "type": "integer", "minimum": 0 },
+        "replayReadyTargetCount": { "type": "integer", "minimum": 0 },
+        "unsuppressedTargetCount": { "type": "integer", "minimum": 0 },
+        "totalPreviewImageCount": { "type": "integer", "minimum": 0 },
+        "totalImageArtifactCount": { "type": "integer", "minimum": 0 },
+        "totalComparisonArtifactCount": { "type": "integer", "minimum": 0 },
+        "entrypointCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "finalStatusCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "graphStatusCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      },
+      "additionalProperties": false
+    },
+    "completeness": {
+      "type": "object",
+      "required": ["isComplete", "reason"],
+      "properties": {
+        "isComplete": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
