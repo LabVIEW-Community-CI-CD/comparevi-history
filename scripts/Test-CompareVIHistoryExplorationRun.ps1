@@ -85,6 +85,9 @@ try {
   if ($explorationRun.summary.finalReason -ne 'chunk-plan-ready') {
     throw 'Exploration run final reason mismatch.'
   }
+  if ($explorationRun.publication.bundleStatus -ne 'not-required') {
+    throw 'Exploration run bundle status mismatch for the planning-only path.'
+  }
   if ($explorationRun.replay.status -ne 'ready-for-chunk-execution') {
     throw 'Exploration run replay status mismatch.'
   }
@@ -104,7 +107,8 @@ try {
       'exploration-status=planned',
       'exploration-reason=chunk-plan-ready',
       'timeline-md=',
-      'timeline-html='
+      'timeline-html=',
+      'bundle-path='
     )) {
     if ($githubOutputs -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."
@@ -239,6 +243,64 @@ try {
   }
   if ($timelineMarkdown -notmatch 'Failure: `Forced compare failure\.?`') {
     throw 'Timeline markdown must include the failed chunk message.'
+  }
+
+  $secondReceipt.status = 'succeeded'
+  $secondReceipt.summary.executedModes = @('attributes', 'front-panel', 'block-diagram')
+  $secondReceipt.summary.modeCount = 3
+  $secondReceipt.summary.totalProcessed = [int]$chunkPlan.chunks[1].pairCount
+  $secondReceipt.summary.totalDiffs = 1
+  $secondReceipt.summary.stopReason = 'completed'
+  $secondReceipt.summary.finalStatus = 'succeeded'
+  $secondReceipt.summary.finalReason = 'completed'
+  $secondReceipt.failure = $null
+  $secondReceipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $secondReceiptPath -Encoding utf8
+
+  $bundleDir = Join-Path $tempRoot 'bundle'
+  New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+  $bundlePath = Join-Path $bundleDir 'manual-vi-exploration-bundle.zip'
+  [System.IO.File]::WriteAllBytes($bundlePath, @(0x50,0x4B,0x03,0x04))
+
+  $bundleOutputPath = Join-Path $tempRoot 'exploration-run-bundle-output.txt'
+  $bundleSummaryPath = Join-Path $tempRoot 'exploration-run-bundle-summary.md'
+  $bundledRunJson = & $explorationRunScriptPath `
+    -RevisionCatalogPath (Join-Path $resultsDir 'revision-catalog.json') `
+    -ChunkPlanPath (Join-Path $resultsDir 'chunk-plan.json') `
+    -Modes 'attributes,front-panel,block-diagram' `
+    -NoisePolicy 'collapse' `
+    -BundlePath $bundlePath `
+    -BundleStatus 'succeeded' `
+    -BundleReason 'bundle-created' `
+    -GitHubOutputPath $bundleOutputPath `
+    -StepSummaryPath $bundleSummaryPath
+  $bundledRun = $bundledRunJson | ConvertFrom-Json -Depth 64
+  if ($bundledRun.outputs.bundlePath -ne $bundlePath) {
+    throw 'Bundled exploration run must record bundlePath.'
+  }
+  if ($bundledRun.publication.bundleStatus -ne 'succeeded') {
+    throw 'Bundled exploration run publication status mismatch.'
+  }
+
+  $bundleFailureOutputPath = Join-Path $tempRoot 'exploration-run-bundle-failure-output.txt'
+  $bundleFailureSummaryPath = Join-Path $tempRoot 'exploration-run-bundle-failure-summary.md'
+  $bundleFailureRunJson = & $explorationRunScriptPath `
+    -RevisionCatalogPath (Join-Path $resultsDir 'revision-catalog.json') `
+    -ChunkPlanPath (Join-Path $resultsDir 'chunk-plan.json') `
+    -Modes 'attributes,front-panel,block-diagram' `
+    -NoisePolicy 'collapse' `
+    -BundleStatus 'failed' `
+    -BundleReason 'bundle-packaging-failed' `
+    -GitHubOutputPath $bundleFailureOutputPath `
+    -StepSummaryPath $bundleFailureSummaryPath
+  $bundleFailureRun = $bundleFailureRunJson | ConvertFrom-Json -Depth 64
+  if ($bundleFailureRun.summary.finalStatus -ne 'partial') {
+    throw 'Bundle failure must degrade the final exploration run status.'
+  }
+  if ($bundleFailureRun.summary.finalReason -ne 'bundle-packaging-failed') {
+    throw 'Bundle failure final reason mismatch.'
+  }
+  if ($bundleFailureRun.publication.bundleStatus -ne 'failed') {
+    throw 'Bundle failure publication status mismatch.'
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

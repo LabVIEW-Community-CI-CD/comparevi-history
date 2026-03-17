@@ -188,6 +188,27 @@
       },
       "additionalProperties": false
     },
+    "publication": {
+      "type": "object",
+      "required": [
+        "bundleStatus",
+        "bundleReason"
+      ],
+      "properties": {
+        "bundleStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "not-required"
+          ]
+        },
+        "bundleReason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "outputs": {
       "type": "object",
       "required": [

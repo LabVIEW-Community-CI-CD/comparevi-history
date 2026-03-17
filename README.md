@@ -133,6 +133,8 @@ Manual exploration workflows emit additive planning receipts alongside the actio
 - `exploration-run.json` (`comparevi-history/exploration-run@v1`)
 - `timeline.md`
 - `timeline.html`
+- `manual-vi-exploration-bundle.zip`
+- `bundle-manifest.json`
 
 ## Manual VI exploration workflow
 
@@ -150,10 +152,11 @@ The current execution slice stays additive on top of the discovery-first baselin
 - the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
 - the platform writes `timeline.md` and `timeline.html` as the first operator-facing navigation surfaces
+- the platform packages the timeline, receipts, and per-chunk reports into one deterministic bundle
 - existing curated `target_spec_path` plus `target_id` workflows remain unchanged
 
-Bundle packaging remains a later slice. Current manual exploration runs already preserve per-chunk history outputs plus
-the additive timeline surfaces instead of stopping at planning only.
+When bundle packaging fails after execution succeeded, the platform preserves the receipts, leaves the loose artifacts
+available, and degrades the final exploration run instead of hiding the packaging failure.
 
 Because reusable workflows do not automatically expose the called workflow repository as a local checkout, the consumer
 wrapper should keep `platform_ref` aligned with the same release ref used in the `uses:` pin.
