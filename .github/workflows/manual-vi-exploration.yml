@@ -81,6 +81,8 @@ concurrency:
 jobs:
   manual-vi-exploration:
     runs-on: ubuntu-latest
+    env:
+      COMPAREVI_NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
     outputs:
       consumer-repository: ${{ steps.defaults.outputs.consumer_repository }}
       consumer-ref: ${{ steps.defaults.outputs.consumer_ref }}
@@ -214,6 +216,10 @@ jobs:
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
+      - name: Pre-pull NI Linux image
+        shell: bash
+        run: docker pull "$COMPAREVI_NI_LINUX_IMAGE"
+
       - name: Execute planned exploration chunks
         id: execute
         shell: pwsh
@@ -332,3 +338,11 @@ jobs:
             ${{ steps.exploration.outputs['timeline-html'] }}
             ${{ steps.bundle.outputs['bundle-path'] }}
           if-no-files-found: error
+
+      - name: Fail closed on degraded exploration
+        if: ${{ always() && steps.exploration.outputs['exploration-status'] != 'succeeded' }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          throw "Manual VI exploration failed closed with exploration-status '${{ steps.exploration.outputs['exploration-status'] }}' and reason '${{ steps.exploration.outputs['exploration-reason'] }}'. Review the uploaded artifacts."

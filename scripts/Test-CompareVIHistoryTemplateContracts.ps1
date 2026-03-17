@@ -115,8 +115,10 @@ Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*workflow_disp
 Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*vi_path:\s*$' -Message 'Manual exploration workflow must accept vi_path.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*default:\s+full\s*$' -Message 'Manual exploration workflow must default to the unsuppressed full mode.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*default:\s+include\s*$' -Message 'Manual exploration workflow must default to in-band noise handling.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Manual exploration workflow must pin the NI Linux image.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryRevisionCatalog\.ps1' -Message 'Manual exploration workflow must write the revision catalog.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryChunkPlan\.ps1' -Message 'Manual exploration workflow must write the chunk plan.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern 'docker pull "\$COMPAREVI_NI_LINUX_IMAGE"' -Message 'Manual exploration workflow must pre-pull the NI Linux image.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Invoke-CompareVIHistoryChunkExecution\.ps1' -Message 'Manual exploration workflow must execute planned chunks.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryExplorationBundle\.ps1' -Message 'Manual exploration workflow must write the exploration bundle.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryExplorationRun\.ps1' -Message 'Manual exploration workflow must write the exploration run receipt.'
@@ -135,6 +137,7 @@ Assert-Match -Content $manualExplorationWorkflow -Pattern 'platform_ref' -Messag
 Assert-Match -Content $manualExplorationWorkflow -Pattern "Split-Path -Parent '\$\{\{ steps\.catalog\.outputs\['revision-catalog-path'\] \}\}'" -Message 'Manual exploration workflow must derive the resolved results root from the revision catalog output.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern "\$\{\{ steps\.results_root\.outputs\['results-root'\] \}\}" -Message 'Manual exploration workflow must route the resolved results root into later stages.'
 Assert-MatchCount -Content $manualExplorationWorkflow -Pattern "'tests/results/ref-compare/history-exploration'" -ExpectedCount 1 -Message 'Manual exploration workflow must only use the relative results directory during catalog generation.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern "steps\.exploration\.outputs\['exploration-status'\] != 'succeeded'" -Message 'Manual exploration workflow must fail closed when exploration output is degraded.'
 
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
