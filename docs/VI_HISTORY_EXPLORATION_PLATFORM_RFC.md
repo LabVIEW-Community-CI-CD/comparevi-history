@@ -118,9 +118,9 @@ Inputs:
   - `vi_path`: repository-relative `.vi` path
 - Optional:
   - `ref`: defaults to the consumer default branch; for `labview-icon-editor-demo` this is `develop`
-  - `modes`: defaults to `attributes,front-panel,block-diagram`
+  - `modes`: defaults to `full` for the trusted raw exploration surface
   - `include_merge_parents`: defaults to `false`
-  - `noise_policy`: defaults to `collapse`
+  - `noise_policy`: defaults to `include` so metadata-rich output stays in-band
 
 Run behavior:
 
@@ -172,6 +172,7 @@ The platform must:
   - `timeline.md`
   - `timeline.html`
   - `exploration-run.json`
+  - `mode-summary.json`
   - chunk receipts and manifests
   - downloadable bundle
 - emit human-readable and machine-readable outputs
@@ -296,9 +297,9 @@ Input contract:
 
 - `vi_path` required
 - `ref` optional, default `develop` for `labview-icon-editor-demo`
-- `modes` optional, default `attributes,front-panel,block-diagram`
+- `modes` optional, default `full`
 - `include_merge_parents` optional, default `false`
-- `noise_policy` optional, default `collapse`
+- `noise_policy` optional, default `include`
 
 Validation contract:
 

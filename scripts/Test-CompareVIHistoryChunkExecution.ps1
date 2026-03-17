@@ -92,7 +92,45 @@ foreach ($entry in $modeValues) {
   $modeDir = Join-Path $ResultsDir $slug
   New-Item -ItemType Directory -Path $modeDir -Force | Out-Null
   $modeManifestPath = Join-Path $modeDir 'manifest.json'
-  '{}' | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
+  $artifactDir = Join-Path $modeDir 'pair-001-artifacts'
+  $imagesDir = Join-Path $artifactDir 'cli-images'
+  New-Item -ItemType Directory -Path $imagesDir -Force | Out-Null
+  [System.IO.File]::WriteAllBytes((Join-Path $imagesDir 'cli-image-00.png'), @(0xCA,0xFE,0xBA,0xBE))
+  @(
+    '{'
+    '  "schema": "lvcompare-capture-v1",'
+    '  "environment": {'
+    '    "cli": {'
+    '      "artifacts": {'
+    '        "images": ['
+    '          {'
+    '            "index": 0,'
+    '            "mimeType": "image/png",'
+    '            "byteLength": 4,'
+    ('            "savedPath": "{0}"' -f ((Join-Path $imagesDir 'cli-image-00.png') -replace '\\','\\\\'))
+    '          }'
+    '        ]'
+    '      }'
+    '    }'
+    '  }'
+    '}'
+  ) | Set-Content -LiteralPath (Join-Path $artifactDir 'lvcompare-capture.json') -Encoding utf8
+  @(
+    '{'
+    '  "schema": "vi-compare/history@v1",'
+    '  "comparisons": ['
+    '    {'
+    '      "result": {'
+    ('        "artifactDir": "{0}"' -f ($artifactDir -replace '\\','\\\\'))
+    '      }'
+    '    }'
+    '  ],'
+    '  "stats": {'
+    '    "categoryCounts": { "attributes": 1 },'
+    '    "bucketCounts": { "metadata-rich": 1 }'
+    '  }'
+    '}'
+  ) | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
   [void]$modeEntries.Add([ordered]@{
       mode = $entry
       slug = $slug
@@ -105,6 +143,9 @@ foreach ($entry in $modeValues) {
       errors = 0
       status = 'ok'
       stopReason = 'completed'
+      flags = @()
+      categoryCounts = [ordered]@{ attributes = 1 }
+      bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
     })
 }
 
@@ -199,11 +240,21 @@ $processedCount = if ($null -eq $MaxPairs) { 1 } else { [int]$MaxPairs }
         $receipt.outputs.historySummaryJson,
         $receipt.outputs.historyReportMd,
         $receipt.outputs.historyReportHtml,
-        $receipt.outputs.modeSummaryPath
+        $receipt.outputs.modeSummaryPath,
+        $receipt.outputs.modeSummaryJsonPath
       )) {
       if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Expected chunk output path '$path'."
       }
+    }
+    if (-not $receipt.surfaces) {
+      throw "Expected chunk surfaces summary for $($chunk.chunkId)."
+    }
+    if ($receipt.surfaces.metadata.captureCount -ne 1 -or $receipt.surfaces.metadata.imageArtifactCount -ne 1) {
+      throw "Expected capture/image metadata counts for $($chunk.chunkId)."
+    }
+    if ($receipt.surfaces.suppressionProfile -ne 'unsuppressed') {
+      throw "Expected unsuppressed mode profile for $($chunk.chunkId)."
     }
   }
 

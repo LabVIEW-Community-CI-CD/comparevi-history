@@ -6,9 +6,9 @@ param(
   [string]$ConsumerRef = 'HEAD',
   [string]$ConsumerRepository,
   [string]$ResultsDir = 'tests/results/ref-compare/history-exploration/local-fast-loop',
-  [string]$Mode = 'attributes,front-panel,block-diagram',
+  [string]$Mode = 'full',
   [ValidateSet('include', 'collapse', 'skip')]
-  [string]$NoisePolicy = 'collapse',
+  [string]$NoisePolicy = 'include',
   [switch]$IncludeMergeParents,
   [Nullable[int]]$MaxPairs,
   [Nullable[int]]$MaxSignalPairs,
@@ -161,6 +161,7 @@ $resultsDirResolved = Resolve-AbsolutePath -Path $ResultsDir -BasePath $consumer
 $historyResultsDir = Join-Path $resultsDirResolved 'history'
 $revisionCatalogSummaryPath = Join-Path $resultsDirResolved 'revision-catalog-summary.md'
 $modeSummaryPath = Join-Path $resultsDirResolved 'mode-summary.md'
+$modeSummaryJsonPath = Join-Path $resultsDirResolved 'mode-summary.json'
 $localSummaryPath = Join-Path $resultsDirResolved 'local-fast-loop-summary.md'
 $localReceiptPath = Join-Path $resultsDirResolved 'local-fast-loop.json'
 New-Item -ItemType Directory -Path $resultsDirResolved -Force | Out-Null
@@ -322,6 +323,8 @@ $runValues = Read-KeyValueFile -Path $runOutputPath
   -TotalProcessed ([string]$runValues['total-processed']) `
   -TotalDiffs ([string]$runValues['total-diffs']) `
   -StopReason ([string]$runValues['stop-reason']) `
+  -NoisePolicy $NoisePolicy `
+  -JsonOutputPath $modeSummaryJsonPath `
   -OutputPath $modeSummaryPath | Out-Null
 $modeSummaryMarkdown = if (Test-Path -LiteralPath $modeSummaryPath -PathType Leaf) {
   Get-Content -LiteralPath $modeSummaryPath -Raw
@@ -387,6 +390,7 @@ $localReceipt = [ordered]@{
     historyReportMd = [string]$runValues['history-report-md']
     historyReportHtml = [string]$runValues['history-report-html']
     modeSummaryPath = $modeSummaryPath
+    modeSummaryJsonPath = $modeSummaryJsonPath
     localSummaryPath = $localSummaryPath
   }
   summary = [ordered]@{
@@ -405,6 +409,8 @@ $localReceipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $localReceip
   ('- Consumer ref: `{0}`' -f $ConsumerRef)
   ('- Selected SHA: `{0}`' -f $selectedConsumerSha)
   ('- Target path: `{0}`' -f $ViPath)
+  ('- Requested modes: `{0}`' -f $Mode)
+  ('- Noise policy: `{0}`' -f $NoisePolicy)
   ('- Tooling source: `{0}`' -f $toolingSource)
   ('- Tooling ref: `{0}`' -f $effectiveCompareviRef)
   ('- Tooling root: `{0}`' -f $toolingRootResolved)

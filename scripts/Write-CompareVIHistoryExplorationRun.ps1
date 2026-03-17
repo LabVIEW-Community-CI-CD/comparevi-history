@@ -4,9 +4,9 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ChunkPlanPath,
   [string]$ResultsDir,
-  [string]$Modes = 'attributes,front-panel,block-diagram',
+  [string]$Modes = 'full',
   [ValidateSet('include', 'collapse', 'skip')]
-  [string]$NoisePolicy = 'collapse',
+  [string]$NoisePolicy = 'include',
   [switch]$IncludeMergeParents,
   [string]$TimelineMd,
   [string]$TimelineHtml,
@@ -93,7 +93,7 @@ function ConvertTo-NormalizedModeList {
     }
   }
 
-  return @($modes.ToArray())
+  return @($modes | ForEach-Object { $_ })
 }
 
 function Get-OptionalPropertyValue {
@@ -124,6 +124,24 @@ function Get-OptionalPropertyValue {
   }
 
   return $property.Value
+}
+
+function Get-SurfaceMetadataNode {
+  param(
+    [AllowNull()]
+    $SurfaceNode
+  )
+
+  if ($null -eq $SurfaceNode) {
+    return $null
+  }
+
+  $metadataNode = Get-OptionalPropertyValue -InputObject $SurfaceNode -PropertyName 'metadata'
+  if ($null -ne $metadataNode) {
+    return $metadataNode
+  }
+
+  return $SurfaceNode
 }
 
 function ConvertTo-ArtifactReference {
@@ -190,6 +208,140 @@ function Format-HtmlLink {
   return ('<a href="{0}">{1}</a>' -f $Href, $Label)
 }
 
+function ConvertTo-OrderedCountMap {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  $map = [ordered]@{}
+  if ($null -eq $Value) {
+    return $map
+  }
+
+  if ($Value -is [System.Collections.IDictionary]) {
+    foreach ($key in @($Value.Keys | ForEach-Object { [string]$_ } | Sort-Object)) {
+      $map[$key] = [int]$Value[$key]
+    }
+    return $map
+  }
+
+  foreach ($property in @($Value.PSObject.Properties | Sort-Object Name)) {
+    $map[[string]$property.Name] = [int]$property.Value
+  }
+
+  return $map
+}
+
+function Merge-CountMap {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [AllowNull()]
+    $Source
+  )
+
+  $normalizedSource = ConvertTo-OrderedCountMap -Value $Source
+  foreach ($key in $normalizedSource.Keys) {
+    if (-not $Target.Contains($key)) {
+      $Target[$key] = 0
+    }
+    $Target[$key] = [int]$Target[$key] + [int]$normalizedSource[$key]
+  }
+}
+
+function Format-CountMapText {
+  param(
+    [AllowNull()]
+    $Map
+  )
+
+  $normalized = ConvertTo-OrderedCountMap -Value $Map
+  if ($normalized.Count -eq 0) {
+    return 'none'
+  }
+
+  return (($normalized.Keys | ForEach-Object { '{0} ({1})' -f $_, [int]$normalized[$_] }) -join ', ')
+}
+
+function New-ExplorationSurfaceAggregate {
+  param(
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts
+  )
+
+  $chunkReceiptArray = ConvertTo-ObjectArray -InputObject $ChunkReceipts
+  $suppressionProfiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $hasUnknownProfile = $false
+  $aggregateCategoryCounts = @{}
+  $aggregateBucketCounts = @{}
+  $captureCount = 0
+  $imageArtifactCount = 0
+  $comparisonArtifactCount = 0
+  $chunkCountWithMetadata = 0
+  $imageMimeTypes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+  foreach ($chunk in $chunkReceiptArray) {
+    $surfaceNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+    if ($null -eq $surfaceNode) {
+      continue
+    }
+
+    $chunkHasMetadata = $false
+    $profile = [string](Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'suppressionProfile' -Default '')
+    if ([string]::IsNullOrWhiteSpace($profile) -or $profile -eq 'unknown') {
+      $hasUnknownProfile = $true
+    } else {
+      [void]$suppressionProfiles.Add($profile)
+    }
+
+    Merge-CountMap -Target $aggregateCategoryCounts -Source (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'categoryCounts')
+    Merge-CountMap -Target $aggregateBucketCounts -Source (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'bucketCounts')
+
+    $metadataNode = Get-SurfaceMetadataNode -SurfaceNode $surfaceNode
+    $currentCaptureCount = [int](Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'captureCount' -Default 0)
+    $currentImageArtifactCount = [int](Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'imageArtifactCount' -Default 0)
+    $currentComparisonArtifactCount = [int](Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'comparisonArtifactCount' -Default 0)
+
+    $captureCount += $currentCaptureCount
+    $imageArtifactCount += $currentImageArtifactCount
+    $comparisonArtifactCount += $currentComparisonArtifactCount
+    if ($currentCaptureCount -gt 0 -or $currentImageArtifactCount -gt 0 -or $currentComparisonArtifactCount -gt 0) {
+      $chunkHasMetadata = $true
+    }
+
+    foreach ($mimeType in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'imageMimeTypes' -Default @()))) {
+      $mimeTypeValue = [string]$mimeType
+      if (-not [string]::IsNullOrWhiteSpace($mimeTypeValue)) {
+        [void]$imageMimeTypes.Add($mimeTypeValue.Trim())
+      }
+    }
+
+    if ($chunkHasMetadata) {
+      $chunkCountWithMetadata++
+    }
+  }
+
+  $suppressionProfile = if ($suppressionProfiles.Count -eq 0) {
+    'unknown'
+  } elseif ($suppressionProfiles.Count -eq 1) {
+    @($suppressionProfiles | ForEach-Object { $_ })[0]
+  } else {
+    'mixed'
+  }
+
+  return [pscustomobject]@{
+    suppressionProfile = $suppressionProfile
+    comparisonArtifactCount = $comparisonArtifactCount
+    captureCount = $captureCount
+    imageArtifactCount = $imageArtifactCount
+    imageMimeTypes = @($imageMimeTypes | Sort-Object)
+    chunkCountWithMetadata = $chunkCountWithMetadata
+    categoryCounts = ConvertTo-OrderedCountMap -Value $aggregateCategoryCounts
+    bucketCounts = ConvertTo-OrderedCountMap -Value $aggregateBucketCounts
+  }
+}
+
 function New-ExplorationSurfaceStats {
   param(
     [Parameter(Mandatory = $true)]
@@ -209,7 +361,13 @@ function New-ExplorationSurfaceStats {
     [Parameter(Mandatory = $true)]
     [string]$BundleStatus,
     [Parameter(Mandatory = $true)]
-    [string]$BundleReason
+    [string]$BundleReason,
+    [Parameter(Mandatory = $true)]
+    $SurfaceAggregate,
+    [Parameter(Mandatory = $true)]
+    [string[]]$RequestedModes,
+    [Parameter(Mandatory = $true)]
+    [string]$NoisePolicy
   )
 
   $segmentArray = ConvertTo-ObjectArray -InputObject $ChunkPlan.segments
@@ -243,6 +401,16 @@ function New-ExplorationSurfaceStats {
     replayReason              = $ReplayReason
     bundleStatus              = $BundleStatus
     bundleReason              = $BundleReason
+    requestedModes            = @($RequestedModes)
+    noisePolicy               = $NoisePolicy
+    suppressionProfile        = [string]$SurfaceAggregate.suppressionProfile
+    comparisonArtifactCount   = [int]$SurfaceAggregate.comparisonArtifactCount
+    captureCount              = [int]$SurfaceAggregate.captureCount
+    imageArtifactCount        = [int]$SurfaceAggregate.imageArtifactCount
+    imageMimeTypes            = @($SurfaceAggregate.imageMimeTypes)
+    chunkCountWithMetadata    = [int]$SurfaceAggregate.chunkCountWithMetadata
+    categoryCounts            = $SurfaceAggregate.categoryCounts
+    bucketCounts              = $SurfaceAggregate.bucketCounts
   }
 }
 
@@ -279,7 +447,7 @@ function ConvertTo-ObjectArray {
     $items.Add($item) | Out-Null
   }
 
-  return @($items.ToArray())
+  return @($items | ForEach-Object { $_ })
 }
 
 function New-MarkdownTimeline {
@@ -320,6 +488,20 @@ function New-MarkdownTimeline {
   $lines.Add(('- Skipped chunk count: `{0}`' -f [int]$RunStats.skippedChunkCount)) | Out-Null
   $lines.Add(('- Remaining planned chunk count: `{0}`' -f [int]$RunStats.remainingPlannedChunkCount)) | Out-Null
   $lines.Add(('- Replay status: `{0}` ({1})' -f [string]$RunStats.replayStatus, [string]$RunStats.replayReason)) | Out-Null
+  $lines.Add(('- Requested modes: `{0}`' -f $(if ($RunStats.requestedModes.Count -gt 0) { $RunStats.requestedModes -join ', ' } else { 'n/a' }))) | Out-Null
+  $lines.Add(('- Noise policy: `{0}`' -f [string]$RunStats.noisePolicy)) | Out-Null
+  $lines.Add(('- Suppression profile: `{0}`' -f [string]$RunStats.suppressionProfile)) | Out-Null
+  if ([int]$RunStats.captureCount -gt 0 -or [int]$RunStats.imageArtifactCount -gt 0 -or [int]$RunStats.comparisonArtifactCount -gt 0) {
+    $mimeTypeText = if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' }
+    $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int]$RunStats.captureCount, [int]$RunStats.imageArtifactCount, [int]$RunStats.comparisonArtifactCount, $mimeTypeText)) | Out-Null
+    $lines.Add(('- Chunks with metadata: `{0}`' -f [int]$RunStats.chunkCountWithMetadata)) | Out-Null
+  }
+  if ($RunStats.categoryCounts.Count -gt 0) {
+    $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $RunStats.categoryCounts))) | Out-Null
+  }
+  if ($RunStats.bucketCounts.Count -gt 0) {
+    $lines.Add(('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $RunStats.bucketCounts))) | Out-Null
+  }
   $lines.Add('') | Out-Null
   $lines.Add('## Continuity overview') | Out-Null
   $lines.Add('') | Out-Null
@@ -349,6 +531,8 @@ function New-MarkdownTimeline {
       $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
       $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
       $chunkFailure = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'failure'
+      $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+      $chunkMetadata = Get-SurfaceMetadataNode -SurfaceNode $chunkSurfaces
       $lines.Add(('### {0}' -f [string]$chunk.chunkId)) | Out-Null
       $lines.Add(('- Status: `{0}`' -f [string]$chunk.status)) | Out-Null
       $lines.Add(('- Pair ordinals: `{0}` -> `{1}`' -f [int]$chunk.pairOrdinalStart, [int]$chunk.pairOrdinalEnd)) | Out-Null
@@ -358,6 +542,23 @@ function New-MarkdownTimeline {
       $lines.Add(('- Total processed: `{0}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalProcessed' -Default 0))) | Out-Null
       $lines.Add(('- Total diffs: `{0}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))) | Out-Null
       $lines.Add(('- Final reason: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'finalReason' -Default 'planned'))) | Out-Null
+      if ($chunkSurfaces) {
+        $lines.Add(('- Suppression profile: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown'))) | Out-Null
+        $mimeTypeText = if (@(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())).Count -gt 0) {
+          @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())) -join ', '
+        } else {
+          'none'
+        }
+        $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0), $mimeTypeText)) | Out-Null
+        $chunkCategoryCounts = Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'categoryCounts'
+        if ((ConvertTo-OrderedCountMap -Value $chunkCategoryCounts).Count -gt 0) {
+          $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $chunkCategoryCounts))) | Out-Null
+        }
+        $chunkBucketCounts = Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'bucketCounts'
+        if ((ConvertTo-OrderedCountMap -Value $chunkBucketCounts).Count -gt 0) {
+          $lines.Add(('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $chunkBucketCounts))) | Out-Null
+        }
+      }
       $historyReportMd = Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd'
       $historyReportHtml = Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml'
       if ($historyReportMd) {
@@ -430,6 +631,20 @@ function New-MarkdownIndex {
   $lines.Add(('- Skipped chunk count: `{0}`' -f [int]$RunStats.skippedChunkCount)) | Out-Null
   $lines.Add(('- Remaining planned chunk count: `{0}`' -f [int]$RunStats.remainingPlannedChunkCount)) | Out-Null
   $lines.Add(('- Replay status: `{0}` ({1})' -f [string]$RunStats.replayStatus, [string]$RunStats.replayReason)) | Out-Null
+  $lines.Add(('- Requested modes: `{0}`' -f $(if ($RunStats.requestedModes.Count -gt 0) { $RunStats.requestedModes -join ', ' } else { 'n/a' }))) | Out-Null
+  $lines.Add(('- Noise policy: `{0}`' -f [string]$RunStats.noisePolicy)) | Out-Null
+  $lines.Add(('- Suppression profile: `{0}`' -f [string]$RunStats.suppressionProfile)) | Out-Null
+  if ([int]$RunStats.captureCount -gt 0 -or [int]$RunStats.imageArtifactCount -gt 0 -or [int]$RunStats.comparisonArtifactCount -gt 0) {
+    $mimeTypeText = if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' }
+    $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int]$RunStats.captureCount, [int]$RunStats.imageArtifactCount, [int]$RunStats.comparisonArtifactCount, $mimeTypeText)) | Out-Null
+    $lines.Add(('- Chunks with metadata: `{0}`' -f [int]$RunStats.chunkCountWithMetadata)) | Out-Null
+  }
+  if ($RunStats.categoryCounts.Count -gt 0) {
+    $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $RunStats.categoryCounts))) | Out-Null
+  }
+  if ($RunStats.bucketCounts.Count -gt 0) {
+    $lines.Add(('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $RunStats.bucketCounts))) | Out-Null
+  }
   $lines.Add(('- Bundle status: `{0}`' -f $BundleStatus)) | Out-Null
   $lines.Add(('- Bundle reason: `{0}`' -f $BundleReason)) | Out-Null
   $lines.Add('') | Out-Null
@@ -462,10 +677,13 @@ function New-MarkdownIndex {
   foreach ($chunk in $ChunkReceipts) {
     $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
     $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+    $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+    $chunkMetadata = Get-SurfaceMetadataNode -SurfaceNode $chunkSurfaces
     $receiptReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot -OnlyIfExists
     $historyReportMdReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
     $historyReportHtmlReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
     $modeSummaryReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $modeSummaryJsonReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryJsonPath') -ResultsRoot $ResultsRoot -OnlyIfExists
 
     $lines.Add(('### {0}' -f [string]$chunk.chunkId)) | Out-Null
     $lines.Add(('- Status: `{0}`' -f [string]$chunk.status)) | Out-Null
@@ -473,6 +691,15 @@ function New-MarkdownIndex {
     $lines.Add(('- Revision ordinals: `{0}` -> `{1}`' -f [int]$chunk.revisionOrdinalStart, [int]$chunk.revisionOrdinalEnd)) | Out-Null
     $lines.Add(('- Pair ordinals: `{0}` -> `{1}`' -f [int]$chunk.pairOrdinalStart, [int]$chunk.pairOrdinalEnd)) | Out-Null
     $lines.Add(('- Total diffs: `{0}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))) | Out-Null
+    if ($chunkSurfaces) {
+      $lines.Add(('- Suppression profile: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown'))) | Out-Null
+      $mimeTypeText = if (@(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())).Count -gt 0) {
+        @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())) -join ', '
+      } else {
+        'none'
+      }
+      $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0), $mimeTypeText)) | Out-Null
+    }
     if ($receiptReference) {
       $lines.Add(('- Receipt: {0}' -f (Format-MarkdownLink -Label 'chunk-receipt.json' -Href $receiptReference))) | Out-Null
     }
@@ -484,6 +711,9 @@ function New-MarkdownIndex {
     }
     if ($modeSummaryReference) {
       $lines.Add(('- Mode summary: {0}' -f (Format-MarkdownLink -Label 'mode-summary.md' -Href $modeSummaryReference))) | Out-Null
+    }
+    if ($modeSummaryJsonReference) {
+      $lines.Add(('- Mode summary (json): {0}' -f (Format-MarkdownLink -Label 'mode-summary.json' -Href $modeSummaryJsonReference))) | Out-Null
     }
     $lines.Add('') | Out-Null
   }
@@ -574,10 +804,17 @@ function New-HtmlTimeline {
     <strong>Selected ref</strong><span>$([string]$Catalog.target.selectedRef)</span>
     <strong>Revision count</strong><span>$([int]$RunStats.revisionCount)</span>
     <strong>Pair count</strong><span>$([int]$RunStats.pairCount)</span>
+    <strong>Requested modes</strong><span>$(if ($RunStats.requestedModes.Count -gt 0) { $RunStats.requestedModes -join ', ' } else { 'n/a' })</span>
+    <strong>Noise policy</strong><span>$([string]$RunStats.noisePolicy)</span>
+    <strong>Suppression profile</strong><span>$([string]$RunStats.suppressionProfile)</span>
     <strong>Catalog completeness</strong><span>$($RunStats.catalogComplete.ToString().ToLowerInvariant()) ($([string]$RunStats.catalogCompletenessReason))</span>
     <strong>Segment count</strong><span>$([int]$RunStats.segmentCount)</span>
     <strong>Continuity break count</strong><span>$([int]$RunStats.continuityBreakCount)</span>
     <strong>Total chunk count</strong><span>$([int]$RunStats.totalChunkCount)</span>
+    <strong>Metadata surfaces</strong><span>captures=$([int]$RunStats.captureCount), images=$([int]$RunStats.imageArtifactCount), artifact-dirs=$([int]$RunStats.comparisonArtifactCount)</span>
+    <strong>Image MIME types</strong><span>$(if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' })</span>
+    <strong>Category counts</strong><span>$(Format-CountMapText -Map $RunStats.categoryCounts)</span>
+    <strong>Bucket counts</strong><span>$(Format-CountMapText -Map $RunStats.bucketCounts)</span>
     <strong>Completed chunks</strong><span>$([int]$RunStats.completedChunkCount)</span>
     <strong>Failed chunks</strong><span>$([int]$RunStats.failedChunkCount)</span>
     <strong>Skipped chunks</strong><span>$([int]$RunStats.skippedChunkCount)</span>
@@ -657,27 +894,36 @@ function New-HtmlIndex {
   foreach ($chunk in $ChunkReceipts) {
     $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
     $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+    $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+    $chunkMetadata = Get-SurfaceMetadataNode -SurfaceNode $chunkSurfaces
     $receiptReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot -OnlyIfExists
     $historyReportMdReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
     $historyReportHtmlReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
     $modeSummaryReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $modeSummaryJsonReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryJsonPath') -ResultsRoot $ResultsRoot -OnlyIfExists
     $receiptLink = Format-HtmlLink -Label 'chunk-receipt.json' -Href $receiptReference
     $historyReportMdLink = Format-HtmlLink -Label 'history-report.md' -Href $historyReportMdReference
     $historyReportHtmlLink = Format-HtmlLink -Label 'history-report.html' -Href $historyReportHtmlReference
     $modeSummaryLink = Format-HtmlLink -Label 'mode-summary.md' -Href $modeSummaryReference
+    $modeSummaryJsonLink = Format-HtmlLink -Label 'mode-summary.json' -Href $modeSummaryJsonReference
     $chunkClass = Get-HtmlStatusClass -Status ([string]$chunk.status)
+    $chunkProfile = [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown')
+    $chunkMetadataText = 'captures={0}, images={1}, artifact-dirs={2}' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0)
     $rows.Add(@"
 <tr class="$chunkClass">
   <td>$([string]$chunk.chunkId)</td>
   <td>$([string]$chunk.status)</td>
+  <td>$chunkProfile</td>
   <td>$([int]$chunk.segmentOrdinal)</td>
   <td>$([int]$chunk.revisionOrdinalStart)-$([int]$chunk.revisionOrdinalEnd)</td>
   <td>$([int]$chunk.pairOrdinalStart)-$([int]$chunk.pairOrdinalEnd)</td>
   <td>$([int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))</td>
+  <td>$chunkMetadataText</td>
   <td>$receiptLink</td>
   <td>$historyReportMdLink</td>
   <td>$historyReportHtmlLink</td>
   <td>$modeSummaryLink</td>
+  <td>$modeSummaryJsonLink</td>
 </tr>
 "@) | Out-Null
   }
@@ -742,6 +988,9 @@ function New-HtmlIndex {
     <strong>Selected ref</strong><span>$([string]$Catalog.target.selectedRef)</span>
     <strong>Revision count</strong><span>$([int]$RunStats.revisionCount)</span>
     <strong>Pair count</strong><span>$([int]$RunStats.pairCount)</span>
+    <strong>Requested modes</strong><span>$(if ($RunStats.requestedModes.Count -gt 0) { $RunStats.requestedModes -join ', ' } else { 'n/a' })</span>
+    <strong>Noise policy</strong><span>$([string]$RunStats.noisePolicy)</span>
+    <strong>Suppression profile</strong><span>$([string]$RunStats.suppressionProfile)</span>
     <strong>Final status</strong><span>$FinalStatus</span>
     <strong>Final reason</strong><span>$FinalReason</span>
     <strong>Catalog completeness</strong><span>$($RunStats.catalogComplete.ToString().ToLowerInvariant()) ($([string]$RunStats.catalogCompletenessReason))</span>
@@ -749,6 +998,10 @@ function New-HtmlIndex {
     <strong>Continuity break count</strong><span>$([int]$RunStats.continuityBreakCount)</span>
     <strong>Segment count</strong><span>$([int]$RunStats.segmentCount)</span>
     <strong>Total chunk count</strong><span>$([int]$RunStats.totalChunkCount)</span>
+    <strong>Metadata surfaces</strong><span>captures=$([int]$RunStats.captureCount), images=$([int]$RunStats.imageArtifactCount), artifact-dirs=$([int]$RunStats.comparisonArtifactCount)</span>
+    <strong>Image MIME types</strong><span>$(if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' })</span>
+    <strong>Category counts</strong><span>$(Format-CountMapText -Map $RunStats.categoryCounts)</span>
+    <strong>Bucket counts</strong><span>$(Format-CountMapText -Map $RunStats.bucketCounts)</span>
     <strong>Completed chunks</strong><span>$([int]$RunStats.completedChunkCount)</span>
     <strong>Failed chunks</strong><span>$([int]$RunStats.failedChunkCount)</span>
     <strong>Skipped chunks</strong><span>$([int]$RunStats.skippedChunkCount)</span>
@@ -782,14 +1035,17 @@ $($topLevelLinks -join [Environment]::NewLine)
       <tr>
         <th>Chunk</th>
         <th>Status</th>
+        <th>Profile</th>
         <th>Segment</th>
         <th>Revision ordinals</th>
         <th>Pair ordinals</th>
         <th>Diffs</th>
+        <th>Metadata</th>
         <th>Receipt</th>
         <th>Markdown</th>
         <th>HTML</th>
         <th>Mode summary</th>
+        <th>Mode summary JSON</th>
       </tr>
     </thead>
     <tbody>
@@ -922,6 +1178,7 @@ if ($planningStatus -eq 'complete' -and $effectiveBundleStatus -eq 'failed') {
   $replayReason = 'bundle-packaging-failed'
 }
 
+$surfaceAggregate = New-ExplorationSurfaceAggregate -ChunkReceipts $chunkReceipts
 $runStats = New-ExplorationSurfaceStats `
   -Catalog $catalog `
   -ChunkPlan $chunkPlan `
@@ -931,9 +1188,12 @@ $runStats = New-ExplorationSurfaceStats `
   -ReplayStatus $replayStatus `
   -ReplayReason $replayReason `
   -BundleStatus $effectiveBundleStatus `
-  -BundleReason $effectiveBundleReason
+  -BundleReason $effectiveBundleReason `
+  -SurfaceAggregate $surfaceAggregate `
+  -RequestedModes $requestedModes `
+  -NoisePolicy $NoisePolicy
 
-$chunkReceiptArray = $chunkReceipts.ToArray()
+$chunkReceiptArray = @(ConvertTo-ObjectArray -InputObject $chunkReceipts)
 $timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
 $timelineHtml = New-HtmlTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
 $indexMarkdown = New-MarkdownIndex `
@@ -984,6 +1244,16 @@ $explorationRun = [ordered]@{
     noisePolicy = $NoisePolicy
     includeMergeParents = [bool]$IncludeMergeParents.IsPresent
   }
+  surfaces = [ordered]@{
+    suppressionProfile = [string]$surfaceAggregate.suppressionProfile
+    comparisonArtifactCount = [int]$surfaceAggregate.comparisonArtifactCount
+    captureCount = [int]$surfaceAggregate.captureCount
+    imageArtifactCount = [int]$surfaceAggregate.imageArtifactCount
+    imageMimeTypes = @($surfaceAggregate.imageMimeTypes)
+    chunkCountWithMetadata = [int]$surfaceAggregate.chunkCountWithMetadata
+    categoryCounts = $surfaceAggregate.categoryCounts
+    bucketCounts = $surfaceAggregate.bucketCounts
+  }
   discovery = [ordered]@{
     revisionCatalogPath = $revisionCatalogPathResolved
     revisionCount = [int]$catalog.summary.revisionCount
@@ -1030,6 +1300,9 @@ $explorationRun = [ordered]@{
     skippedChunkCount = $skippedChunkCount
     finalStatus = $finalStatus
     finalReason = $finalReason
+    suppressionProfile = [string]$surfaceAggregate.suppressionProfile
+    captureCount = [int]$surfaceAggregate.captureCount
+    imageArtifactCount = [int]$surfaceAggregate.imageArtifactCount
   }
   replay = [ordered]@{
     status = $replayStatus
@@ -1067,6 +1340,12 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Final status: `{0}`' -f $finalStatus)
     ('- Final reason: `{0}`' -f $finalReason)
     ('- Replay status: `{0}` ({1})' -f [string]$runStats.replayStatus, [string]$runStats.replayReason)
+    ('- Requested modes: `{0}`' -f $(if ($requestedModes.Count -gt 0) { $requestedModes -join ', ' } else { 'n/a' }))
+    ('- Noise policy: `{0}`' -f $NoisePolicy)
+    ('- Suppression profile: `{0}`' -f [string]$surfaceAggregate.suppressionProfile)
+    ('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}`' -f [int]$surfaceAggregate.captureCount, [int]$surfaceAggregate.imageArtifactCount, [int]$surfaceAggregate.comparisonArtifactCount)
+    ('- Category counts: `{0}`' -f (Format-CountMapText -Map $surfaceAggregate.categoryCounts))
+    ('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $surfaceAggregate.bucketCounts))
     ('- Index (md): `{0}`' -f $indexMdResolved)
     ('- Index (html): `{0}`' -f $indexHtmlResolved)
     ('- Bundle status: `{0}`' -f $effectiveBundleStatus)

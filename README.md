@@ -149,9 +149,12 @@ The current execution slice stays additive on top of the discovery-first baselin
 
 - operator supplies `vi_path`
 - the platform validates the selected path fail-closed
+- trusted manual exploration now defaults to raw execution: `modes=full` plus `noise_policy=include`
 - the platform emits `revision-catalog.json` for the selected ref lineage
 - the platform plans deterministic chunk receipts/manifests
 - the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
+- the platform keeps unsuppressed LVCompare output in-band and surfaces deterministic metadata summaries for capture
+  artifacts such as images instead of collapsing them into generic noise counts
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
 - the platform writes `index.md` and `index.html` as the first operator-facing navigation surfaces
 - the platform also writes `timeline.md` and `timeline.html` for the deeper chunk-by-chunk timeline view
@@ -185,6 +188,7 @@ The local fast loop writes:
 - `history-report.html`
 - `local-fast-loop.json`
 - `local-fast-loop-summary.md`
+- `mode-summary.json`
 
 Example against the first proving consumer:
 
@@ -200,6 +204,7 @@ explicitly instead of relying on maintainer-only source-checkout fallback behavi
 
 For faster local iteration, maintainers can still pass existing backend bounds such as `-MaxPairs`, but the local loop
 keeps the hosted artifact contract and does not replace the hosted workflow as the source of truth.
+Its defaults now match the raw manual exploration surface: `-Mode full` and `-NoisePolicy include`.
 
 ## Consumer target catalog
 
