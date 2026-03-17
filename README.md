@@ -129,7 +129,10 @@ Manual exploration workflows emit additive planning receipts alongside the actio
 
 - `revision-catalog.json` (`comparevi-history/revision-catalog@v1`)
 - `chunk-plan.json`
+- `chunk-receipts/`
 - `exploration-run.json` (`comparevi-history/exploration-run@v1`)
+- `timeline.md`
+- `timeline.html`
 
 ## Manual VI exploration workflow
 
@@ -138,14 +141,19 @@ Trusted consumer repositories can expose arbitrary repo-relative `.vi` explorati
 wrapper such as
 [`docs/examples/comparevi-history-manual-vi-exploration.yml`](docs/examples/comparevi-history-manual-vi-exploration.yml).
 
-Phase 2 planning stays additive on top of the discovery-first baseline:
+The current execution slice stays additive on top of the discovery-first baseline:
 
 - operator supplies `vi_path`
 - the platform validates the selected path fail-closed
 - the platform emits `revision-catalog.json` for the selected ref lineage
-- the platform plans deterministic chunk receipts/manifests without executing them yet
-- the platform emits `exploration-run.json` as the top-level planning receipt
+- the platform plans deterministic chunk receipts/manifests
+- the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
+- the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
+- the platform writes `timeline.md` and `timeline.html` as the first operator-facing navigation surfaces
 - existing curated `target_spec_path` plus `target_id` workflows remain unchanged
+
+Bundle packaging remains a later slice. Current manual exploration runs already preserve per-chunk history outputs plus
+the additive timeline surfaces instead of stopping at planning only.
 
 Because reusable workflows do not automatically expose the called workflow repository as a local checkout, the consumer
 wrapper should keep `platform_ref` aligned with the same release ref used in the `uses:` pin.
