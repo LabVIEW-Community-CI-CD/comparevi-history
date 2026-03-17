@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-downstream-processing-manifest-v1.schema.json",
+  "title": "comparevi-history downstream processing manifest v1",
+  "type": "object",
+  "required": ["schema", "generatedAtUtc", "corpus", "acceptedSchemas", "processingModel", "units", "completeness", "pilotRecommendation"],
+  "properties": {
+    "schema": { "const": "comparevi-history/downstream-processing-manifest@v1" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "corpus": {
+      "type": "object",
+      "required": ["repository", "ref", "corpusIndexPath"],
+      "properties": {
+        "repository": { "type": "string" },
+        "ref": { "type": "string" },
+        "corpusIndexPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "acceptedSchemas": {
+      "type": "object",
+      "required": ["sharedEvidence", "evidenceGraph", "corpusPage"],
+      "properties": {
+        "sharedEvidence": { "type": "string" },
+        "evidenceGraph": { "type": "string" },
+        "corpusPage": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "processingModel": {
+      "type": "object",
+      "required": ["unitKind", "ordering", "continuationMode", "pageSize", "pageCount", "targetCount"],
+      "properties": {
+        "unitKind": { "type": "string" },
+        "ordering": { "type": "string" },
+        "continuationMode": { "type": "string" },
+        "pageSize": { "type": "integer", "minimum": 1 },
+        "pageCount": { "type": "integer", "minimum": 0 },
+        "targetCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["unitId", "pageOrdinal", "pagePath", "targetCount", "targetOrdinalStart", "targetOrdinalEnd", "continuationToken", "status"],
+        "properties": {
+          "unitId": { "type": "string" },
+          "pageOrdinal": { "type": "integer", "minimum": 1 },
+          "pagePath": { "type": "string" },
+          "targetCount": { "type": "integer", "minimum": 0 },
+          "targetOrdinalStart": { "type": "integer", "minimum": 1 },
+          "targetOrdinalEnd": { "type": "integer", "minimum": 1 },
+          "continuationToken": { "type": "string" },
+          "status": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "required": ["isComplete", "reason"],
+      "properties": {
+        "isComplete": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "pilotRecommendation": {
+      "type": "object",
+      "required": ["name", "selectionStrategy", "minimumTargetCount", "candidateTargetPaths", "requiredSchemas", "continuationMode", "nextStep"],
+      "properties": {
+        "name": { "type": "string" },
+        "selectionStrategy": { "type": "string" },
+        "minimumTargetCount": { "type": "integer", "minimum": 1 },
+        "candidateTargetPaths": { "type": "array", "items": { "type": "string" } },
+        "requiredSchemas": { "type": "array", "items": { "type": "string" } },
+        "continuationMode": { "type": "string" },
+        "nextStep": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -222,6 +222,44 @@ For faster local iteration, maintainers can still pass existing backend bounds s
 keeps the hosted artifact contract and does not replace the hosted workflow as the source of truth.
 Its defaults now match the raw manual exploration surface: `-Mode full` and `-NoisePolicy include`.
 
+## Corpus evidence indexing
+
+For corpus-scale deterministic processing, use
+[`scripts/Write-CompareVIHistoryCorpusIndex.ps1`](scripts/Write-CompareVIHistoryCorpusIndex.ps1) to aggregate
+existing `shared-evidence.json` and `evidence-graph.json` receipts into one machine-readable corpus manifest.
+
+The writer is intentionally contract-first:
+
+- it consumes an explicit evidence list instead of generating repo-wide evidence in this slice
+- it writes `corpus-index.json` as the top-level manifest (`comparevi-history/corpus-index@v1`) for many VI targets
+- it paginates targets into `pages/corpus-page-*.json` (`comparevi-history/corpus-page@v1`) so downstream processors can resume by page ordinal
+- it writes `downstream-processing-manifest.json` (`comparevi-history/downstream-processing-manifest@v1`) so other tooling can consume the evidence contract without scraping
+  `index.md`, `index.html`, `timeline.md`, or `timeline.html`
+- it fails closed if the explicit evidence list spans multiple consumer repositories or refs
+- it keeps completeness machine-readable at corpus level and page level instead of hiding degradation behind summary text
+
+The current continuation contract is deliberately simple:
+
+- ordering: `target-path-asc`
+- unit kind: `corpus-page`
+- continuation mode: `page-ordinal`
+- page boundaries are deterministic from the explicit evidence list plus `-PageSize`
+- incomplete targets remain in the corpus index and are marked as incomplete instead of being dropped
+
+Minimum viable pilot after the single-VI evidence model is stable:
+
+- consumer: `LabVIEW-Community-CI-CD/labview-icon-editor-demo`
+- selection strategy: explicit evidence list built from successful manual exploration runs
+- initial seed targets:
+  - `Tooling/deployment/VIP_Post-Install Custom Action.vi`
+  - `Tooling/deployment/VIP_Pre-Install Custom Action.vi`
+- page size: `2`
+- downstream tools should consume `comparevi-history/shared-evidence@v1`,
+  `comparevi-history/evidence-graph@v1`, `comparevi-history/corpus-page@v1`, and
+  `comparevi-history/downstream-processing-manifest@v1` directly
+
+This keeps the first corpus pilot deterministic and unsuppressed without inventing repo-wide generation before the
+single-VI evidence contracts have stabilized.
 ## Consumer target catalog
 
 Public consumers should check in a target catalog using `comparevi-history/consumer-targets@v1`. The example source of
