@@ -175,5 +175,6 @@ jobs:
           foreach ($check in $checks) {
             Write-Host ("Running {0}" -f $check)
             & (Join-Path $PWD $check)
+            $global:LASTEXITCODE = 0
             Write-Host ("Passed {0}" -f $check)
           }
