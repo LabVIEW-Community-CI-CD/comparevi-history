@@ -260,6 +260,7 @@ if (-not [string]::IsNullOrWhiteSpace($TargetSpecPath)) {
   $targetHistoryMaxCommitCount = Get-OptionalInt -Value (Get-PropertyValue -Object $targetBranchBudget -Name 'maxCommitCount')
   $targetReviewerSurface = Get-PropertyValue -Object $selectedTarget -Name 'reviewerSurface'
 } else {
+  $resolvedTargetId = Get-OptionalString -Value $TargetId
   $effectiveTargetPath = Get-OptionalString -Value $TargetPath
 }
 

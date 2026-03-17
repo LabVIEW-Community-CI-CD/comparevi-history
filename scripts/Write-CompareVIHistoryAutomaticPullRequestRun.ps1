@@ -1,0 +1,561 @@
+param(
+  [Parameter(Mandatory = $true)]
+  [string]$DiscoveryPath,
+  [Parameter(Mandatory = $true)]
+  [string]$ResultsDir,
+  [string]$TargetRunsManifestPath,
+  [string]$RunUrl,
+  [string]$ArtifactName,
+  [string]$GitHubOutputPath,
+  [string]$StepSummaryPath
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$stickyMarker = '<!-- comparevi-history:pull-request-diagnostics -->'
+
+function Write-ActionOutput {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Key,
+    [AllowNull()]
+    [string]$Value
+  )
+
+  if ([string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
+    return
+  }
+
+  $safeValue = if ($null -eq $Value) { '' } else { [string]$Value }
+  "$Key=$safeValue" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+}
+
+function Resolve-AbsolutePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$BasePath
+  )
+
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return [System.IO.Path]::GetFullPath($Path)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+}
+
+function Read-JsonFile {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $raw = Get-Content -LiteralPath $Path -Raw
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    throw "JSON file was empty: $Path"
+  }
+
+  return $raw | ConvertFrom-Json -Depth 100
+}
+
+function Get-OptionalString {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return $null
+  }
+
+  $stringValue = [string]$Value
+  if ([string]::IsNullOrWhiteSpace($stringValue)) {
+    return $null
+  }
+
+  return $stringValue.Trim()
+}
+
+function Get-NestedValue {
+  param(
+    [AllowNull()]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Path,
+    [AllowNull()]
+    $Default = $null
+  )
+
+  $current = $Object
+  foreach ($segment in $Path) {
+    if ($null -eq $current) {
+      return $Default
+    }
+
+    $property = $current.PSObject.Properties[$segment]
+    if ($null -eq $property) {
+      return $Default
+    }
+
+    $current = $property.Value
+  }
+
+  if ($null -eq $current) {
+    return $Default
+  }
+
+  return $current
+}
+
+function ConvertTo-ObjectArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [string] -or $Value -isnot [System.Collections.IEnumerable]) {
+    return @($Value)
+  }
+
+  $items = New-Object System.Collections.Generic.List[object]
+  foreach ($item in ([System.Collections.IEnumerable]$Value)) {
+    $items.Add($item) | Out-Null
+  }
+
+  return @($items | ForEach-Object { $_ })
+}
+
+function Resolve-RelativePath {
+  param(
+    [AllowNull()]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $resolvedPath = Resolve-AbsolutePath -Path $Path -BasePath $ResultsRoot
+  if (-not (Test-Path -LiteralPath $resolvedPath)) {
+    return $null
+  }
+
+  return [System.IO.Path]::GetRelativePath($ResultsRoot, $resolvedPath).Replace('\\', '/')
+}
+
+function Escape-Html {
+  param([AllowNull()][string]$Value)
+
+  if ($null -eq $Value) {
+    return ''
+  }
+
+  return [System.Net.WebUtility]::HtmlEncode($Value)
+}
+
+$basePath = (Get-Location).Path
+$discoveryPathResolved = Resolve-AbsolutePath -Path $DiscoveryPath -BasePath $basePath
+$resultsDirResolved = Resolve-AbsolutePath -Path $ResultsDir -BasePath $basePath
+$targetRunsManifestPathResolved = if ([string]::IsNullOrWhiteSpace($TargetRunsManifestPath)) { $null } else { Resolve-AbsolutePath -Path $TargetRunsManifestPath -BasePath $basePath }
+$prRunPath = Join-Path $resultsDirResolved 'pr-run.json'
+$publicCommentPath = Join-Path $resultsDirResolved 'pr-comment.md'
+$publicStepSummaryPath = Join-Path $resultsDirResolved 'pr-step-summary.md'
+$indexMdPath = Join-Path $resultsDirResolved 'index.md'
+$indexHtmlPath = Join-Path $resultsDirResolved 'index.html'
+
+if (-not (Test-Path -LiteralPath $discoveryPathResolved -PathType Leaf)) {
+  throw "Discovery receipt not found: $discoveryPathResolved"
+}
+
+New-Item -ItemType Directory -Path $resultsDirResolved -Force | Out-Null
+
+$discovery = Read-JsonFile -Path $discoveryPathResolved
+if ([string]$discovery.schema -ne 'comparevi-history/changed-vi-discovery@v2') {
+  throw "Unsupported discovery schema in '$discoveryPathResolved': $($discovery.schema)"
+}
+
+$targetManifest = $null
+if ($null -ne $targetRunsManifestPathResolved -and (Test-Path -LiteralPath $targetRunsManifestPathResolved -PathType Leaf)) {
+  $targetManifest = Read-JsonFile -Path $targetRunsManifestPathResolved
+  if ([string]$targetManifest.schema -ne 'comparevi-history/pr-target-runs-manifest@v2') {
+    throw "Unsupported target-runs manifest schema in '$targetRunsManifestPathResolved': $($targetManifest.schema)"
+  }
+}
+
+$policy = Get-NestedValue -Object $discovery -Path @('prPolicy')
+$selectionMode = Get-OptionalString -Value (Get-NestedValue -Object $discovery -Path @('executionContext', 'selectionMode'))
+$forkBehavior = Get-OptionalString -Value (Get-NestedValue -Object $discovery -Path @('executionContext', 'forkBehavior'))
+$emitCommentBody = [bool](Get-NestedValue -Object $policy -Path @('reviewerSurface', 'emitCommentBody') -Default $true)
+$emitStepSummary = [bool](Get-NestedValue -Object $policy -Path @('reviewerSurface', 'emitStepSummary') -Default $true)
+$fullSurface = Get-OptionalString -Value (Get-NestedValue -Object $policy -Path @('reviewerSurface', 'fullSurface'))
+$policyPath = Get-OptionalString -Value (Get-NestedValue -Object $policy -Path @('path'))
+$discoveryStatus = [string]$discovery.summary.executionStatus
+$discoveryReason = [string]$discovery.summary.executionReason
+$changedViCount = [int]$discovery.summary.changedViCount
+$eligibleChangedViCount = if ($null -eq $discovery.summary.eligibleChangedViCount) { $changedViCount } else { [int]$discovery.summary.eligibleChangedViCount }
+$excludedViCount = if ($null -eq $discovery.summary.excludedViCount) { 0 } else { [int]$discovery.summary.excludedViCount }
+$selectedTargetCount = if ($null -eq $discovery.summary.selectedTargetCount) { 0 } else { [int]$discovery.summary.selectedTargetCount }
+$overflowed = [bool](Get-NestedValue -Object $discovery -Path @('summary', 'overflowed') -Default $false)
+$overflowChangedViCount = if ($null -eq $discovery.summary.overflowChangedViCount) { 0 } else { [int]$discovery.summary.overflowChangedViCount }
+$excludedViFiles = @($discovery.excludedViFiles | ForEach-Object { $_ })
+$selectedTargets = @($discovery.selectedTargets | ForEach-Object { $_ })
+
+$targets = @()
+$executedTargetCount = 0
+$failedTargetCount = 0
+$totalProcessed = 0
+$totalDiffs = 0
+if ($null -ne $targetManifest) {
+  $targets = @($targetManifest.targets | ForEach-Object { $_ })
+  $executedTargetCount = [int]$targetManifest.summary.executedTargetCount
+  $failedTargetCount = [int]$targetManifest.summary.failedTargetCount
+  foreach ($target in @($targets)) {
+    if ($null -ne $target.totalProcessed) {
+      $totalProcessed += [int]$target.totalProcessed
+    }
+    if ($null -ne $target.totalDiffs) {
+      $totalDiffs += [int]$target.totalDiffs
+    }
+  }
+}
+
+$finalStatus = 'unknown'
+$finalReason = 'unknown'
+if ($discoveryStatus -in @('blocked', 'skipped')) {
+  $finalStatus = $discoveryStatus
+  $finalReason = $discoveryReason
+} elseif ($null -eq $targetManifest) {
+  $finalStatus = 'failed'
+  $finalReason = 'missing-target-runs-manifest'
+} elseif ($failedTargetCount -gt 0) {
+  $finalStatus = 'failed'
+  $finalReason = 'one-or-more-targets-failed'
+} elseif ($executedTargetCount -eq 0) {
+  $finalStatus = 'skipped'
+  $finalReason = 'no-targets-executed'
+} else {
+  $finalStatus = 'succeeded'
+  $finalReason = 'completed'
+}
+
+$commentLines = New-Object System.Collections.Generic.List[string]
+$commentLines.Add($stickyMarker) | Out-Null
+$commentLines.Add('## comparevi-history PR diagnostics') | Out-Null
+$commentLines.Add('') | Out-Null
+$commentLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
+$commentLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
+$commentLines.Add(('- Selection mode: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($selectionMode)) { 'dynamic-paths' } else { $selectionMode }))) | Out-Null
+$commentLines.Add(('- Fork behavior: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($forkBehavior)) { 'hosted-auto' } else { $forkBehavior }))) | Out-Null
+$commentLines.Add(('- PR policy: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($policyPath)) { 'n/a' } else { $policyPath }))) | Out-Null
+$commentLines.Add(('- Changed VIs: `{0}`' -f $changedViCount)) | Out-Null
+$commentLines.Add(('- Policy-eligible changed VIs: `{0}`' -f $eligibleChangedViCount)) | Out-Null
+$commentLines.Add(('- Selected targets: `{0}`' -f $selectedTargetCount)) | Out-Null
+$commentLines.Add(('- Excluded changed VIs: `{0}`' -f $excludedViCount)) | Out-Null
+if ($overflowed) {
+  $commentLines.Add(('- Overflowed changed VIs: `{0}`' -f $overflowChangedViCount)) | Out-Null
+}
+$commentLines.Add(('- Executed targets: `{0}`' -f $executedTargetCount)) | Out-Null
+$commentLines.Add(('- Failed targets: `{0}`' -f $failedTargetCount)) | Out-Null
+$commentLines.Add(('- Total processed pairs: `{0}`' -f $totalProcessed)) | Out-Null
+$commentLines.Add(('- Total diffs: `{0}`' -f $totalDiffs)) | Out-Null
+if (-not [string]::IsNullOrWhiteSpace($RunUrl)) {
+  $commentLines.Add(('- Workflow run: [view run]({0})' -f $RunUrl)) | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) {
+  $commentLines.Add(('- Artifact bundle: `{0}` (open the workflow run above, then download the artifact and start with `index.html` or `index.md`) ' -f $ArtifactName.Trim())) | Out-Null
+}
+$commentLines.Add('') | Out-Null
+
+if ($selectedTargets.Count -gt 0) {
+  $commentLines.Add('### Changed VIs') | Out-Null
+  $commentLines.Add('') | Out-Null
+  $commentLines.Add('| VI path | Status | Result |') | Out-Null
+  $commentLines.Add('| --- | --- | --- |') | Out-Null
+  foreach ($selectedTarget in @($selectedTargets | Sort-Object { [string]$_.targetPath })) {
+    $resultTarget = @($targets | Where-Object { [string]$_.targetId -eq [string]$selectedTarget.targetId } | Select-Object -First 1)
+    $statusLabel = if ($null -eq $resultTarget) { 'not-executed' } else { [string]$resultTarget.finalStatus }
+    $commentLines.Add(('| `{0}` | `{1}` | `{2}` |' -f [string]$selectedTarget.targetPath, [string]$selectedTarget.changeStatus, $statusLabel)) | Out-Null
+  }
+  $commentLines.Add('') | Out-Null
+}
+
+if ($excludedViFiles.Count -gt 0) {
+  $commentLines.Add('### Excluded changed VIs') | Out-Null
+  $commentLines.Add('') | Out-Null
+  foreach ($excluded in @($excludedViFiles | Sort-Object { [string]$_.currentPath })) {
+    $commentLines.Add(('- `{0}` ({1}) reason=`{2}`' -f [string]$excluded.currentPath, [string]$excluded.status, [string]$excluded.exclusionReason)) | Out-Null
+  }
+  $commentLines.Add('') | Out-Null
+}
+
+$commentLines.Add('The full unsuppressed history suite lives in the uploaded artifact bundle. Use the workflow run entry above, download the artifact, and start at `index.html` or `index.md`.') | Out-Null
+$commentBody = $commentLines -join "`n"
+if ($emitCommentBody) {
+  $commentBody | Set-Content -LiteralPath $publicCommentPath -Encoding utf8
+}
+
+$indexLines = New-Object System.Collections.Generic.List[string]
+$indexLines.Add('# comparevi-history PR diagnostics index') | Out-Null
+$indexLines.Add('') | Out-Null
+$indexLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
+$indexLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
+if (-not [string]::IsNullOrWhiteSpace($RunUrl)) {
+  $indexLines.Add(('- Workflow run: [{0}]({0})' -f $RunUrl)) | Out-Null
+}
+if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) {
+  $indexLines.Add(('- Artifact bundle: `{0}`' -f $ArtifactName.Trim())) | Out-Null
+}
+$indexLines.Add(('- Discovery receipt: [changed-vi-discovery.json](changed-vi-discovery.json)')) | Out-Null
+$indexLines.Add(('- Aggregate receipt: [pr-run.json](pr-run.json)')) | Out-Null
+$indexLines.Add('') | Out-Null
+$indexLines.Add('| VI path | Status | Public run | Shared evidence | History report | Indexable surfaces |') | Out-Null
+$indexLines.Add('| --- | --- | --- | --- | --- | --- |') | Out-Null
+foreach ($target in @($targets | Sort-Object { [string]$_.targetPath }, { [string]$_.targetId })) {
+  $publicRunRel = Resolve-RelativePath -Path ([string]$target.publicRunPath) -ResultsRoot $resultsDirResolved
+  $sharedEvidenceRel = Resolve-RelativePath -Path ([string]$target.sharedEvidencePath) -ResultsRoot $resultsDirResolved
+  $historyHtmlRel = Resolve-RelativePath -Path ([string]$target.historyReportHtmlPath) -ResultsRoot $resultsDirResolved
+  $modeSummaryRel = Resolve-RelativePath -Path ([string]$target.modeSummaryPath) -ResultsRoot $resultsDirResolved
+  $surfaceLinks = @()
+  if ($modeSummaryRel) {
+    $surfaceLinks += "[mode summary]($modeSummaryRel)"
+  }
+  $requestRel = Resolve-RelativePath -Path ([string]$target.requestPath) -ResultsRoot $resultsDirResolved
+  if ($requestRel) {
+    $surfaceLinks += "[request]($requestRel)"
+  }
+  $indexLines.Add((
+    '| `{0}` | `{1}` | {2} | {3} | {4} | {5} |' -f
+      [string]$target.targetPath,
+      [string]$target.finalStatus,
+      $(if ($publicRunRel) { "[public run]($publicRunRel)" } else { 'n/a' }),
+      $(if ($sharedEvidenceRel) { "[shared evidence]($sharedEvidenceRel)" } else { 'n/a' }),
+      $(if ($historyHtmlRel) { "[history report]($historyHtmlRel)" } else { 'n/a' }),
+      $(if ($surfaceLinks.Count -gt 0) { $surfaceLinks -join ', ' } else { 'n/a' })
+  )) | Out-Null
+}
+if ($targets.Count -eq 0) {
+  $indexLines.Add('| n/a | n/a | n/a | n/a | n/a | n/a |') | Out-Null
+}
+$indexLines.Add('') | Out-Null
+$indexMarkdown = $indexLines -join "`n"
+$indexMarkdown | Set-Content -LiteralPath $indexMdPath -Encoding utf8
+
+$htmlRows = New-Object System.Collections.Generic.List[string]
+foreach ($target in @($targets | Sort-Object { [string]$_.targetPath }, { [string]$_.targetId })) {
+  $publicRunRel = Resolve-RelativePath -Path ([string]$target.publicRunPath) -ResultsRoot $resultsDirResolved
+  $sharedEvidenceRel = Resolve-RelativePath -Path ([string]$target.sharedEvidencePath) -ResultsRoot $resultsDirResolved
+  $historyHtmlRel = Resolve-RelativePath -Path ([string]$target.historyReportHtmlPath) -ResultsRoot $resultsDirResolved
+  $modeSummaryRel = Resolve-RelativePath -Path ([string]$target.modeSummaryPath) -ResultsRoot $resultsDirResolved
+  $requestRel = Resolve-RelativePath -Path ([string]$target.requestPath) -ResultsRoot $resultsDirResolved
+  $surfaceParts = New-Object System.Collections.Generic.List[string]
+  if ($modeSummaryRel) {
+    $surfaceParts.Add('<a href="' + (Escape-Html $modeSummaryRel) + '">mode summary</a>') | Out-Null
+  }
+  if ($requestRel) {
+    $surfaceParts.Add('<a href="' + (Escape-Html $requestRel) + '">request</a>') | Out-Null
+  }
+  $htmlRows.Add((
+    '<tr><td><code>{0}</code></td><td><code>{1}</code></td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td></tr>' -f
+      (Escape-Html ([string]$target.targetPath)),
+      (Escape-Html ([string]$target.finalStatus)),
+      $(if ($publicRunRel) { '<a href="' + (Escape-Html $publicRunRel) + '">public run</a>' } else { 'n/a' }),
+      $(if ($sharedEvidenceRel) { '<a href="' + (Escape-Html $sharedEvidenceRel) + '">shared evidence</a>' } else { 'n/a' }),
+      $(if ($historyHtmlRel) { '<a href="' + (Escape-Html $historyHtmlRel) + '">history report</a>' } else { 'n/a' }),
+      $(if ($surfaceParts.Count -gt 0) { $surfaceParts -join ', ' } else { 'n/a' })
+  )) | Out-Null
+}
+if ($htmlRows.Count -eq 0) {
+  $htmlRows.Add('<tr><td colspan="6">No target results were produced for this pull request.</td></tr>') | Out-Null
+}
+
+$indexHtml = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>comparevi-history PR diagnostics index</title>
+  <style>
+    body { font-family: Segoe UI, sans-serif; margin: 2rem; color: #1f2933; background: #f8fafc; }
+    code { background: #e2e8f0; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; background: #ffffff; }
+    th, td { border: 1px solid #cbd5e1; padding: 0.6rem; text-align: left; vertical-align: top; }
+    th { background: #e2e8f0; }
+    h1 { margin-top: 0; }
+    ul { padding-left: 1.2rem; }
+  </style>
+</head>
+<body>
+  <h1>comparevi-history PR diagnostics index</h1>
+  <ul>
+    <li>Final status: <code>$(Escape-Html $finalStatus)</code></li>
+    <li>Final reason: <code>$(Escape-Html $finalReason)</code></li>
+    $(if (-not [string]::IsNullOrWhiteSpace($RunUrl)) { '<li>Workflow run: <a href="' + (Escape-Html $RunUrl) + '">' + (Escape-Html $RunUrl) + '</a></li>' } else { '' })
+    $(if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) { '<li>Artifact bundle: <code>' + (Escape-Html $ArtifactName.Trim()) + '</code></li>' } else { '' })
+    <li>Discovery receipt: <a href="changed-vi-discovery.json">changed-vi-discovery.json</a></li>
+    <li>Aggregate receipt: <a href="pr-run.json">pr-run.json</a></li>
+  </ul>
+  <table>
+    <thead>
+      <tr>
+        <th>VI path</th>
+        <th>Status</th>
+        <th>Public run</th>
+        <th>Shared evidence</th>
+        <th>History report</th>
+        <th>Indexable surfaces</th>
+      </tr>
+    </thead>
+    <tbody>
+      $($htmlRows -join "`n      ")
+    </tbody>
+  </table>
+</body>
+</html>
+"@
+$indexHtml | Set-Content -LiteralPath $indexHtmlPath -Encoding utf8
+
+$stepSummaryLines = New-Object System.Collections.Generic.List[string]
+$stepSummaryLines.Add('## comparevi-history automatic pull request run') | Out-Null
+$stepSummaryLines.Add('') | Out-Null
+$stepSummaryLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
+$stepSummaryLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
+$stepSummaryLines.Add(('- Discovery receipt: `{0}`' -f $discoveryPathResolved)) | Out-Null
+$stepSummaryLines.Add(('- Aggregate receipt: `{0}`' -f $prRunPath)) | Out-Null
+$stepSummaryLines.Add(('- Index markdown: `{0}`' -f $indexMdPath)) | Out-Null
+$stepSummaryLines.Add(('- Index HTML: `{0}`' -f $indexHtmlPath)) | Out-Null
+$stepSummaryLines.Add(('- Public comment body enabled: `{0}`' -f $emitCommentBody.ToString().ToLowerInvariant())) | Out-Null
+$stepSummaryLines.Add(('- Public step summary enabled: `{0}`' -f $emitStepSummary.ToString().ToLowerInvariant())) | Out-Null
+$stepSummaryLines.Add('') | Out-Null
+$stepSummaryLines.Add($commentBody) | Out-Null
+$stepSummaryContent = $stepSummaryLines -join "`n"
+if ($emitStepSummary) {
+  $stepSummaryContent | Set-Content -LiteralPath $publicStepSummaryPath -Encoding utf8
+}
+
+$receiptTargets = New-Object System.Collections.Generic.List[object]
+foreach ($target in @($targets)) {
+  $receiptTargets.Add([ordered]@{
+      targetId = [string]$target.targetId
+      targetSource = Get-OptionalString -Value $target.targetSource
+      targetPath = [string]$target.targetPath
+      requestedModes = @(
+        @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $target -Path @('requestedModes'))) |
+          ForEach-Object { Get-OptionalString -Value $_ } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+      )
+      requestedModeSource = Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('requestedModeSource'))
+      sourceBranchRef = Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('sourceBranchRef'))
+      keepArtifactsOnNoDiff = [bool](Get-NestedValue -Object $target -Path @('keepArtifactsOnNoDiff') -Default $false)
+      currentPath = Get-OptionalString -Value $target.currentPath
+      previousPath = Get-OptionalString -Value $target.previousPath
+      changeStatus = Get-OptionalString -Value $target.changeStatus
+      finalStatus = [string]$target.finalStatus
+      finalReason = [string]$target.finalReason
+      requestPath = Get-OptionalString -Value $target.requestPath
+      publicRunPath = Get-OptionalString -Value $target.publicRunPath
+      sharedEvidencePath = Get-OptionalString -Value $target.sharedEvidencePath
+      historySummaryJsonPath = Get-OptionalString -Value $target.historySummaryJsonPath
+      historyReportMdPath = Get-OptionalString -Value $target.historyReportMdPath
+      historyReportHtmlPath = Get-OptionalString -Value $target.historyReportHtmlPath
+      modeSummaryJsonPath = Get-OptionalString -Value $target.modeSummaryJsonPath
+      modeSummaryPath = Get-OptionalString -Value $target.modeSummaryPath
+      totalProcessed = if ($null -eq $target.totalProcessed) { $null } else { [int]$target.totalProcessed }
+      totalDiffs = if ($null -eq $target.totalDiffs) { $null } else { [int]$target.totalDiffs }
+    }) | Out-Null
+}
+
+$receipt = [ordered]@{
+  schema = 'comparevi-history/pr-run@v2'
+  generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+  pullRequest = [ordered]@{
+    number = [int]$discovery.pullRequest.number
+    htmlUrl = Get-OptionalString -Value $discovery.pullRequest.htmlUrl
+    baseRepository = [string]$discovery.pullRequest.baseRepository
+    baseRef = [string]$discovery.pullRequest.baseRef
+    baseSha = [string]$discovery.pullRequest.baseSha
+    headRepository = [string]$discovery.pullRequest.headRepository
+    headRef = [string]$discovery.pullRequest.headRef
+    headSha = [string]$discovery.pullRequest.headSha
+    isFork = [bool]$discovery.pullRequest.isFork
+  }
+  prPolicy = $policy
+  executionContext = [ordered]@{
+    selectionMode = $(if ([string]::IsNullOrWhiteSpace($selectionMode)) { 'dynamic-paths' } else { $selectionMode })
+    forkBehavior = $(if ([string]::IsNullOrWhiteSpace($forkBehavior)) { 'hosted-auto' } else { $forkBehavior })
+    fullSurface = $(if ([string]::IsNullOrWhiteSpace($fullSurface)) { 'artifact-index' } else { $fullSurface })
+  }
+  discovery = [ordered]@{
+    schema = 'comparevi-history/changed-vi-discovery@v2'
+    path = $discoveryPathResolved
+    status = $discoveryStatus
+    reason = $discoveryReason
+    changedViCount = $changedViCount
+    eligibleChangedViCount = $eligibleChangedViCount
+    excludedViCount = $excludedViCount
+    selectedTargetCount = $selectedTargetCount
+    overflowed = $overflowed
+    overflowChangedViCount = $overflowChangedViCount
+  }
+  outputs = [ordered]@{
+    resultsDir = $resultsDirResolved
+    prRunPath = $prRunPath
+    publicCommentPath = if ($emitCommentBody) { $publicCommentPath } else { $null }
+    publicStepSummaryPath = if ($emitStepSummary) { $publicStepSummaryPath } else { $null }
+    targetRunsManifestPath = if ($null -eq $targetManifest) { $null } else { $targetRunsManifestPathResolved }
+    indexMarkdownPath = $indexMdPath
+    indexHtmlPath = $indexHtmlPath
+    workflowRunUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $null } else { $RunUrl }
+    artifactName = if ([string]::IsNullOrWhiteSpace($ArtifactName)) { $null } else { $ArtifactName.Trim() }
+  }
+  summary = [ordered]@{
+    finalStatus = $finalStatus
+    finalReason = $finalReason
+    changedViCount = $changedViCount
+    eligibleChangedViCount = $eligibleChangedViCount
+    excludedViCount = $excludedViCount
+    selectedTargetCount = $selectedTargetCount
+    overflowed = $overflowed
+    overflowChangedViCount = $overflowChangedViCount
+    executedTargetCount = $executedTargetCount
+    failedTargetCount = $failedTargetCount
+    totalProcessed = $totalProcessed
+    totalDiffs = $totalDiffs
+  }
+  excludedViFiles = @(
+    $excludedViFiles |
+      ForEach-Object {
+        [ordered]@{
+          status = [string]$_.status
+          currentPath = [string]$_.currentPath
+          previousPath = Get-OptionalString -Value $_.previousPath
+          exclusionReason = [string]$_.exclusionReason
+        }
+      }
+  )
+  targets = @($receiptTargets | ForEach-Object { $_ })
+}
+
+$receipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $prRunPath -Encoding utf8
+
+Write-ActionOutput -Key 'pr-run-path' -Value $prRunPath
+Write-ActionOutput -Key 'public-comment-path' -Value $(if ($emitCommentBody) { $publicCommentPath } else { '' })
+Write-ActionOutput -Key 'public-step-summary-path' -Value $(if ($emitStepSummary) { $publicStepSummaryPath } else { '' })
+Write-ActionOutput -Key 'index-markdown-path' -Value $indexMdPath
+Write-ActionOutput -Key 'index-html-path' -Value $indexHtmlPath
+Write-ActionOutput -Key 'results-dir' -Value $resultsDirResolved
+Write-ActionOutput -Key 'final-status' -Value $finalStatus
+Write-ActionOutput -Key 'final-reason' -Value $finalReason
+
+if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
+  $stepSummaryContent | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
+}
+
+$receipt | ConvertTo-Json -Depth 64

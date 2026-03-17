@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-pr-comment-publication-v1.schema.json",
+  "title": "comparevi-history pull request comment publication receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repository",
+    "workflowRunId",
+    "artifactName",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/pr-comment-publication@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflowRunId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactZipPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "artifactRoot": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prRunPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commentBodyPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pullRequestNumber": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "workflowRunUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "commentAction",
+        "commentId",
+        "commentUrl"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commentAction": {
+          "type": "string",
+          "enum": [
+            "none",
+            "created",
+            "updated",
+            "unchanged"
+          ]
+        },
+        "commentId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "commentUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -91,6 +91,21 @@ try {
   if (($legacyRequest.target.requestedModes -join ',') -ne 'default') {
     throw 'Legacy path flow should preserve the default aggregate mode.'
   }
+  if ($null -ne $legacyRequest.target.id) {
+    throw 'Legacy path flow should leave target.id empty when target_id was not supplied.'
+  }
+
+  $dynamicRequest = & $scriptPath `
+    -RepositoryRoot $repoRoot `
+    -TargetPath 'resource/plugins/NIIconEditor/Miscellaneous/Settings Init.vi' `
+    -TargetId 'dynamic-settings-init-123456789abc' `
+    -Mode 'attributes,front-panel,block-diagram' | ConvertFrom-Json -Depth 20
+  if ($dynamicRequest.target.id -ne 'dynamic-settings-init-123456789abc') {
+    throw 'Dynamic target path flow should preserve the caller-supplied target_id.'
+  }
+  if (($dynamicRequest.target.requestedModes -join ',') -ne 'attributes,front-panel,block-diagram') {
+    throw 'Dynamic target path flow should preserve the explicit public mode list.'
+  }
 
   $failed = $false
   try {

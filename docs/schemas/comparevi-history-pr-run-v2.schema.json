@@ -1,0 +1,513 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-pr-run-v2.schema.json",
+  "title": "comparevi-history pull request run receipt v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "pullRequest",
+    "prPolicy",
+    "executionContext",
+    "discovery",
+    "outputs",
+    "summary",
+    "excludedViFiles",
+    "targets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/pr-run@v2"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "baseRepository",
+        "baseRef",
+        "baseSha",
+        "headRepository",
+        "headRef",
+        "headSha",
+        "isFork"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "htmlUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isFork": {
+          "type": "boolean"
+        }
+      }
+    },
+    "prPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "applied",
+        "discovery",
+        "execution",
+        "reviewerSurface",
+        "trust"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/pr-policy@v2"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "discovery": {
+          "type": "object"
+        },
+        "execution": {
+          "type": "object"
+        },
+        "reviewerSurface": {
+          "type": "object"
+        },
+        "trust": {
+          "type": "object"
+        }
+      }
+    },
+    "executionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionMode",
+        "forkBehavior",
+        "fullSurface"
+      ],
+      "properties": {
+        "selectionMode": {
+          "const": "dynamic-paths"
+        },
+        "forkBehavior": {
+          "const": "hosted-auto"
+        },
+        "fullSurface": {
+          "const": "artifact-index"
+        }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "status",
+        "reason",
+        "changedViCount",
+        "eligibleChangedViCount",
+        "excludedViCount",
+        "selectedTargetCount",
+        "overflowed",
+        "overflowChangedViCount"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/changed-vi-discovery@v2"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "skipped",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eligibleChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excludedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overflowed": {
+          "type": "boolean"
+        },
+        "overflowChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultsDir",
+        "prRunPath",
+        "publicCommentPath",
+        "publicStepSummaryPath",
+        "targetRunsManifestPath",
+        "indexMarkdownPath",
+        "indexHtmlPath",
+        "workflowRunUrl",
+        "artifactName"
+      ],
+      "properties": {
+        "resultsDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prRunPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicCommentPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicStepSummaryPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetRunsManifestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "indexMarkdownPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indexHtmlPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workflowRunUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifactName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finalStatus",
+        "finalReason",
+        "changedViCount",
+        "eligibleChangedViCount",
+        "excludedViCount",
+        "selectedTargetCount",
+        "overflowed",
+        "overflowChangedViCount",
+        "executedTargetCount",
+        "failedTargetCount",
+        "totalProcessed",
+        "totalDiffs"
+      ],
+      "properties": {
+        "finalStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "skipped",
+            "blocked",
+            "failed"
+          ]
+        },
+        "finalReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eligibleChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excludedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overflowed": {
+          "type": "boolean"
+        },
+        "overflowChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalProcessed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalDiffs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "excludedViFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "currentPath",
+          "exclusionReason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exclusionReason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "targetId",
+          "targetSource",
+          "targetPath",
+          "requestedModes",
+          "keepArtifactsOnNoDiff",
+          "finalStatus",
+          "finalReason"
+        ],
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targetSource": {
+            "const": "dynamic-path"
+          },
+          "targetPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestedModes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "attributes",
+                "front-panel",
+                "block-diagram"
+              ]
+            }
+          },
+          "requestedModeSource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceBranchRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keepArtifactsOnNoDiff": {
+            "type": "boolean"
+          },
+          "currentPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changeStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finalStatus": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "finalReason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "publicRunPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sharedEvidencePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "historySummaryJsonPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "historyReportMdPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "historyReportHtmlPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modeSummaryJsonPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modeSummaryPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "totalProcessed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "totalDiffs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-pr-policy-v2.schema.json",
+  "title": "comparevi-history pull request policy v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "discovery",
+    "execution",
+    "reviewerSurface",
+    "trust"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/pr-policy@v2"
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionMode",
+        "includePaths",
+        "excludePaths",
+        "overflowBehavior"
+      ],
+      "properties": {
+        "selectionMode": {
+          "const": "dynamic-paths"
+        },
+        "includePaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "excludePaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "maxChangedViCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "overflowBehavior": {
+          "const": "block"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicModes",
+        "noisePolicy",
+        "history"
+      ],
+      "properties": {
+        "publicModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "attributes",
+              "front-panel",
+              "block-diagram"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "noisePolicy": {
+          "type": "string",
+          "enum": [
+            "include",
+            "collapse",
+            "skip"
+          ]
+        },
+        "history": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sourceBranchRefStrategy",
+            "keepArtifactsOnNoDiff"
+          ],
+          "properties": {
+            "sourceBranchRefStrategy": {
+              "const": "pull-request-base"
+            },
+            "keepArtifactsOnNoDiff": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "reviewerSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "emitCommentBody",
+        "emitStepSummary",
+        "fullSurface"
+      ],
+      "properties": {
+        "emitCommentBody": {
+          "type": "boolean"
+        },
+        "emitStepSummary": {
+          "type": "boolean"
+        },
+        "fullSurface": {
+          "const": "artifact-index"
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "forkBehavior"
+      ],
+      "properties": {
+        "forkBehavior": {
+          "const": "hosted-auto"
+        }
+      }
+    }
+  }
+}
