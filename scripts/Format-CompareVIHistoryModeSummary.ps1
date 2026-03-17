@@ -119,6 +119,14 @@ function Get-EntryValue {
     $DefaultValue = $null
   )
 
+  if ($Entry -is [System.Collections.IDictionary]) {
+    if ($Entry.Contains($Name)) {
+      return $Entry[$Name]
+    }
+
+    return $DefaultValue
+  }
+
   $property = $Entry.PSObject.Properties[$Name]
   if ($null -eq $property) {
     return $DefaultValue
@@ -182,6 +190,176 @@ function Format-CountMap {
   }
 
   return (($normalized.Keys | ForEach-Object { '{0} ({1})' -f $_, [int]$normalized[$_] }) -join ', ')
+}
+
+function Normalize-CategoryLabel {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Value
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ''
+  }
+
+  $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+  $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
+  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+}
+
+function Try-ParseComparisonPairLabel {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Label
+  )
+
+  $normalizedLabel = Normalize-CategoryLabel -Value $Label
+  if ([string]::IsNullOrWhiteSpace($normalizedLabel)) {
+    return $null
+  }
+
+  $pattern = '^\s*First\s+VI:\s*(?<first>.+?)\s+Second\s+VI:\s*(?<second>.+?)\s*$'
+  if ($normalizedLabel -notmatch $pattern) {
+    return $null
+  }
+
+  return [ordered]@{
+    firstPath = $Matches['first'].Trim()
+    secondPath = $Matches['second'].Trim()
+  }
+}
+
+function Add-ComparisonPairAggregate {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [Parameter(Mandatory = $true)]
+    [string]$FirstPath,
+    [Parameter(Mandatory = $true)]
+    [string]$SecondPath,
+    [int]$Count = 1
+  )
+
+  $key = '{0}`n{1}' -f $FirstPath, $SecondPath
+  if (-not $Target.Contains($key)) {
+    $Target[$key] = [ordered]@{
+      firstPath = $FirstPath
+      secondPath = $SecondPath
+      count = 0
+    }
+  }
+
+  $Target[$key].count = [int]$Target[$key].count + [int]$Count
+}
+
+function ConvertTo-ComparisonPairArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [System.Collections.IDictionary]) {
+    return @(
+      $Value.GetEnumerator() |
+        Sort-Object { [string]$_.Value.firstPath }, { [string]$_.Value.secondPath } |
+        ForEach-Object {
+          [ordered]@{
+            firstPath = [string]$_.Value.firstPath
+            secondPath = [string]$_.Value.secondPath
+            count = [int]$_.Value.count
+          }
+        }
+    )
+  }
+
+  $pairs = New-Object System.Collections.Generic.List[object]
+  foreach ($pair in @(ConvertTo-ObjectArray -Value $Value)) {
+    $firstPath = [string](Get-EntryValue -Entry $pair -Name 'firstPath' -DefaultValue '')
+    $secondPath = [string](Get-EntryValue -Entry $pair -Name 'secondPath' -DefaultValue '')
+    if ([string]::IsNullOrWhiteSpace($firstPath) -or [string]::IsNullOrWhiteSpace($secondPath)) {
+      continue
+    }
+
+    $pairs.Add([ordered]@{
+        firstPath = $firstPath.Trim()
+        secondPath = $secondPath.Trim()
+        count = [int](Get-EntryValue -Entry $pair -Name 'count' -DefaultValue 0)
+      }) | Out-Null
+  }
+
+  return @(
+    $pairs |
+      Sort-Object { [string]$_.firstPath }, { [string]$_.secondPath } |
+      ForEach-Object { $_ }
+  )
+}
+
+function Merge-ComparisonPairCollection {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [AllowNull()]
+    $Source
+  )
+
+  foreach ($pair in @(ConvertTo-ComparisonPairArray -Value $Source)) {
+    Add-ComparisonPairAggregate -Target $Target -FirstPath ([string]$pair.firstPath) -SecondPath ([string]$pair.secondPath) -Count ([int]$pair.count)
+  }
+}
+
+function ConvertTo-NormalizedCategorySurface {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  $normalizedSource = ConvertTo-OrderedCountMap -Value $Value
+  $categoryCounts = @{}
+  $comparisonPairs = @{}
+
+  foreach ($rawKey in @($normalizedSource.Keys | Sort-Object)) {
+    $count = [int]$normalizedSource[$rawKey]
+    $comparisonPair = Try-ParseComparisonPairLabel -Label ([string]$rawKey)
+    if ($null -ne $comparisonPair) {
+      Add-ComparisonPairAggregate -Target $comparisonPairs -FirstPath ([string]$comparisonPair.firstPath) -SecondPath ([string]$comparisonPair.secondPath) -Count $count
+      continue
+    }
+
+    $normalizedKey = Normalize-CategoryLabel -Value ([string]$rawKey)
+    if ([string]::IsNullOrWhiteSpace($normalizedKey)) {
+      continue
+    }
+
+    if (-not $categoryCounts.Contains($normalizedKey)) {
+      $categoryCounts[$normalizedKey] = 0
+    }
+    $categoryCounts[$normalizedKey] = [int]$categoryCounts[$normalizedKey] + $count
+  }
+
+  return [pscustomobject]@{
+    categoryCounts = ConvertTo-OrderedCountMap -Value $categoryCounts
+    comparisonPairs = @(ConvertTo-ComparisonPairArray -Value $comparisonPairs)
+  }
+}
+
+function Format-ComparisonPairList {
+  param(
+    [AllowNull()]
+    $Pairs
+  )
+
+  $pairArray = @(ConvertTo-ComparisonPairArray -Value $Pairs)
+  if ($pairArray.Count -eq 0) {
+    return 'none'
+  }
+
+  return (($pairArray | ForEach-Object { '{0} -> {1} ({2})' -f [string]$_.firstPath, [string]$_.secondPath, [int]$_.count }) -join ', ')
 }
 
 function Get-ModeSummaryTotal {
@@ -318,7 +496,9 @@ function Get-ModeSurfaceSummary {
   }
 
   $stats = if ($manifest) { Get-EntryValue -Entry $manifest -Name 'stats' -DefaultValue $null } else { $null }
-  $categoryCounts = ConvertTo-OrderedCountMap -Value $(if ($stats) { Get-EntryValue -Entry $stats -Name 'categoryCounts' -DefaultValue $null } else { Get-EntryValue -Entry $Entry -Name 'categoryCounts' -DefaultValue $null })
+  $categorySurface = ConvertTo-NormalizedCategorySurface -Value $(if ($stats) { Get-EntryValue -Entry $stats -Name 'categoryCounts' -DefaultValue $null } else { Get-EntryValue -Entry $Entry -Name 'categoryCounts' -DefaultValue $null })
+  $categoryCounts = $categorySurface.categoryCounts
+  $comparisonPairs = @($categorySurface.comparisonPairs)
   $bucketCounts = ConvertTo-OrderedCountMap -Value $(if ($stats) { Get-EntryValue -Entry $stats -Name 'bucketCounts' -DefaultValue $null } else { Get-EntryValue -Entry $Entry -Name 'bucketCounts' -DefaultValue $null })
 
   $artifactDirSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -361,6 +541,7 @@ function Get-ModeSurfaceSummary {
     flags = @($flags | Sort-Object -Unique)
     suppressionProfile = Get-SuppressionProfile -Flags $flags
     categoryCounts = $categoryCounts
+    comparisonPairs = $comparisonPairs
     bucketCounts = $bucketCounts
     metadata = [ordered]@{
       comparisonArtifactCount = $comparisonArtifactCount
@@ -400,6 +581,7 @@ if ($executedModes.Count -eq 0 -and $modeEntries.Count -gt 0) {
 $modeSummaries = @($modeEntries | ForEach-Object { Get-ModeSurfaceSummary -Entry $_ })
 $aggregateCategoryCounts = @{}
 $aggregateBucketCounts = @{}
+$aggregateComparisonPairs = @{}
 $aggregateCaptureCount = 0
 $aggregateImageArtifactCount = 0
 $aggregateComparisonArtifactCount = 0
@@ -415,6 +597,7 @@ foreach ($modeSummary in $modeSummaries) {
     [void]$aggregateProfiles.Add($profile)
   }
   Merge-CountMap -Target $aggregateCategoryCounts -Source $modeSummary.categoryCounts
+  Merge-ComparisonPairCollection -Target $aggregateComparisonPairs -Source $modeSummary.comparisonPairs
   Merge-CountMap -Target $aggregateBucketCounts -Source $modeSummary.bucketCounts
   $aggregateCaptureCount += [int]$modeSummary.metadata.captureCount
   $aggregateImageArtifactCount += [int]$modeSummary.metadata.imageArtifactCount
@@ -453,6 +636,7 @@ $modeSummaryObject = [ordered]@{
   noisePolicy = if ([string]::IsNullOrWhiteSpace($NoisePolicy)) { $null } else { $NoisePolicy }
   suppressionProfile = $suppressionProfile
   categoryCounts = [ordered]@{}
+  comparisonPairs = @()
   bucketCounts = [ordered]@{}
   metadata = [ordered]@{
     comparisonArtifactCount = $aggregateComparisonArtifactCount
@@ -466,6 +650,7 @@ $modeSummaryObject = [ordered]@{
 foreach ($key in @($aggregateCategoryCounts.Keys | Sort-Object)) {
   $modeSummaryObject.categoryCounts[$key] = [int]$aggregateCategoryCounts[$key]
 }
+$modeSummaryObject.comparisonPairs = @(ConvertTo-ComparisonPairArray -Value $aggregateComparisonPairs)
 foreach ($key in @($aggregateBucketCounts.Keys | Sort-Object)) {
   $modeSummaryObject.bucketCounts[$key] = [int]$aggregateBucketCounts[$key]
 }
@@ -488,6 +673,9 @@ if ($aggregateCaptureCount -gt 0 -or $aggregateImageArtifactCount -gt 0 -or $agg
 }
 if ($modeSummaryObject.categoryCounts.Count -gt 0) {
   $summaryLines.Add(('Category counts: `{0}`' -f (Format-CountMap -Map $modeSummaryObject.categoryCounts)))
+}
+if ($modeSummaryObject.comparisonPairs.Count -gt 0) {
+  $summaryLines.Add(('Comparison pairs: `{0}`' -f (Format-ComparisonPairList -Pairs $modeSummaryObject.comparisonPairs)))
 }
 if ($modeSummaryObject.bucketCounts.Count -gt 0) {
   $summaryLines.Add(('Bucket counts: `{0}`' -f (Format-CountMap -Map $modeSummaryObject.bucketCounts)))
@@ -529,6 +717,9 @@ if ($modeSummaries.Count -gt 0) {
     $detailParts = New-Object System.Collections.Generic.List[string]
     if ($entry.categoryCounts.Count -gt 0) {
       $detailParts.Add(('categories={0}' -f (Format-CountMap -Map $entry.categoryCounts))) | Out-Null
+    }
+    if (@($entry.comparisonPairs).Count -gt 0) {
+      $detailParts.Add(('comparison-pairs={0}' -f (Format-ComparisonPairList -Pairs $entry.comparisonPairs))) | Out-Null
     }
     if ($entry.bucketCounts.Count -gt 0) {
       $detailParts.Add(('buckets={0}' -f (Format-CountMap -Map $entry.bucketCounts))) | Out-Null

@@ -95,6 +95,7 @@
         "imageMimeTypes",
         "chunkCountWithMetadata",
         "categoryCounts",
+        "comparisonPairs",
         "bucketCounts"
       ],
       "properties": {
@@ -134,6 +135,30 @@
           "additionalProperties": {
             "type": "integer",
             "minimum": 0
+          }
+        },
+        "comparisonPairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "firstPath",
+              "secondPath",
+              "count"
+            ],
+            "properties": {
+              "firstPath": {
+                "type": "string"
+              },
+              "secondPath": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
           }
         },
         "bucketCounts": {
