@@ -179,6 +179,47 @@ try {
   if ($legacySummary -notmatch '\| default \| unsuppressed \| none \| 1 \| 1 \| 0 \| 0 \| captures=0; images=0 \| ok \|') {
     throw 'Legacy summary did not fall back missing per-mode fields to zero.'
   }
+
+  $emptyJsonOutputPath = Join-Path $tempRoot 'empty-mode-summary.json'
+  $emptySummary = & $scriptPath `
+    -RequestedModeList 'full' `
+    -ExecutedModeList '' `
+    -ModeManifestsJson '' `
+    -TotalProcessed '' `
+    -TotalDiffs '' `
+    -StopReason 'facade-step-failed' `
+    -NoisePolicy 'include' `
+    -JsonOutputPath $emptyJsonOutputPath
+
+  if ($emptySummary -notmatch 'Requested modes: `full`') {
+    throw 'Empty mode summary did not preserve the requested mode list.'
+  }
+  if ($emptySummary -notmatch 'Executed modes: `n/a`') {
+    throw 'Empty mode summary did not keep executed modes empty.'
+  }
+  if ($emptySummary -notmatch 'Suppression profile: `unknown`') {
+    throw 'Empty mode summary did not degrade suppression profile to unknown.'
+  }
+  if ($emptySummary -notmatch 'Total processed: `0`') {
+    throw 'Empty mode summary did not fall back total processed to zero.'
+  }
+  if ($emptySummary -notmatch 'Total diffs: `0`') {
+    throw 'Empty mode summary did not fall back total diffs to zero.'
+  }
+  if ($emptySummary -notmatch 'Stop reason: `facade-step-failed`') {
+    throw 'Empty mode summary did not preserve the stop reason.'
+  }
+
+  $emptySummaryJson = Get-Content -LiteralPath $emptyJsonOutputPath -Raw | ConvertFrom-Json -Depth 64
+  if ($emptySummaryJson.suppressionProfile -ne 'unknown') {
+    throw 'Empty mode summary JSON suppression profile mismatch.'
+  }
+  if ($emptySummaryJson.totalProcessed -ne 0 -or $emptySummaryJson.totalDiffs -ne 0) {
+    throw 'Empty mode summary JSON totals mismatch.'
+  }
+  if ($emptySummaryJson.metadata.captureCount -ne 0 -or $emptySummaryJson.metadata.imageArtifactCount -ne 0) {
+    throw 'Empty mode summary JSON metadata counts mismatch.'
+  }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
