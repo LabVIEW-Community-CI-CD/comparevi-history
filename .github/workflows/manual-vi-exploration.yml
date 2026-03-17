@@ -89,6 +89,13 @@ jobs:
       revision-count: ${{ steps.catalog.outputs['revision-count'] }}
       catalog-complete: ${{ steps.catalog.outputs['catalog-complete'] }}
       catalog-completeness-reason: ${{ steps.catalog.outputs['catalog-completeness-reason'] }}
+      chunk-plan-path: ${{ steps.plan.outputs['chunk-plan-path'] }}
+      chunk-receipts-root: ${{ steps.plan.outputs['chunk-receipts-root'] }}
+      chunk-count: ${{ steps.plan.outputs['chunk-count'] }}
+      executable-pair-count: ${{ steps.plan.outputs['executable-pair-count'] }}
+      exploration-run-path: ${{ steps.exploration.outputs['exploration-run-path'] }}
+      exploration-status: ${{ steps.exploration.outputs['exploration-status'] }}
+      exploration-reason: ${{ steps.exploration.outputs['exploration-reason'] }}
     steps:
       - name: Resolve workflow defaults
         id: defaults
@@ -168,6 +175,37 @@ jobs:
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
+      - name: Plan manual exploration chunks
+        id: plan
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Write-CompareVIHistoryChunkPlan.ps1" `
+            -RevisionCatalogPath '${{ steps.catalog.outputs['revision-catalog-path'] }}' `
+            -ResultsDir 'tests/results/ref-compare/history-exploration' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+      - name: Write exploration run receipt
+        id: exploration
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $includeMergeParents = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Write-CompareVIHistoryExplorationRun.ps1" `
+            -RevisionCatalogPath '${{ steps.catalog.outputs['revision-catalog-path'] }}' `
+            -ChunkPlanPath '${{ steps.plan.outputs['chunk-plan-path'] }}' `
+            -ResultsDir 'tests/results/ref-compare/history-exploration' `
+            -Modes '${{ inputs.modes }}' `
+            -NoisePolicy '${{ inputs.noise_policy }}' `
+            -IncludeMergeParents:$includeMergeParents `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
       - name: Append manual exploration request context
         if: ${{ always() }}
         shell: pwsh
@@ -179,12 +217,18 @@ jobs:
             '### Exploration request'
             ('- Requested modes: `{0}`' -f '${{ inputs.modes }}')
             ('- Noise policy: `{0}`' -f '${{ inputs.noise_policy }}')
+            ('- Exploration status: `{0}`' -f '${{ steps.exploration.outputs['exploration-status'] }}')
+            ('- Exploration reason: `{0}`' -f '${{ steps.exploration.outputs['exploration-reason'] }}')
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
-      - name: Upload revision catalog artifact
+      - name: Upload exploration planning artifacts
         if: ${{ always() && steps.catalog.outputs['revision-catalog-path'] != '' }}
         uses: actions/upload-artifact@v5
         with:
           name: comparevi-history-manual-vi-exploration-${{ github.run_id }}
-          path: ${{ steps.catalog.outputs['revision-catalog-path'] }}
+          path: |
+            ${{ steps.catalog.outputs['revision-catalog-path'] }}
+            ${{ steps.plan.outputs['chunk-plan-path'] }}
+            ${{ steps.plan.outputs['chunk-receipts-root'] }}
+            ${{ steps.exploration.outputs['exploration-run-path'] }}
           if-no-files-found: error

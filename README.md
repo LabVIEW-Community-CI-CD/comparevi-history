@@ -125,9 +125,11 @@ The action preserves the existing backend outputs and adds the public platform r
 `tooling-path` points to either the extracted `CompareVI.Tools` bundle root or, for trusted maintainer fallbacks only,
  the temporary backend checkout path.
 
-Phase 1 manual exploration workflows add a separate revision-catalog receipt:
+Manual exploration workflows emit additive planning receipts alongside the action outputs:
 
 - `revision-catalog.json` (`comparevi-history/revision-catalog@v1`)
+- `chunk-plan.json`
+- `exploration-run.json` (`comparevi-history/exploration-run@v1`)
 
 ## Manual VI exploration workflow
 
@@ -136,11 +138,13 @@ Trusted consumer repositories can expose arbitrary repo-relative `.vi` explorati
 wrapper such as
 [`docs/examples/comparevi-history-manual-vi-exploration.yml`](docs/examples/comparevi-history-manual-vi-exploration.yml).
 
-Phase 1 is discovery-first:
+Phase 2 planning stays additive on top of the discovery-first baseline:
 
 - operator supplies `vi_path`
 - the platform validates the selected path fail-closed
 - the platform emits `revision-catalog.json` for the selected ref lineage
+- the platform plans deterministic chunk receipts/manifests without executing them yet
+- the platform emits `exploration-run.json` as the top-level planning receipt
 - existing curated `target_spec_path` plus `target_id` workflows remain unchanged
 
 Because reusable workflows do not automatically expose the called workflow repository as a local checkout, the consumer
