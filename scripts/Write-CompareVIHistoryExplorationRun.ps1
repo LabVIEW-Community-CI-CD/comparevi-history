@@ -356,14 +356,20 @@ function ConvertTo-ComparisonPairArray {
   if ($Value -is [System.Collections.IDictionary]) {
     return @(
       $Value.GetEnumerator() |
-        Sort-Object { [string]$_.Value.firstPath }, { [string]$_.Value.secondPath } |
         ForEach-Object {
-          [ordered]@{
-            firstPath = [string]$_.Value.firstPath
-            secondPath = [string]$_.Value.secondPath
-            count = [int]$_.Value.count
+          $firstPath = [string](Get-OptionalPropertyValue -InputObject $_.Value -PropertyName 'firstPath' -Default '')
+          $secondPath = [string](Get-OptionalPropertyValue -InputObject $_.Value -PropertyName 'secondPath' -Default '')
+          if ([string]::IsNullOrWhiteSpace($firstPath) -or [string]::IsNullOrWhiteSpace($secondPath)) {
+            return
           }
-        }
+          [ordered]@{
+            firstPath = $firstPath
+            secondPath = $secondPath
+            count = [int](Get-OptionalPropertyValue -InputObject $_.Value -PropertyName 'count' -Default 0)
+          }
+        } |
+        Where-Object { $null -ne $_ } |
+        Sort-Object { [string]$_.firstPath }, { [string]$_.secondPath }
     )
   }
 
@@ -670,6 +676,8 @@ function New-MarkdownPreviewGallery {
   param(
     [AllowNull()]
     $PreviewImages,
+    [AllowNull()]
+    $EvidenceGraph,
     [Parameter(Mandatory = $true)]
     $RunStats
   )
@@ -690,6 +698,8 @@ function New-MarkdownPreviewGallery {
 
   $previewOrdinal = 1
   foreach ($preview in $previewArray) {
+    $chunkNode = if ($null -eq $EvidenceGraph) { $null } else { Get-EvidenceGraphChunkById -EvidenceGraph $EvidenceGraph -ChunkId ([string]$preview.chunkId) }
+    $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunkNode -PropertyName 'outputs'
     $title = '{0} | {1}' -f [string]$preview.mode, [string]$preview.category
     $lines.Add(('### Preview `{0}`: {1}' -f $previewOrdinal, $title)) | Out-Null
     $lines.Add(('- Chunk: `{0}`' -f [string]$preview.chunkId)) | Out-Null
@@ -697,6 +707,16 @@ function New-MarkdownPreviewGallery {
     $lines.Add(('- Byte length: `{0}`' -f [int]$preview.byteLength)) | Out-Null
     if ($null -ne $preview.comparisonPair) {
       $lines.Add(('- Comparison pair: `{0}`' -f (Format-PreviewComparisonPairText -Pair $preview.comparisonPair))) | Out-Null
+    }
+    $lines.Add(('- Chunk details: {0}' -f (Format-MarkdownLink -Label ([string]$preview.chunkId) -Href ('#{0}' -f (Get-ChunkAnchorId -ChunkId ([string]$preview.chunkId)))))) | Out-Null
+    $lines.Add(('- Image file: {0}' -f (Format-MarkdownLink -Label ([System.IO.Path]::GetFileName([string]$preview.relativePath)) -Href ([string]$preview.relativePath)))) | Out-Null
+    $historyReportHtmlHref = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($historyReportHtmlHref)) {
+      $lines.Add(('- HTML report: {0}' -f (Format-MarkdownLink -Label 'history-report.html' -Href $historyReportHtmlHref))) | Out-Null
+    }
+    $modeSummaryHref = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($modeSummaryHref)) {
+      $lines.Add(('- Mode summary: {0}' -f (Format-MarkdownLink -Label 'mode-summary.md' -Href $modeSummaryHref))) | Out-Null
     }
     $lines.Add(('![{0}]({1})' -f $title, [string]$preview.relativePath)) | Out-Null
     $lines.Add('') | Out-Null
@@ -710,6 +730,8 @@ function New-HtmlPreviewGallery {
   param(
     [AllowNull()]
     $PreviewImages,
+    [AllowNull()]
+    $EvidenceGraph,
     [Parameter(Mandatory = $true)]
     $RunStats
   )
@@ -721,11 +743,22 @@ function New-HtmlPreviewGallery {
 
   $cards = New-Object System.Collections.Generic.List[string]
   foreach ($preview in $previewArray) {
+    $chunkNode = if ($null -eq $EvidenceGraph) { $null } else { Get-EvidenceGraphChunkById -EvidenceGraph $EvidenceGraph -ChunkId ([string]$preview.chunkId) }
+    $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunkNode -PropertyName 'outputs'
+    $chunkAnchorHref = '#' + (Get-ChunkAnchorId -ChunkId ([string]$preview.chunkId))
+    $chunkLink = Format-HtmlLink -Label ([string]$preview.chunkId) -Href $chunkAnchorHref
+    $rawImageLink = Format-HtmlLink -Label ([System.IO.Path]::GetFileName([string]$preview.relativePath)) -Href ([string]$preview.relativePath)
+    $historyReportHtmlLink = Format-HtmlLink -Label 'history-report.html' -Href ([string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml'))
+    $modeSummaryLink = Format-HtmlLink -Label 'mode-summary.md' -Href ([string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath'))
     $comparisonPairMarkup = if ($null -eq $preview.comparisonPair) {
       ''
     } else {
       ('<div><strong>Comparison pair</strong><span>{0}</span></div>' -f (ConvertTo-HtmlText -Value (Format-PreviewComparisonPairText -Pair $preview.comparisonPair)))
     }
+    $chunkDetailMarkup = if ([string]::IsNullOrWhiteSpace($chunkLink)) { '' } else { ('<div><strong>Chunk details</strong><span>{0}</span></div>' -f $chunkLink) }
+    $rawImageMarkup = if ([string]::IsNullOrWhiteSpace($rawImageLink)) { '' } else { ('<div><strong>Image file</strong><span>{0}</span></div>' -f $rawImageLink) }
+    $historyReportMarkup = if ([string]::IsNullOrWhiteSpace($historyReportHtmlLink)) { '' } else { ('<div><strong>HTML report</strong><span>{0}</span></div>' -f $historyReportHtmlLink) }
+    $modeSummaryMarkup = if ([string]::IsNullOrWhiteSpace($modeSummaryLink)) { '' } else { ('<div><strong>Mode summary</strong><span>{0}</span></div>' -f $modeSummaryLink) }
 
     $cards.Add(@"
     <article class="preview-card">
@@ -735,6 +768,10 @@ function New-HtmlPreviewGallery {
         <div><strong>MIME type</strong><span>$((ConvertTo-HtmlText -Value ([string]$preview.mimeType)))</span></div>
         <div><strong>Byte length</strong><span>$([int]$preview.byteLength)</span></div>
 $comparisonPairMarkup
+$chunkDetailMarkup
+$rawImageMarkup
+$historyReportMarkup
+$modeSummaryMarkup
       </div>
       <img src="$([string]$preview.relativePath)" alt="$((ConvertTo-HtmlText -Value ('{0} | {1}' -f [string]$preview.mode, [string]$preview.category)))" loading="lazy" />
     </article>
@@ -752,6 +789,570 @@ $comparisonPairMarkup
   <div class="preview-grid">
 $($cards -join [Environment]::NewLine)
   </div>
+"@
+}
+
+function ConvertTo-AnchorSlug {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Value
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return 'item'
+  }
+
+  $slug = [regex]::Replace($Value.ToLowerInvariant(), '[^a-z0-9]+', '-').Trim('-')
+  if ([string]::IsNullOrWhiteSpace($slug)) {
+    return 'item'
+  }
+
+  return $slug
+}
+
+function Get-ChunkAnchorId {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ChunkId
+  )
+
+  return ('chunk-{0}' -f (ConvertTo-AnchorSlug -Value $ChunkId))
+}
+
+function Get-SegmentAnchorId {
+  param(
+    [Parameter(Mandatory = $true)]
+    [int]$SegmentOrdinal
+  )
+
+  return ('segment-{0}' -f $SegmentOrdinal)
+}
+
+function ConvertTo-ComparisonPairKey {
+  param(
+    [AllowNull()]
+    $Pair
+  )
+
+  if ($null -eq $Pair) {
+    return ''
+  }
+
+  return ('{0}|{1}' -f [string](Get-OptionalPropertyValue -InputObject $Pair -PropertyName 'firstPath' -Default ''), [string](Get-OptionalPropertyValue -InputObject $Pair -PropertyName 'secondPath' -Default ''))
+}
+
+function Add-UniqueLinkEntry {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Href,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Label
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Href)) {
+    return
+  }
+
+  $resolvedLabel = if ([string]::IsNullOrWhiteSpace($Label)) { $Href } else { $Label }
+  $key = ('{0}|{1}' -f $resolvedLabel, $Href).ToLowerInvariant()
+  if ($Target.ContainsKey($key)) {
+    return
+  }
+
+  $Target[$key] = [ordered]@{
+    label = $resolvedLabel
+    href = $Href
+  }
+}
+
+function Format-MarkdownLinkList {
+  param(
+    [AllowNull()]
+    $Links,
+    [Parameter(Mandatory = $false)]
+    [string]$EmptyText = 'none'
+  )
+
+  $linkTexts = @(
+    ConvertTo-ObjectArray -InputObject $Links |
+      ForEach-Object {
+        $text = Format-MarkdownLink -Label ([string](Get-OptionalPropertyValue -InputObject $_ -PropertyName 'label' -Default '')) -Href ([string](Get-OptionalPropertyValue -InputObject $_ -PropertyName 'href' -Default ''))
+        if (-not [string]::IsNullOrWhiteSpace($text)) { $text }
+      }
+  )
+  if ($linkTexts.Count -eq 0) {
+    return $EmptyText
+  }
+
+  return ($linkTexts -join ', ')
+}
+
+function Format-HtmlLinkList {
+  param(
+    [AllowNull()]
+    $Links,
+    [Parameter(Mandatory = $false)]
+    [string]$EmptyText = 'none'
+  )
+
+  $linkTexts = @(
+    ConvertTo-ObjectArray -InputObject $Links |
+      ForEach-Object {
+        $text = Format-HtmlLink -Label ([string](Get-OptionalPropertyValue -InputObject $_ -PropertyName 'label' -Default '')) -Href ([string](Get-OptionalPropertyValue -InputObject $_ -PropertyName 'href' -Default ''))
+        if (-not [string]::IsNullOrWhiteSpace($text)) { $text }
+      }
+  )
+  if ($linkTexts.Count -eq 0) {
+    return $EmptyText
+  }
+
+  return ($linkTexts -join ', ')
+}
+
+function Get-EvidenceGraphChunkById {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph,
+    [Parameter(Mandatory = $true)]
+    [string]$ChunkId
+  )
+
+  foreach ($chunk in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'execution') -PropertyName 'chunks' -Default @()))) {
+    if ([string]$chunk.chunkId -eq $ChunkId) {
+      return $chunk
+    }
+  }
+
+  return $null
+}
+
+function Get-EvidenceGraphSurfaceReference {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph,
+    [Parameter(Mandatory = $true)]
+    [string]$Scope,
+    [Parameter(Mandatory = $true)]
+    [string]$Kind,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$ChunkId
+  )
+
+  $surfacesNode = Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'surfaces'
+  $surfaceArrays = @(
+    ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $surfacesNode -PropertyName 'renderSurfaces' -Default @())
+    ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $surfacesNode -PropertyName 'artifactSurfaces' -Default @())
+  )
+  foreach ($surface in $surfaceArrays) {
+    if ([string](Get-OptionalPropertyValue -InputObject $surface -PropertyName 'scope' -Default '') -ne $Scope) {
+      continue
+    }
+    if ([string](Get-OptionalPropertyValue -InputObject $surface -PropertyName 'kind' -Default '') -ne $Kind) {
+      continue
+    }
+    $surfaceChunkId = [string](Get-OptionalPropertyValue -InputObject $surface -PropertyName 'chunkId' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($ChunkId) -and $surfaceChunkId -ne $ChunkId) {
+      continue
+    }
+    return $surface
+  }
+
+  return $null
+}
+
+function New-ModeNavigationArray {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph
+  )
+
+  $modeMap = @{}
+  foreach ($chunk in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'execution') -PropertyName 'chunks' -Default @()) | Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId })) {
+    $summaryNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+    $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
+    $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+    $modes = @(
+      ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'executedModes' -Default @()) |
+        ForEach-Object { [string]$_ } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($modes.Count -eq 0) {
+      $modes = @(
+        ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'requestedModes' -Default @()) |
+          ForEach-Object { [string]$_ } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+      )
+    }
+
+    foreach ($mode in @($modes | Sort-Object -Unique)) {
+      if (-not $modeMap.ContainsKey($mode)) {
+        $modeMap[$mode] = [ordered]@{
+          mode = $mode
+          chunkIds = @{}
+          previewCount = 0
+          modeSummaryLinks = @{}
+          historyReportHtmlLinks = @{}
+        }
+      }
+
+      $entry = $modeMap[$mode]
+      $entry.chunkIds[[string]$chunk.chunkId] = $true
+      $entry.previewCount += @(
+        ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'previewImages' -Default @()) |
+          Where-Object { [string](Get-OptionalPropertyValue -InputObject $_ -PropertyName 'mode' -Default '') -eq $mode }
+      ).Count
+      Add-UniqueLinkEntry -Target $entry.modeSummaryLinks -Href ([string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath' -Default '')) -Label ('{0} mode-summary.md' -f [string]$chunk.chunkId)
+      Add-UniqueLinkEntry -Target $entry.historyReportHtmlLinks -Href ([string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml' -Default '')) -Label ('{0} history-report.html' -f [string]$chunk.chunkId)
+    }
+  }
+
+  return @(
+    $modeMap.GetEnumerator() |
+      Sort-Object Name |
+      ForEach-Object {
+        [ordered]@{
+          mode = [string]$_.Value.mode
+          chunkIds = @($_.Value.chunkIds.Keys | Sort-Object)
+          previewCount = [int]$_.Value.previewCount
+          modeSummaryLinks = @($_.Value.modeSummaryLinks.Values | Sort-Object { [string]$_.label }, { [string]$_.href })
+          historyReportHtmlLinks = @($_.Value.historyReportHtmlLinks.Values | Sort-Object { [string]$_.label }, { [string]$_.href })
+        }
+      }
+  )
+}
+
+function New-ComparisonPairNavigationArray {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph
+  )
+
+  $pairMap = @{}
+  foreach ($chunk in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'execution') -PropertyName 'chunks' -Default @()) | Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId })) {
+    $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
+    $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+    $previewImages = @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'previewImages' -Default @()))
+    foreach ($pair in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'comparisonPairs' -Default @()))) {
+      $key = ConvertTo-ComparisonPairKey -Pair $pair
+      if ([string]::IsNullOrWhiteSpace($key)) {
+        continue
+      }
+
+      if (-not $pairMap.ContainsKey($key)) {
+        $pairMap[$key] = [ordered]@{
+          pair = [ordered]@{
+            firstPath = [string](Get-OptionalPropertyValue -InputObject $pair -PropertyName 'firstPath' -Default '')
+            secondPath = [string](Get-OptionalPropertyValue -InputObject $pair -PropertyName 'secondPath' -Default '')
+          }
+          count = 0
+          previewCount = 0
+          chunkIds = @{}
+          historyReportHtmlLinks = @{}
+        }
+      }
+
+      $entry = $pairMap[$key]
+      $entry.count += [int](Get-OptionalPropertyValue -InputObject $pair -PropertyName 'count' -Default 0)
+      $entry.chunkIds[[string]$chunk.chunkId] = $true
+      $entry.previewCount += @(
+        $previewImages |
+          Where-Object { (ConvertTo-ComparisonPairKey -Pair (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'comparisonPair')) -eq $key }
+      ).Count
+      Add-UniqueLinkEntry -Target $entry.historyReportHtmlLinks -Href ([string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml' -Default '')) -Label ('{0} history-report.html' -f [string]$chunk.chunkId)
+    }
+  }
+
+  return @(
+    $pairMap.GetEnumerator() |
+      Sort-Object Name |
+      ForEach-Object {
+        [ordered]@{
+          pair = $_.Value.pair
+          count = [int]$_.Value.count
+          previewCount = [int]$_.Value.previewCount
+          chunkIds = @($_.Value.chunkIds.Keys | Sort-Object)
+          historyReportHtmlLinks = @($_.Value.historyReportHtmlLinks.Values | Sort-Object { [string]$_.label }, { [string]$_.href })
+        }
+      }
+  )
+}
+
+function New-MarkdownPrimaryReviewSurfaces {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph,
+    [Parameter(Mandatory = $true)]
+    [string]$ExplorationRunPath,
+    [Parameter(Mandatory = $true)]
+    [string]$EvidenceGraphPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('## Primary review surfaces') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Exploration run: {0}' -f (Format-MarkdownLink -Label 'exploration-run.json' -Href (ConvertTo-ArtifactReference -Path $ExplorationRunPath -ResultsRoot $ResultsRoot)))) | Out-Null
+  $lines.Add(('- Canonical evidence graph: {0}' -f (Format-MarkdownLink -Label 'evidence-graph.json' -Href (ConvertTo-ArtifactReference -Path $EvidenceGraphPath -ResultsRoot $ResultsRoot)))) | Out-Null
+  foreach ($surfaceSpec in @(
+      @{ Scope = 'run'; Kind = 'revision-catalog-json'; Label = 'revision-catalog.json' },
+      @{ Scope = 'run'; Kind = 'chunk-plan-json'; Label = 'chunk-plan.json' },
+      @{ Scope = 'run'; Kind = 'timeline-markdown'; Label = 'timeline.md' },
+      @{ Scope = 'run'; Kind = 'timeline-html'; Label = 'timeline.html' },
+      @{ Scope = 'run'; Kind = 'bundle-zip'; Label = 'manual-vi-exploration-bundle.zip' }
+    )) {
+    $surface = Get-EvidenceGraphSurfaceReference -EvidenceGraph $EvidenceGraph -Scope ([string]$surfaceSpec.Scope) -Kind ([string]$surfaceSpec.Kind)
+    $href = [string](Get-OptionalPropertyValue -InputObject $surface -PropertyName 'relativePath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($href)) {
+      $lines.Add(('- {0}: {1}' -f [string]$surfaceSpec.Label, (Format-MarkdownLink -Label ([string]$surfaceSpec.Label) -Href $href))) | Out-Null
+    }
+  }
+  $lines.Add('') | Out-Null
+
+  return ($lines -join [Environment]::NewLine)
+}
+
+function New-MarkdownReviewNavigation {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('## Review navigation') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('### Segment navigation') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($segment in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'continuity') -PropertyName 'segments' -Default @()) | Sort-Object { [int]$_.segmentOrdinal })) {
+    $chunkLinks = @(
+      ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'chunkIds' -Default @()) |
+        ForEach-Object {
+          $chunkId = [string]$_
+          if (-not [string]::IsNullOrWhiteSpace($chunkId)) {
+            [ordered]@{
+              label = $chunkId
+              href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId $chunkId))
+            }
+          }
+        }
+    )
+    $continuityNote = if ($null -ne (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'continuityBreakAfterRevisionOrdinal')) {
+      ('; break after revision `{0}` ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
+    } else {
+      ''
+    }
+    $detailLink = Format-MarkdownLink -Label 'details' -Href ('#{0}' -f (Get-SegmentAnchorId -SegmentOrdinal ([int]$segment.segmentOrdinal)))
+    $lines.Add(('- Segment `{0}`: {1}; revisions `{2}` -> `{3}`; chunks {4}{5}' -f [int]$segment.segmentOrdinal, $detailLink, [int]$segment.startRevisionOrdinal, [int]$segment.endRevisionOrdinal, (Format-MarkdownLinkList -Links $chunkLinks), $continuityNote)) | Out-Null
+  }
+  $lines.Add('') | Out-Null
+  $lines.Add('### Mode navigation') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($entry in @(New-ModeNavigationArray -EvidenceGraph $EvidenceGraph)) {
+    $chunkLinks = @(
+      @($entry.chunkIds) |
+        ForEach-Object {
+          [ordered]@{
+            label = [string]$_
+            href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId ([string]$_)))
+          }
+        }
+    )
+    $lines.Add(('- Mode `{0}`: chunks {1}; preview images `{2}`; mode summaries {3}; HTML reports {4}' -f [string]$entry.mode, (Format-MarkdownLinkList -Links $chunkLinks), [int]$entry.previewCount, (Format-MarkdownLinkList -Links $entry.modeSummaryLinks), (Format-MarkdownLinkList -Links $entry.historyReportHtmlLinks))) | Out-Null
+  }
+  $lines.Add('') | Out-Null
+  $lines.Add('### Comparison pair navigation') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($entry in @(New-ComparisonPairNavigationArray -EvidenceGraph $EvidenceGraph)) {
+    $chunkLinks = @(
+      @($entry.chunkIds) |
+        ForEach-Object {
+          [ordered]@{
+            label = [string]$_
+            href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId ([string]$_)))
+          }
+        }
+    )
+    $lines.Add(('- Pair `{0}`: count `{1}`; chunks {2}; preview images `{3}`; HTML reports {4}' -f (Format-PreviewComparisonPairText -Pair $entry.pair), [int]$entry.count, (Format-MarkdownLinkList -Links $chunkLinks), [int]$entry.previewCount, (Format-MarkdownLinkList -Links $entry.historyReportHtmlLinks))) | Out-Null
+  }
+  $lines.Add('') | Out-Null
+
+  return ($lines -join [Environment]::NewLine)
+}
+
+function New-HtmlPrimaryReviewSurfaces {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph,
+    [Parameter(Mandatory = $true)]
+    [string]$ExplorationRunPath,
+    [Parameter(Mandatory = $true)]
+    [string]$EvidenceGraphPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $items = New-Object System.Collections.Generic.List[string]
+  $items.Add(('<li>{0}</li>' -f (Format-HtmlLink -Label 'exploration-run.json' -Href (ConvertTo-ArtifactReference -Path $ExplorationRunPath -ResultsRoot $ResultsRoot)))) | Out-Null
+  $items.Add(('<li>{0}</li>' -f (Format-HtmlLink -Label 'evidence-graph.json' -Href (ConvertTo-ArtifactReference -Path $EvidenceGraphPath -ResultsRoot $ResultsRoot)))) | Out-Null
+  foreach ($surfaceSpec in @(
+      @{ Scope = 'run'; Kind = 'revision-catalog-json'; Label = 'revision-catalog.json' },
+      @{ Scope = 'run'; Kind = 'chunk-plan-json'; Label = 'chunk-plan.json' },
+      @{ Scope = 'run'; Kind = 'timeline-markdown'; Label = 'timeline.md' },
+      @{ Scope = 'run'; Kind = 'timeline-html'; Label = 'timeline.html' },
+      @{ Scope = 'run'; Kind = 'bundle-zip'; Label = 'manual-vi-exploration-bundle.zip' }
+    )) {
+    $surface = Get-EvidenceGraphSurfaceReference -EvidenceGraph $EvidenceGraph -Scope ([string]$surfaceSpec.Scope) -Kind ([string]$surfaceSpec.Kind)
+    $href = [string](Get-OptionalPropertyValue -InputObject $surface -PropertyName 'relativePath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($href)) {
+      $items.Add(('<li>{0}</li>' -f (Format-HtmlLink -Label ([string]$surfaceSpec.Label) -Href $href))) | Out-Null
+    }
+  }
+
+  return @"
+  <h2>Primary review surfaces</h2>
+  <ul>
+$($items -join [Environment]::NewLine)
+  </ul>
+"@
+}
+
+function New-HtmlReviewNavigation {
+  param(
+    [Parameter(Mandatory = $true)]
+    $EvidenceGraph
+  )
+
+  $segmentRows = New-Object System.Collections.Generic.List[string]
+  foreach ($segment in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'continuity') -PropertyName 'segments' -Default @()) | Sort-Object { [int]$_.segmentOrdinal })) {
+    $chunkLinks = @(
+      ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'chunkIds' -Default @()) |
+        ForEach-Object {
+          $chunkId = [string]$_
+          if (-not [string]::IsNullOrWhiteSpace($chunkId)) {
+            [ordered]@{
+              label = $chunkId
+              href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId $chunkId))
+            }
+          }
+        }
+    )
+    $breakCell = if ($null -ne (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'continuityBreakAfterRevisionOrdinal')) {
+      ('{0} ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
+    } else {
+      'none'
+    }
+    $segmentRows.Add(@"
+    <tr id="$((Get-SegmentAnchorId -SegmentOrdinal ([int]$segment.segmentOrdinal)))">
+      <td>$([int]$segment.segmentOrdinal)</td>
+      <td>$([int]$segment.startRevisionOrdinal)-$([int]$segment.endRevisionOrdinal)</td>
+      <td>$([int]$segment.pairCount)</td>
+      <td>$(Format-HtmlLink -Label 'details' -Href ('#' + (Get-SegmentAnchorId -SegmentOrdinal ([int]$segment.segmentOrdinal))))</td>
+      <td>$(Format-HtmlLinkList -Links $chunkLinks)</td>
+      <td>$((ConvertTo-HtmlText -Value ([string]$segment.continuityStartReason)))</td>
+      <td>$((ConvertTo-HtmlText -Value $breakCell))</td>
+    </tr>
+"@) | Out-Null
+  }
+
+  $modeRows = New-Object System.Collections.Generic.List[string]
+  foreach ($entry in @(New-ModeNavigationArray -EvidenceGraph $EvidenceGraph)) {
+    $chunkLinks = @(
+      @($entry.chunkIds) |
+        ForEach-Object {
+          [ordered]@{
+            label = [string]$_
+            href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId ([string]$_)))
+          }
+        }
+    )
+    $modeRows.Add(@"
+    <tr>
+      <td>$((ConvertTo-HtmlText -Value ([string]$entry.mode)))</td>
+      <td>$(Format-HtmlLinkList -Links $chunkLinks)</td>
+      <td>$([int]$entry.previewCount)</td>
+      <td>$(Format-HtmlLinkList -Links $entry.modeSummaryLinks)</td>
+      <td>$(Format-HtmlLinkList -Links $entry.historyReportHtmlLinks)</td>
+    </tr>
+"@) | Out-Null
+  }
+
+  $pairRows = New-Object System.Collections.Generic.List[string]
+  foreach ($entry in @(New-ComparisonPairNavigationArray -EvidenceGraph $EvidenceGraph)) {
+    $chunkLinks = @(
+      @($entry.chunkIds) |
+        ForEach-Object {
+          [ordered]@{
+            label = [string]$_
+            href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId ([string]$_)))
+          }
+        }
+    )
+    $pairRows.Add(@"
+    <tr>
+      <td>$((ConvertTo-HtmlText -Value (Format-PreviewComparisonPairText -Pair $entry.pair)))</td>
+      <td>$([int]$entry.count)</td>
+      <td>$(Format-HtmlLinkList -Links $chunkLinks)</td>
+      <td>$([int]$entry.previewCount)</td>
+      <td>$(Format-HtmlLinkList -Links $entry.historyReportHtmlLinks)</td>
+    </tr>
+"@) | Out-Null
+  }
+
+  return @"
+  <h2>Review navigation</h2>
+  <h3>Segment navigation</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Segment</th>
+        <th>Revision ordinals</th>
+        <th>Pairs</th>
+        <th>Details</th>
+        <th>Chunks</th>
+        <th>Start reason</th>
+        <th>Break</th>
+      </tr>
+    </thead>
+    <tbody>
+$($segmentRows -join [Environment]::NewLine)
+    </tbody>
+  </table>
+  <h3>Mode navigation</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Mode</th>
+        <th>Chunks</th>
+        <th>Preview images</th>
+        <th>Mode summaries</th>
+        <th>HTML reports</th>
+      </tr>
+    </thead>
+    <tbody>
+$($modeRows -join [Environment]::NewLine)
+    </tbody>
+  </table>
+  <h3>Comparison pair navigation</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Comparison pair</th>
+        <th>Count</th>
+        <th>Chunks</th>
+        <th>Preview images</th>
+        <th>HTML reports</th>
+      </tr>
+    </thead>
+    <tbody>
+$($pairRows -join [Environment]::NewLine)
+    </tbody>
+  </table>
 "@
 }
 
@@ -1104,6 +1705,19 @@ function New-ChunkEvidenceArray {
         $executionNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'execution'
         $replayNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'replay'
         $failureNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'failure'
+        $surfaceNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
+        $metadataNode = Get-SurfaceMetadataNode -SurfaceNode $surfaceNode
+        $normalizedSurface = ConvertTo-NormalizedCategorySurface `
+          -CategoryCounts (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'categoryCounts') `
+          -ComparisonPairs (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'comparisonPairs')
+        $chunkPreviewImageMap = @{}
+        foreach ($previewImage in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'previewImages' -Default @()))) {
+          Add-PreviewImageAggregate `
+            -Target $chunkPreviewImageMap `
+            -PreviewImage $previewImage `
+            -ResultsRoot $ResultsRoot `
+            -ChunkId ([string]$chunk.chunkId)
+        }
 
         [ordered]@{
           chunkId = [string]$chunk.chunkId
@@ -1161,6 +1775,22 @@ function New-ChunkEvidenceArray {
               status = [string](Get-OptionalPropertyValue -InputObject $replayNode -PropertyName 'status' -Default '')
               reason = [string](Get-OptionalPropertyValue -InputObject $replayNode -PropertyName 'reason' -Default '')
             }
+          }
+          surfaces = [ordered]@{
+            suppressionProfile = [string](Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'suppressionProfile' -Default 'unknown')
+            comparisonArtifactCount = [int](Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'comparisonArtifactCount' -Default 0)
+            captureCount = [int](Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'captureCount' -Default 0)
+            imageArtifactCount = [int](Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'imageArtifactCount' -Default 0)
+            imageMimeTypes = @(
+              ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $metadataNode -PropertyName 'imageMimeTypes' -Default @()) |
+                ForEach-Object { [string]$_ } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                Sort-Object -Unique
+            )
+            categoryCounts = $normalizedSurface.categoryCounts
+            comparisonPairs = @($normalizedSurface.comparisonPairs)
+            bucketCounts = ConvertTo-OrderedCountMap -Value (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'bucketCounts')
+            previewImages = @(ConvertTo-PreviewImageArray -Value $chunkPreviewImageMap.Values)
           }
         }
       }
@@ -1601,6 +2231,8 @@ function New-MarkdownIndex {
     [Parameter(Mandatory = $true)]
     $RunStats,
     [Parameter(Mandatory = $true)]
+    $EvidenceGraph,
+    [Parameter(Mandatory = $true)]
     [string]$FinalStatus,
     [Parameter(Mandatory = $true)]
     [string]$FinalReason,
@@ -1616,25 +2248,33 @@ function New-MarkdownIndex {
     [string]$TimelineMdPath,
     [AllowNull()]
     [string]$TimelineHtmlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ExplorationRunPath,
+    [Parameter(Mandatory = $true)]
+    [string]$EvidenceGraphPath,
     [AllowNull()]
     [string]$BundlePath
   )
 
-  $timelineMdReference = ConvertTo-ArtifactReference -Path $TimelineMdPath -ResultsRoot $ResultsRoot
-  $timelineHtmlReference = ConvertTo-ArtifactReference -Path $TimelineHtmlPath -ResultsRoot $ResultsRoot
-  $bundleReference = ConvertTo-ArtifactReference -Path $BundlePath -ResultsRoot $ResultsRoot -OnlyIfExists
-
   $lines = New-Object System.Collections.Generic.List[string]
   $lines.Add('# comparevi-history manual exploration index') | Out-Null
   $lines.Add('') | Out-Null
-  $lines.Add('## Run summary') | Out-Null
-  $lines.Add('') | Out-Null
   $lines.Add(('- Target path: `{0}`' -f [string]$Catalog.target.path)) | Out-Null
   $lines.Add(('- Selected ref: `{0}`' -f [string]$Catalog.target.selectedRef)) | Out-Null
-  $lines.Add(('- Revision count: `{0}`' -f [int]$RunStats.revisionCount)) | Out-Null
-  $lines.Add(('- Pair count: `{0}`' -f [int]$RunStats.pairCount)) | Out-Null
   $lines.Add(('- Final status: `{0}`' -f $FinalStatus)) | Out-Null
   $lines.Add(('- Final reason: `{0}`' -f $FinalReason)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add((New-MarkdownPrimaryReviewSurfaces -EvidenceGraph $EvidenceGraph -ExplorationRunPath $ExplorationRunPath -EvidenceGraphPath $EvidenceGraphPath -ResultsRoot $ResultsRoot)) | Out-Null
+  $lines.Add((New-MarkdownReviewNavigation -EvidenceGraph $EvidenceGraph)) | Out-Null
+  $previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewImages $PreviewImages -EvidenceGraph $EvidenceGraph -RunStats $RunStats
+  if (-not [string]::IsNullOrWhiteSpace($previewGalleryMarkdown)) {
+    $lines.Add($previewGalleryMarkdown) | Out-Null
+    $lines.Add('') | Out-Null
+  }
+  $lines.Add('## Run summary') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Revision count: `{0}`' -f [int]$RunStats.revisionCount)) | Out-Null
+  $lines.Add(('- Pair count: `{0}`' -f [int]$RunStats.pairCount)) | Out-Null
   $lines.Add(('- Catalog complete: `{0}` ({1})' -f $RunStats.catalogComplete.ToString().ToLowerInvariant(), [string]$RunStats.catalogCompletenessReason)) | Out-Null
   $lines.Add(('- Continuity status: `{0}`' -f [string]$RunStats.continuityStatus)) | Out-Null
   $lines.Add(('- Continuity break count: `{0}`' -f [int]$RunStats.continuityBreakCount)) | Out-Null
@@ -1672,47 +2312,37 @@ function New-MarkdownIndex {
   $lines.Add('') | Out-Null
   $lines.Add('## Continuity overview') | Out-Null
   $lines.Add('') | Out-Null
-  foreach ($segment in @($ChunkPlan.segments)) {
-    $continuityNote = if ($null -ne $segment.continuityBreakAfterRevisionOrdinal) {
+  foreach ($segment in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'continuity') -PropertyName 'segments' -Default @()) | Sort-Object { [int]$_.segmentOrdinal })) {
+    $lines.Add(('<a id="{0}"></a>' -f (Get-SegmentAnchorId -SegmentOrdinal ([int]$segment.segmentOrdinal)))) | Out-Null
+    $continuityNote = if ($null -ne (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'continuityBreakAfterRevisionOrdinal')) {
       ('; break after revision `{0}` ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
     } else {
       ''
     }
-    $lines.Add(('- Segment `{0}`: revisions `{1}` -> `{2}`, pairs `{3}`, start `{4}`{5}' -f [int]$segment.segmentOrdinal, [int]$segment.startRevisionOrdinal, [int]$segment.endRevisionOrdinal, [int]$segment.pairCount, [string]$segment.continuityStartReason, $continuityNote)) | Out-Null
+    $chunkLinks = @(
+      ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'chunkIds' -Default @()) |
+        ForEach-Object {
+          $chunkId = [string]$_
+          if (-not [string]::IsNullOrWhiteSpace($chunkId)) {
+            [ordered]@{
+              label = $chunkId
+              href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId $chunkId))
+            }
+          }
+        }
+    )
+    $lines.Add(('- Segment `{0}`: revisions `{1}` -> `{2}`, pairs `{3}`, chunks {4}, start `{5}`{6}' -f [int]$segment.segmentOrdinal, [int]$segment.startRevisionOrdinal, [int]$segment.endRevisionOrdinal, [int]$segment.pairCount, (Format-MarkdownLinkList -Links $chunkLinks), [string]$segment.continuityStartReason, $continuityNote)) | Out-Null
   }
   $lines.Add('') | Out-Null
-  $lines.Add('## Top-level surfaces') | Out-Null
-  $lines.Add('') | Out-Null
-  if ($timelineMdReference) {
-    $lines.Add(('- Timeline markdown: {0}' -f (Format-MarkdownLink -Label 'timeline.md' -Href $timelineMdReference))) | Out-Null
-  }
-  if ($timelineHtmlReference) {
-    $lines.Add(('- Timeline HTML: {0}' -f (Format-MarkdownLink -Label 'timeline.html' -Href $timelineHtmlReference))) | Out-Null
-  }
-  if ($bundleReference) {
-    $lines.Add(('- Bundle zip: {0}' -f (Format-MarkdownLink -Label 'manual-vi-exploration-bundle.zip' -Href $bundleReference))) | Out-Null
-  }
-  $lines.Add('') | Out-Null
-  $previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewImages $PreviewImages -RunStats $RunStats
-  if (-not [string]::IsNullOrWhiteSpace($previewGalleryMarkdown)) {
-    $lines.Add($previewGalleryMarkdown) | Out-Null
-    $lines.Add('') | Out-Null
-  }
   $lines.Add('## Chunk navigation') | Out-Null
   $lines.Add('') | Out-Null
 
-  foreach ($chunk in $ChunkReceipts) {
+  foreach ($chunk in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'execution') -PropertyName 'chunks' -Default @()) | Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId })) {
     $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
     $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
     $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
-    $chunkMetadata = Get-SurfaceMetadataNode -SurfaceNode $chunkSurfaces
-    $receiptReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $historyReportMdReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $historyReportHtmlReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $modeSummaryReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $modeSummaryJsonReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryJsonPath') -ResultsRoot $ResultsRoot -OnlyIfExists
-
     $lines.Add(('### {0}' -f [string]$chunk.chunkId)) | Out-Null
+    $lines.Add(('<a id="{0}"></a>' -f (Get-ChunkAnchorId -ChunkId ([string]$chunk.chunkId)))) | Out-Null
     $lines.Add(('- Status: `{0}`' -f [string]$chunk.status)) | Out-Null
     $lines.Add(('- Segment: `{0}`' -f [int]$chunk.segmentOrdinal)) | Out-Null
     $lines.Add(('- Revision ordinals: `{0}` -> `{1}`' -f [int]$chunk.revisionOrdinalStart, [int]$chunk.revisionOrdinalEnd)) | Out-Null
@@ -1723,12 +2353,12 @@ function New-MarkdownIndex {
         -CategoryCounts (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'categoryCounts') `
         -ComparisonPairs (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'comparisonPairs')
       $lines.Add(('- Suppression profile: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown'))) | Out-Null
-      $mimeTypeText = if (@(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())).Count -gt 0) {
-        @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())) -join ', '
+      $mimeTypeText = if (@(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'imageMimeTypes' -Default @())).Count -gt 0) {
+        @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'imageMimeTypes' -Default @())) -join ', '
       } else {
         'none'
       }
-      $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0), $mimeTypeText)) | Out-Null
+      $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'comparisonArtifactCount' -Default 0), $mimeTypeText)) | Out-Null
       if ($chunkNormalizedSurface.categoryCounts.Count -gt 0) {
         $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $chunkNormalizedSurface.categoryCounts))) | Out-Null
       }
@@ -1736,19 +2366,24 @@ function New-MarkdownIndex {
         $lines.Add(('- Comparison pairs: `{0}`' -f (Format-ComparisonPairText -Pairs $chunkNormalizedSurface.comparisonPairs))) | Out-Null
       }
     }
-    if ($receiptReference) {
+    $receiptReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($receiptReference)) {
       $lines.Add(('- Receipt: {0}' -f (Format-MarkdownLink -Label 'chunk-receipt.json' -Href $receiptReference))) | Out-Null
     }
-    if ($historyReportMdReference) {
+    $historyReportMdReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($historyReportMdReference)) {
       $lines.Add(('- History report (md): {0}' -f (Format-MarkdownLink -Label 'history-report.md' -Href $historyReportMdReference))) | Out-Null
     }
-    if ($historyReportHtmlReference) {
+    $historyReportHtmlReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($historyReportHtmlReference)) {
       $lines.Add(('- History report (html): {0}' -f (Format-MarkdownLink -Label 'history-report.html' -Href $historyReportHtmlReference))) | Out-Null
     }
-    if ($modeSummaryReference) {
+    $modeSummaryReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($modeSummaryReference)) {
       $lines.Add(('- Mode summary: {0}' -f (Format-MarkdownLink -Label 'mode-summary.md' -Href $modeSummaryReference))) | Out-Null
     }
-    if ($modeSummaryJsonReference) {
+    $modeSummaryJsonReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryJsonPath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($modeSummaryJsonReference)) {
       $lines.Add(('- Mode summary (json): {0}' -f (Format-MarkdownLink -Label 'mode-summary.json' -Href $modeSummaryJsonReference))) | Out-Null
     }
     $lines.Add('') | Out-Null
@@ -1906,6 +2541,8 @@ function New-HtmlIndex {
     [Parameter(Mandatory = $true)]
     $RunStats,
     [Parameter(Mandatory = $true)]
+    $EvidenceGraph,
+    [Parameter(Mandatory = $true)]
     [string]$FinalStatus,
     [Parameter(Mandatory = $true)]
     [string]$FinalReason,
@@ -1921,35 +2558,35 @@ function New-HtmlIndex {
     [string]$TimelineMdPath,
     [AllowNull()]
     [string]$TimelineHtmlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ExplorationRunPath,
+    [Parameter(Mandatory = $true)]
+    [string]$EvidenceGraphPath,
     [AllowNull()]
     [string]$BundlePath
   )
 
-  $timelineMdReference = ConvertTo-ArtifactReference -Path $TimelineMdPath -ResultsRoot $ResultsRoot
-  $timelineHtmlReference = ConvertTo-ArtifactReference -Path $TimelineHtmlPath -ResultsRoot $ResultsRoot
-  $bundleReference = ConvertTo-ArtifactReference -Path $BundlePath -ResultsRoot $ResultsRoot -OnlyIfExists
   $summaryClass = Get-HtmlStatusClass -Status $FinalStatus
   $rows = New-Object System.Collections.Generic.List[string]
-  foreach ($chunk in $ChunkReceipts) {
+  foreach ($chunk in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'execution') -PropertyName 'chunks' -Default @()) | Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId })) {
     $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
     $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
     $chunkSurfaces = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
-    $chunkMetadata = Get-SurfaceMetadataNode -SurfaceNode $chunkSurfaces
-    $receiptReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $historyReportMdReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $historyReportHtmlReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $modeSummaryReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
-    $modeSummaryJsonReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryJsonPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $chunkClass = Get-HtmlStatusClass -Status ([string]$chunk.status)
+    $receiptReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath' -Default '')
+    $historyReportMdReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd' -Default '')
+    $historyReportHtmlReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml' -Default '')
+    $modeSummaryReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath' -Default '')
+    $modeSummaryJsonReference = [string](Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryJsonPath' -Default '')
     $receiptLink = Format-HtmlLink -Label 'chunk-receipt.json' -Href $receiptReference
     $historyReportMdLink = Format-HtmlLink -Label 'history-report.md' -Href $historyReportMdReference
     $historyReportHtmlLink = Format-HtmlLink -Label 'history-report.html' -Href $historyReportHtmlReference
     $modeSummaryLink = Format-HtmlLink -Label 'mode-summary.md' -Href $modeSummaryReference
     $modeSummaryJsonLink = Format-HtmlLink -Label 'mode-summary.json' -Href $modeSummaryJsonReference
-    $chunkClass = Get-HtmlStatusClass -Status ([string]$chunk.status)
     $chunkProfile = [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown')
-    $chunkMetadataText = 'captures={0}, images={1}, artifact-dirs={2}' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0)
+    $chunkMetadataText = 'captures={0}, images={1}, artifact-dirs={2}' -f [int](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'comparisonArtifactCount' -Default 0)
     $rows.Add(@"
-<tr class="$chunkClass">
+<tr id="$((Get-ChunkAnchorId -ChunkId ([string]$chunk.chunkId)))" class="$chunkClass">
   <td>$([string]$chunk.chunkId)</td>
   <td>$([string]$chunk.status)</td>
   <td>$chunkProfile</td>
@@ -1968,34 +2605,38 @@ function New-HtmlIndex {
   }
 
   $continuityRows = New-Object System.Collections.Generic.List[string]
-  foreach ($segment in @($ChunkPlan.segments)) {
+  foreach ($segment in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $EvidenceGraph -PropertyName 'continuity') -PropertyName 'segments' -Default @()) | Sort-Object { [int]$_.segmentOrdinal })) {
+    $chunkLinks = @(
+      ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'chunkIds' -Default @()) |
+        ForEach-Object {
+          $chunkId = [string]$_
+          if (-not [string]::IsNullOrWhiteSpace($chunkId)) {
+            [ordered]@{
+              label = $chunkId
+              href = ('#{0}' -f (Get-ChunkAnchorId -ChunkId $chunkId))
+            }
+          }
+        }
+    )
     $breakCell = if ($null -ne $segment.continuityBreakAfterRevisionOrdinal) {
       ('{0} ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
     } else {
       'none'
     }
     $continuityRows.Add(@"
-<tr>
+<tr id="$((Get-SegmentAnchorId -SegmentOrdinal ([int]$segment.segmentOrdinal)))">
   <td>$([int]$segment.segmentOrdinal)</td>
   <td>$([int]$segment.startRevisionOrdinal)-$([int]$segment.endRevisionOrdinal)</td>
   <td>$([int]$segment.pairCount)</td>
+  <td>$(Format-HtmlLinkList -Links $chunkLinks)</td>
   <td>$([string]$segment.continuityStartReason)</td>
   <td>$breakCell</td>
 </tr>
 "@) | Out-Null
   }
-
-  $topLevelLinks = New-Object System.Collections.Generic.List[string]
-  if ($timelineMdReference) {
-    $topLevelLinks.Add(('<li><a href="{0}">timeline.md</a></li>' -f $timelineMdReference)) | Out-Null
-  }
-  if ($timelineHtmlReference) {
-    $topLevelLinks.Add(('<li><a href="{0}">timeline.html</a></li>' -f $timelineHtmlReference)) | Out-Null
-  }
-  if ($bundleReference) {
-    $topLevelLinks.Add(('<li><a href="{0}">manual-vi-exploration-bundle.zip</a></li>' -f $bundleReference)) | Out-Null
-  }
-  $previewGalleryHtml = New-HtmlPreviewGallery -PreviewImages $PreviewImages -RunStats $RunStats
+  $primaryReviewHtml = New-HtmlPrimaryReviewSurfaces -EvidenceGraph $EvidenceGraph -ExplorationRunPath $ExplorationRunPath -EvidenceGraphPath $EvidenceGraphPath -ResultsRoot $ResultsRoot
+  $reviewNavigationHtml = New-HtmlReviewNavigation -EvidenceGraph $EvidenceGraph
+  $previewGalleryHtml = New-HtmlPreviewGallery -PreviewImages $PreviewImages -EvidenceGraph $EvidenceGraph -RunStats $RunStats
 
   return @"
 <!DOCTYPE html>
@@ -2029,9 +2670,12 @@ function New-HtmlIndex {
     <span> | <strong>Final reason:</strong> $FinalReason</span>
     <span> | <strong>Continuity:</strong> $([string]$RunStats.continuityStatus)</span>
   </div>
+  <p><strong>Target path:</strong> $([string]$Catalog.target.path)<br/><strong>Selected ref:</strong> $([string]$Catalog.target.selectedRef)</p>
+$primaryReviewHtml
+$reviewNavigationHtml
+$previewGalleryHtml
+  <h2>Run summary</h2>
   <div class="meta">
-    <strong>Target path</strong><span>$([string]$Catalog.target.path)</span>
-    <strong>Selected ref</strong><span>$([string]$Catalog.target.selectedRef)</span>
     <strong>Revision count</strong><span>$([int]$RunStats.revisionCount)</span>
     <strong>Pair count</strong><span>$([int]$RunStats.pairCount)</span>
     <strong>Requested modes</strong><span>$(if ($RunStats.requestedModes.Count -gt 0) { $RunStats.requestedModes -join ', ' } else { 'n/a' })</span>
@@ -2067,6 +2711,7 @@ function New-HtmlIndex {
         <th>Segment</th>
         <th>Revision ordinals</th>
         <th>Pairs</th>
+        <th>Chunks</th>
         <th>Start reason</th>
         <th>Break</th>
       </tr>
@@ -2075,11 +2720,6 @@ function New-HtmlIndex {
 $($continuityRows -join [Environment]::NewLine)
     </tbody>
   </table>
-  <h2>Top-level surfaces</h2>
-  <ul>
-$($topLevelLinks -join [Environment]::NewLine)
-  </ul>
-$previewGalleryHtml
   <h2>Chunk navigation</h2>
   <table>
     <thead>
@@ -2256,38 +2896,11 @@ $runStats = New-ExplorationSurfaceStats `
 $chunkReceiptArray = @(ConvertTo-ObjectArray -InputObject $chunkReceipts)
 $timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
 $timelineHtml = New-HtmlTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
-$indexMarkdown = New-MarkdownIndex `
-  -Catalog $catalog `
-  -ChunkPlan $chunkPlan `
-  -ChunkReceipts $chunkReceiptArray `
-  -RunStats $runStats `
-  -FinalStatus $finalStatus `
-  -FinalReason $finalReason `
-  -BundleStatus $effectiveBundleStatus `
-  -BundleReason $effectiveBundleReason `
-  -ResultsRoot $resultsDirResolved `
-  -PreviewImages $previewGalleryImages `
-  -TimelineMdPath $timelineMdResolved `
-  -TimelineHtmlPath $timelineHtmlResolved `
-  -BundlePath $bundlePathResolved
-$indexHtml = New-HtmlIndex `
-  -Catalog $catalog `
-  -ChunkPlan $chunkPlan `
-  -ChunkReceipts $chunkReceiptArray `
-  -RunStats $runStats `
-  -FinalStatus $finalStatus `
-  -FinalReason $finalReason `
-  -BundleStatus $effectiveBundleStatus `
-  -BundleReason $effectiveBundleReason `
-  -ResultsRoot $resultsDirResolved `
-  -PreviewImages $previewGalleryImages `
-  -TimelineMdPath $timelineMdResolved `
-  -TimelineHtmlPath $timelineHtmlResolved `
-  -BundlePath $bundlePathResolved
 $timelineMarkdown | Set-Content -LiteralPath $timelineMdResolved -Encoding utf8
 $timelineHtml | Set-Content -LiteralPath $timelineHtmlResolved -Encoding utf8
-$indexMarkdown | Set-Content -LiteralPath $indexMdResolved -Encoding utf8
-$indexHtml | Set-Content -LiteralPath $indexHtmlResolved -Encoding utf8
+
+'' | Set-Content -LiteralPath $indexMdResolved -Encoding utf8
+'' | Set-Content -LiteralPath $indexHtmlResolved -Encoding utf8
 
 $explorationRun = [ordered]@{
   schema = 'comparevi-history/exploration-run@v1'
@@ -2406,6 +3019,43 @@ $evidenceGraph = New-EvidenceGraph `
   -TimelineMdPath $timelineMdResolved `
   -TimelineHtmlPath $timelineHtmlResolved `
   -BundlePath $bundlePathResolved
+
+$indexMarkdown = New-MarkdownIndex `
+  -Catalog $catalog `
+  -ChunkPlan $chunkPlan `
+  -ChunkReceipts $chunkReceiptArray `
+  -RunStats $runStats `
+  -EvidenceGraph $evidenceGraph `
+  -FinalStatus $finalStatus `
+  -FinalReason $finalReason `
+  -BundleStatus $effectiveBundleStatus `
+  -BundleReason $effectiveBundleReason `
+  -ResultsRoot $resultsDirResolved `
+  -PreviewImages $previewGalleryImages `
+  -TimelineMdPath $timelineMdResolved `
+  -TimelineHtmlPath $timelineHtmlResolved `
+  -ExplorationRunPath $explorationRunPath `
+  -EvidenceGraphPath $evidenceGraphPath `
+  -BundlePath $bundlePathResolved
+$indexHtml = New-HtmlIndex `
+  -Catalog $catalog `
+  -ChunkPlan $chunkPlan `
+  -ChunkReceipts $chunkReceiptArray `
+  -RunStats $runStats `
+  -EvidenceGraph $evidenceGraph `
+  -FinalStatus $finalStatus `
+  -FinalReason $finalReason `
+  -BundleStatus $effectiveBundleStatus `
+  -BundleReason $effectiveBundleReason `
+  -ResultsRoot $resultsDirResolved `
+  -PreviewImages $previewGalleryImages `
+  -TimelineMdPath $timelineMdResolved `
+  -TimelineHtmlPath $timelineHtmlResolved `
+  -ExplorationRunPath $explorationRunPath `
+  -EvidenceGraphPath $evidenceGraphPath `
+  -BundlePath $bundlePathResolved
+$indexMarkdown | Set-Content -LiteralPath $indexMdResolved -Encoding utf8
+$indexHtml | Set-Content -LiteralPath $indexHtmlResolved -Encoding utf8
 $evidenceGraph | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $evidenceGraphPath -Encoding utf8
 
 Write-ActionOutput -Key 'exploration-run-path' -Value $explorationRunPath

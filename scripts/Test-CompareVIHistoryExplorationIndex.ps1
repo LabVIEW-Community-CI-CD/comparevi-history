@@ -98,11 +98,21 @@ try {
       imageMimeTypes = @('image/png')
       chunkCountWithMetadata = 1
       categoryCounts = [ordered]@{ attributes = 1 }
+      comparisonPairs = @(
+        [ordered]@{
+          firstPath = '/compare/m0/Base.vi'
+          secondPath = '/compare/m0/Head.vi'
+          count = 1
+        }
+      )
       previewImages = @(
         [ordered]@{
           mode = 'attributes'
           category = 'attributes'
-          comparisonPair = $null
+          comparisonPair = [ordered]@{
+            firstPath = '/compare/m0/Base.vi'
+            secondPath = '/compare/m0/Head.vi'
+          }
           mimeType = 'image/png'
           byteLength = 4
           savedPath = $previewPath
@@ -140,6 +150,29 @@ try {
   if ($indexMarkdown -notmatch 'comparevi-history manual exploration index') {
     throw 'Index markdown heading mismatch.'
   }
+  foreach ($requiredFragment in @(
+      '## Primary review surfaces',
+      '## Review navigation',
+      '### Segment navigation',
+      '### Mode navigation',
+      '### Comparison pair navigation',
+      '[exploration-run.json](exploration-run.json)',
+      '[evidence-graph.json](evidence-graph.json)',
+      'Chunk details: [chunk-001](#chunk-chunk-001)',
+      'Image file: [cli-image-00.png](chunk-receipts/chunk-001/history/preview-images/cli-image-00.png)'
+    )) {
+    if (-not $indexMarkdown.Contains($requiredFragment)) {
+      throw "Index markdown must include '$requiredFragment'."
+    }
+  }
+  foreach ($requiredFragment in @(
+      'Pair `/compare/m0/Base\.vi -> /compare/m0/Head\.vi`: count `1`; chunks \[chunk-001\]\(#chunk-chunk-001\); preview images `1`;',
+      'Mode `attributes`: chunks \[chunk-001\]\(#chunk-chunk-001\); preview images `1`; mode summaries \[chunk-001 mode-summary\.md\]\(chunk-receipts/chunk-001/mode-summary\.md\); HTML reports \[chunk-001 history-report\.html\]\(chunk-receipts/chunk-001/history/history-report\.html\)'
+    )) {
+    if ($indexMarkdown -notmatch $requiredFragment) {
+      throw "Index markdown must include '$requiredFragment'."
+    }
+  }
   if ($indexMarkdown -notmatch [regex]::Escape('[timeline.md](timeline.md)')) {
     throw 'Index markdown must link the timeline markdown surface.'
   }
@@ -159,9 +192,15 @@ try {
       'Suppression profile: `unsuppressed`',
       'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
       'Preview images: `1`',
-      'Preview gallery: `1` shown, `0` omitted, cap `12`',
-      'Segment `1`: revisions `1` -> `3`, pairs `2`, start `selected-ref-lineage-start`; break after revision `3` \(delete-observed\)',
-      'Segment `2`: revisions `4` -> `4`, pairs `0`, start `reintroduced-after-delete`'
+      'Preview gallery: `1` shown, `0` omitted, cap `12`'
+    )) {
+    if ($indexMarkdown -notmatch $requiredFragment) {
+      throw "Index markdown must include '$requiredFragment'."
+    }
+  }
+  foreach ($requiredFragment in @(
+      'Segment `1`: revisions `1` -> `3`, pairs `2`, chunks .*start `selected-ref-lineage-start`; break after revision `3` \(delete-observed\)',
+      'Segment `2`: revisions `4` -> `4`, pairs `0`, chunks .*start `reintroduced-after-delete`'
     )) {
     if ($indexMarkdown -notmatch $requiredFragment) {
       throw "Index markdown must include '$requiredFragment'."
@@ -171,6 +210,23 @@ try {
   $indexHtmlContent = Get-Content -LiteralPath $indexHtml -Raw
   if ($indexHtmlContent -notmatch 'comparevi-history manual exploration index') {
     throw 'Index HTML heading mismatch.'
+  }
+  foreach ($requiredFragment in @(
+      'Primary review surfaces',
+      'Review navigation',
+      'Mode navigation',
+      'Comparison pair navigation',
+      'href="exploration-run.json"',
+      'href="evidence-graph.json"',
+      'href="#chunk-chunk-001"',
+      'id="chunk-chunk-001"',
+      '/compare/m0/Base.vi -&gt; /compare/m0/Head.vi',
+      'chunk-001 mode-summary.md',
+      'chunk-001 history-report.html'
+    )) {
+    if (-not $indexHtmlContent.Contains($requiredFragment)) {
+      throw "Index HTML must include '$requiredFragment'."
+    }
   }
   if ($indexHtmlContent -notmatch [regex]::Escape('href="timeline.html"')) {
     throw 'Index HTML must link the timeline HTML surface.'

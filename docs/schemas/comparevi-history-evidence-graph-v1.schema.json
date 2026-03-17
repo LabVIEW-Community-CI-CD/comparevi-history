@@ -392,6 +392,7 @@
               "execution",
               "outputs",
               "summary",
+              "surfaces",
               "failure",
               "replay"
             ],
@@ -618,6 +619,148 @@
                       "string",
                       "null"
                     ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "surfaces": {
+                "type": "object",
+                "required": [
+                  "suppressionProfile",
+                  "comparisonArtifactCount",
+                  "captureCount",
+                  "imageArtifactCount",
+                  "imageMimeTypes",
+                  "categoryCounts",
+                  "comparisonPairs",
+                  "bucketCounts",
+                  "previewImages"
+                ],
+                "properties": {
+                  "suppressionProfile": {
+                    "type": "string",
+                    "enum": [
+                      "unsuppressed",
+                      "suppressed",
+                      "mixed",
+                      "unknown"
+                    ]
+                  },
+                  "comparisonArtifactCount": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "captureCount": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "imageArtifactCount": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "imageMimeTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "categoryCounts": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "comparisonPairs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "firstPath",
+                        "secondPath",
+                        "count"
+                      ],
+                      "properties": {
+                        "firstPath": {
+                          "type": "string"
+                        },
+                        "secondPath": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "bucketCounts": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "previewImages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "chunkId",
+                        "mode",
+                        "category",
+                        "comparisonPair",
+                        "mimeType",
+                        "byteLength",
+                        "relativePath",
+                        "sortKey"
+                      ],
+                      "properties": {
+                        "chunkId": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "comparisonPair": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "required": [
+                            "firstPath",
+                            "secondPath"
+                          ],
+                          "properties": {
+                            "firstPath": {
+                              "type": "string"
+                            },
+                            "secondPath": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "mimeType": {
+                          "type": "string"
+                        },
+                        "byteLength": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "relativePath": {
+                          "type": "string"
+                        },
+                        "sortKey": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
