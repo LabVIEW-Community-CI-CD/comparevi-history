@@ -34,11 +34,21 @@ try {
   $targetDir = Join-Path $repoRoot 'Tooling' 'deployment'
   New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 
-  foreach ($ordinal in 1..3) {
-    "v$ordinal" | Set-Content -LiteralPath (Join-Path $targetDir 'Target.vi') -Encoding utf8
-    Invoke-Git -RepositoryRoot $repoRoot -Arguments @('add', 'Tooling/deployment/Target.vi') | Out-Null
-    Invoke-Git -RepositoryRoot $repoRoot -Arguments @('commit', '-m', "Revision $ordinal") | Out-Null
-  }
+  'v1' | Set-Content -LiteralPath (Join-Path $targetDir 'Target.vi') -Encoding utf8
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('add', 'Tooling/deployment/Target.vi') | Out-Null
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('commit', '-m', 'Revision 1') | Out-Null
+
+  'v2' | Set-Content -LiteralPath (Join-Path $targetDir 'Target.vi') -Encoding utf8
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('add', 'Tooling/deployment/Target.vi') | Out-Null
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('commit', '-m', 'Revision 2') | Out-Null
+
+  Remove-Item -LiteralPath (Join-Path $targetDir 'Target.vi') -Force
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('add', 'Tooling/deployment/Target.vi') | Out-Null
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('commit', '-m', 'Revision 3 delete') | Out-Null
+
+  'v4' | Set-Content -LiteralPath (Join-Path $targetDir 'Target.vi') -Encoding utf8
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('add', 'Tooling/deployment/Target.vi') | Out-Null
+  Invoke-Git -RepositoryRoot $repoRoot -Arguments @('commit', '-m', 'Revision 4 reintroduce') | Out-Null
 
   $resultsDir = Join-Path $tempRoot 'results'
   & $catalogScriptPath `
@@ -111,6 +121,17 @@ try {
   if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
     throw 'Index markdown must link the chunk HTML report.'
   }
+  foreach ($requiredFragment in @(
+      'Continuity status: `break-detected`',
+      'Continuity break count: `1`',
+      'Segment count: `2`',
+      'Segment `1`: revisions `1` -> `3`, pairs `2`, start `selected-ref-lineage-start`; break after revision `3` \(delete-observed\)',
+      'Segment `2`: revisions `4` -> `4`, pairs `0`, start `reintroduced-after-delete`'
+    )) {
+    if ($indexMarkdown -notmatch $requiredFragment) {
+      throw "Index markdown must include '$requiredFragment'."
+    }
+  }
 
   $indexHtmlContent = Get-Content -LiteralPath $indexHtml -Raw
   if ($indexHtmlContent -notmatch 'comparevi-history manual exploration index') {
@@ -121,6 +142,17 @@ try {
   }
   if ($indexHtmlContent -notmatch [regex]::Escape('history-report.html')) {
     throw 'Index HTML must link the chunk HTML report.'
+  }
+  foreach ($requiredFragment in @(
+      'Continuity status</strong><span>break-detected</span>',
+      'Continuity break count</strong><span>1</span>',
+      'Remaining planned chunks</strong><span>0</span>',
+      'reintroduced-after-delete',
+      'delete-observed'
+    )) {
+    if ($indexHtmlContent -notmatch $requiredFragment) {
+      throw "Index HTML must include '$requiredFragment'."
+    }
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
