@@ -214,6 +214,7 @@ Assert-Match -Content $readme -Pattern 'manual-vi-exploration-bundle\.zip' -Mess
 Assert-Match -Content $readme -Pattern 'page-ordinal' -Message 'README must document the page-ordinal continuation contract.'
 Assert-Match -Content $readme -Pattern 'Write-CompareVIHistoryDownstreamProcessorSummary\.ps1' -Message 'README must document the first downstream processor entrypoint.'
 Assert-Match -Content $readme -Pattern 'without markdown and HTML\s+scraping' -Message 'README must document that the downstream processor avoids markdown and HTML scraping.'
+Assert-Match -Content $readme -Pattern 'tests/fixtures/corpus-pilot-v1' -Message 'README must document the canonical corpus pilot golden baseline path.'
 Assert-Match -Content $readme -Pattern 'VIP_Post-Install Custom Action\.vi' -Message 'README must identify the first corpus pilot targets.'
 Assert-Match -Content $readme -Pattern 'VIP_Pre-Install Custom Action\.vi' -Message 'README must identify the first corpus pilot targets.'
 Assert-Match -Content $readme -Pattern 'bounded teaser surface' -Message 'README must document that the step summary remains bounded.'

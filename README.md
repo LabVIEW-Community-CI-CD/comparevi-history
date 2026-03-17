@@ -268,6 +268,8 @@ Minimum viable pilot after the single-VI evidence model is stable:
 - the first downstream processor stays page-ordinal resumable and surfaces strict page inventory, target inventory,
   completeness/degradation counts, preview-image totals, and next-page continuation metadata without markdown and HTML
   scraping
+- `tests/fixtures/corpus-pilot-v1` is the canonical pilot contract baseline for golden artifact tests against the
+  released corpus receipts
 
 This keeps the first corpus pilot deterministic and unsuppressed without inventing repo-wide generation before the
 single-VI evidence contracts have stabilized.
