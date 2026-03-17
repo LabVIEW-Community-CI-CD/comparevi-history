@@ -403,6 +403,15 @@ try {
   if (($executedEvidenceGraph.execution.chunks | Where-Object { $_.status -eq 'failed' }).Count -ne 1) {
     throw 'Executed evidence graph failed chunk count mismatch.'
   }
+  if ($executedEvidenceGraph.execution.chunks[0].surfaces.suppressionProfile -ne 'unsuppressed') {
+    throw 'Executed evidence graph chunk-level suppression profile mismatch.'
+  }
+  if ($executedEvidenceGraph.execution.chunks[0].surfaces.comparisonPairs.Count -ne 1 -or $executedEvidenceGraph.execution.chunks[0].surfaces.previewImages.Count -ne 1) {
+    throw 'Executed evidence graph chunk-level surfaces must retain normalized comparison-pair and preview-image evidence.'
+  }
+  if ($executedEvidenceGraph.execution.chunks[0].surfaces.previewImages[0].relativePath -ne 'chunk-receipts/chunk-001/history/preview-images/cli-image-00.png') {
+    throw 'Executed evidence graph chunk-level preview image path mismatch.'
+  }
   if ($executedEvidenceGraph.surfaces.categoryCounts.PSObject.Properties.Name -match 'First VI') {
     throw 'Executed evidence graph category counts must not retain raw comparison identity fragments.'
   }
@@ -447,6 +456,16 @@ try {
   $indexMarkdown = Get-Content -LiteralPath $executedRun.outputs.indexMd -Raw
   if ($indexMarkdown -notmatch 'comparevi-history manual exploration index') {
     throw 'Index markdown must include the index heading.'
+  }
+  foreach ($requiredFragment in @(
+      '## Primary review surfaces',
+      '## Review navigation',
+      '### Mode navigation',
+      '### Comparison pair navigation'
+    )) {
+    if ($indexMarkdown -notmatch [regex]::Escape($requiredFragment)) {
+      throw "Index markdown must include '$requiredFragment'."
+    }
   }
   if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
     throw 'Index markdown must surface chunk history report navigation.'

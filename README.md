@@ -162,7 +162,10 @@ The current execution slice stays additive on top of the discovery-first baselin
   compare identity fragments remain machine-readable instead of leaking into category keys
 - the canonical evidence graph also surfaces continuity segments/breaks, chunk execution outputs, preview images, and
   render/artifact surfaces explicitly instead of leaving downstream tooling to scrape presentation-only reports
-- the platform writes `index.md` and `index.html` as the first operator-facing navigation surfaces
+- the platform writes `index.md` and `index.html` as the primary human review surfaces for manual exploration
+- the primary index surfaces navigate deterministically by continuity segment, mode, comparison pair, and chunk before
+  dropping into the deeper timeline and per-chunk reports
+- the GitHub step summary stays a bounded teaser surface and points reviewers back to the richer static index/gallery
 - the platform also writes `timeline.md` and `timeline.html` for the deeper chunk-by-chunk timeline view
 - the platform packages the timeline, receipts, and per-chunk reports into one deterministic bundle
 - existing curated `target_spec_path` plus `target_id` workflows remain unchanged
