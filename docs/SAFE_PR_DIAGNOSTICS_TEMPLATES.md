@@ -81,7 +81,7 @@ Consumer repositories should not contain:
 
 - The maintainer-dispatched template uses `LabVIEW-Community-CI-CD/comparevi-history@v1`. That is the right default
   when you want compatible updates after each reviewed facade release.
-- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.2.0`. That is the right default when
+- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.0`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
   immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
 - Both templates resolve the PR head repository and head SHA from the GitHub API, then check out that exact SHA with
@@ -110,5 +110,3 @@ Consumer repositories should not contain:
 4. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
 5. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
-
-
