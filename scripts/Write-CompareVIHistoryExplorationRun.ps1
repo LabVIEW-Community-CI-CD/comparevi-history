@@ -977,6 +977,447 @@ function New-ExplorationSurfaceStats {
   }
 }
 
+function New-ContinuitySegmentArray {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Catalog,
+    [Parameter(Mandatory = $true)]
+    $ChunkPlan,
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts
+  )
+
+  $revisionByOrdinal = @{}
+  foreach ($revision in @(ConvertTo-ObjectArray -InputObject $Catalog.revisions)) {
+    $revisionByOrdinal[[int]$revision.ordinal] = $revision
+  }
+
+  $chunkReceiptArray = @(
+    ConvertTo-ObjectArray -InputObject $ChunkReceipts |
+      Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId }
+  )
+
+  return @(
+    ConvertTo-ObjectArray -InputObject $ChunkPlan.segments |
+      Sort-Object { [int]$_.segmentOrdinal } |
+      ForEach-Object {
+        $segment = $_
+        $segmentOrdinal = [int]$segment.segmentOrdinal
+        $startRevisionOrdinal = [int]$segment.startRevisionOrdinal
+        $endRevisionOrdinal = [int]$segment.endRevisionOrdinal
+        $segmentRevisions = New-Object System.Collections.Generic.List[object]
+        if ($startRevisionOrdinal -le $endRevisionOrdinal) {
+          foreach ($ordinal in $startRevisionOrdinal..$endRevisionOrdinal) {
+            if (-not $revisionByOrdinal.ContainsKey([int]$ordinal)) {
+              continue
+            }
+
+            $revision = $revisionByOrdinal[[int]$ordinal]
+            $segmentRevisions.Add([ordered]@{
+                ordinal = [int]$revision.ordinal
+                commit = [string]$revision.commit
+                committedAtUtc = [string]$revision.committedAtUtc
+                subject = [string]$revision.subject
+                changeKind = [string]$revision.changeKind
+                statusToken = [string]$revision.statusToken
+                path = [string]$revision.path
+                previousPath = Get-OptionalPropertyValue -InputObject $revision -PropertyName 'previousPath'
+              }) | Out-Null
+          }
+        }
+
+        $chunkIds = @(
+          $chunkReceiptArray |
+            Where-Object { [int]$_.segmentOrdinal -eq $segmentOrdinal } |
+            ForEach-Object { [string]$_.chunkId }
+        )
+
+        [ordered]@{
+          segmentOrdinal = $segmentOrdinal
+          startRevisionOrdinal = $startRevisionOrdinal
+          endRevisionOrdinal = $endRevisionOrdinal
+          revisionCount = [int]$segment.revisionCount
+          pairCount = [int]$segment.pairCount
+          continuityStartReason = [string]$segment.continuityStartReason
+          continuityBreakAfterRevisionOrdinal = if ($null -eq $segment.continuityBreakAfterRevisionOrdinal) { $null } else { [int]$segment.continuityBreakAfterRevisionOrdinal }
+          continuityBreakReason = if ([string]::IsNullOrWhiteSpace([string]$segment.continuityBreakReason)) { $null } else { [string]$segment.continuityBreakReason }
+          chunkIds = @($chunkIds)
+          revisions = @($segmentRevisions | ForEach-Object { $_ })
+        }
+      }
+  )
+}
+
+function New-ContinuityBreakArray {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Segments
+  )
+
+  $segmentArray = @(ConvertTo-ObjectArray -InputObject $Segments)
+  $breaks = New-Object System.Collections.Generic.List[object]
+  for ($index = 0; $index -lt $segmentArray.Count; $index++) {
+    $segment = $segmentArray[$index]
+    $afterRevisionOrdinal = Get-OptionalPropertyValue -InputObject $segment -PropertyName 'continuityBreakAfterRevisionOrdinal'
+    if ($null -eq $afterRevisionOrdinal) {
+      continue
+    }
+
+    $resumeSegment = if (($index + 1) -lt $segmentArray.Count) { $segmentArray[$index + 1] } else { $null }
+    $afterRevision = $null
+    foreach ($revision in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $segment -PropertyName 'revisions' -Default @()))) {
+      if ([int](Get-OptionalPropertyValue -InputObject $revision -PropertyName 'ordinal' -Default -1) -eq [int]$afterRevisionOrdinal) {
+        $afterRevision = $revision
+        break
+      }
+    }
+
+    $breaks.Add([ordered]@{
+        segmentOrdinal = [int]$segment.segmentOrdinal
+        afterRevisionOrdinal = [int]$afterRevisionOrdinal
+        afterCommit = if ($null -eq $afterRevision) { $null } else { [string]$afterRevision.commit }
+        afterPath = if ($null -eq $afterRevision) { $null } else { [string]$afterRevision.path }
+        reason = [string](Get-OptionalPropertyValue -InputObject $segment -PropertyName 'continuityBreakReason' -Default '')
+        nextSegmentOrdinal = if ($null -eq $resumeSegment) { $null } else { [int]$resumeSegment.segmentOrdinal }
+        nextStartReason = if ($null -eq $resumeSegment) { $null } else { [string]$resumeSegment.continuityStartReason }
+      }) | Out-Null
+  }
+
+  return @($breaks | ForEach-Object { $_ })
+}
+
+function New-ChunkEvidenceArray {
+  param(
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  return @(
+    ConvertTo-ObjectArray -InputObject $ChunkReceipts |
+      Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId } |
+      ForEach-Object {
+        $chunk = $_
+        $outputsNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
+        $summaryNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+        $executionNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'execution'
+        $replayNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'replay'
+        $failureNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'failure'
+
+        [ordered]@{
+          chunkId = [string]$chunk.chunkId
+          chunkOrdinal = [int]$chunk.chunkOrdinal
+          segmentOrdinal = [int]$chunk.segmentOrdinal
+          status = [string]$chunk.status
+          pairCount = [int]$chunk.pairCount
+          pairOrdinalStart = [int]$chunk.pairOrdinalStart
+          pairOrdinalEnd = [int]$chunk.pairOrdinalEnd
+          revisionOrdinalStart = [int]$chunk.revisionOrdinalStart
+          revisionOrdinalEnd = [int]$chunk.revisionOrdinalEnd
+          execution = [ordered]@{
+            startRef = [string](Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'startRef' -Default '')
+            endRef = [string](Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'endRef' -Default '')
+            maxPairs = [int](Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'maxPairs' -Default 0)
+            toolingSource = Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'toolingSource'
+            compareviRepository = Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'compareviRepository'
+            compareviRef = Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'compareviRef'
+            invokeScriptPath = Get-OptionalPropertyValue -InputObject $executionNode -PropertyName 'invokeScriptPath'
+          }
+          outputs = [ordered]@{
+            chunkRoot = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'chunkRoot') -ResultsRoot $ResultsRoot
+            receiptPath = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot
+            manifestPath = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'manifestPath') -ResultsRoot $ResultsRoot
+            runOutputPath = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'runOutputPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+            historyResultsDir = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyResultsDir') -ResultsRoot $ResultsRoot
+            historyManifestPath = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyManifestPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+            historySummaryJson = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historySummaryJson') -ResultsRoot $ResultsRoot -OnlyIfExists
+            historyReportMd = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
+            historyReportHtml = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
+            modeSummaryPath = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+            modeSummaryJsonPath = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'modeSummaryJsonPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+          }
+          summary = [ordered]@{
+            requestedModes = @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'requestedModes' -Default @()) | ForEach-Object { [string]$_ })
+            executedModes = @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'executedModes' -Default @()) | ForEach-Object { [string]$_ })
+            modeCount = [int](Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'modeCount' -Default 0)
+            totalProcessed = [int](Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'totalProcessed' -Default 0)
+            totalDiffs = [int](Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'totalDiffs' -Default 0)
+            stopReason = Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'stopReason'
+            finalStatus = Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'finalStatus'
+            finalReason = Get-OptionalPropertyValue -InputObject $summaryNode -PropertyName 'finalReason'
+          }
+          failure = if ($null -eq $failureNode) {
+            $null
+          } else {
+            [ordered]@{
+              message = [string](Get-OptionalPropertyValue -InputObject $failureNode -PropertyName 'message' -Default '')
+            }
+          }
+          replay = if ($null -eq $replayNode) {
+            $null
+          } else {
+            [ordered]@{
+              status = [string](Get-OptionalPropertyValue -InputObject $replayNode -PropertyName 'status' -Default '')
+              reason = [string](Get-OptionalPropertyValue -InputObject $replayNode -PropertyName 'reason' -Default '')
+            }
+          }
+        }
+      }
+  )
+}
+
+function Add-SurfaceReference {
+  param(
+    [Parameter(Mandatory = $true)]
+    [System.Collections.IList]$Target,
+    [Parameter(Mandatory = $true)]
+    [string]$Scope,
+    [Parameter(Mandatory = $true)]
+    [string]$Kind,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Path,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$ChunkId,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$ContentType = '',
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$PathType = ''
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return
+  }
+
+  $resolved = Resolve-AbsolutePath -Path $Path -BasePath $ResultsRoot
+  if (-not (Test-Path -LiteralPath $resolved)) {
+    return
+  }
+
+  $detectedPathType = if ([string]::IsNullOrWhiteSpace($PathType)) {
+    if (Test-Path -LiteralPath $resolved -PathType Container) { 'directory' } else { 'file' }
+  } else {
+    $PathType
+  }
+
+  $Target.Add([ordered]@{
+      scope = $Scope
+      kind = $Kind
+      chunkId = $(if ([string]::IsNullOrWhiteSpace($ChunkId)) { $null } else { $ChunkId })
+      relativePath = ConvertTo-ArtifactReference -Path $resolved -ResultsRoot $ResultsRoot
+      pathType = $detectedPathType
+      contentType = $(if ([string]::IsNullOrWhiteSpace($ContentType)) { $null } else { $ContentType })
+    }) | Out-Null
+}
+
+function New-SurfaceReferenceCollection {
+  param(
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [Parameter(Mandatory = $true)]
+    [string]$RevisionCatalogPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ChunkPlanPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ExplorationRunPath,
+    [Parameter(Mandatory = $true)]
+    [string]$IndexMdPath,
+    [Parameter(Mandatory = $true)]
+    [string]$IndexHtmlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$TimelineMdPath,
+    [Parameter(Mandatory = $true)]
+    [string]$TimelineHtmlPath,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$BundlePath
+  )
+
+  $renderSurfaces = New-Object System.Collections.Generic.List[object]
+  $artifactSurfaces = New-Object System.Collections.Generic.List[object]
+
+  Add-SurfaceReference -Target $artifactSurfaces -Scope 'run' -Kind 'revision-catalog-json' -ResultsRoot $ResultsRoot -Path $RevisionCatalogPath -ContentType 'application/json'
+  Add-SurfaceReference -Target $artifactSurfaces -Scope 'run' -Kind 'chunk-plan-json' -ResultsRoot $ResultsRoot -Path $ChunkPlanPath -ContentType 'application/json'
+  Add-SurfaceReference -Target $artifactSurfaces -Scope 'run' -Kind 'exploration-run-json' -ResultsRoot $ResultsRoot -Path $ExplorationRunPath -ContentType 'application/json'
+  Add-SurfaceReference -Target $renderSurfaces -Scope 'run' -Kind 'index-markdown' -ResultsRoot $ResultsRoot -Path $IndexMdPath -ContentType 'text/markdown'
+  Add-SurfaceReference -Target $renderSurfaces -Scope 'run' -Kind 'index-html' -ResultsRoot $ResultsRoot -Path $IndexHtmlPath -ContentType 'text/html'
+  Add-SurfaceReference -Target $renderSurfaces -Scope 'run' -Kind 'timeline-markdown' -ResultsRoot $ResultsRoot -Path $TimelineMdPath -ContentType 'text/markdown'
+  Add-SurfaceReference -Target $renderSurfaces -Scope 'run' -Kind 'timeline-html' -ResultsRoot $ResultsRoot -Path $TimelineHtmlPath -ContentType 'text/html'
+  Add-SurfaceReference -Target $artifactSurfaces -Scope 'run' -Kind 'bundle-zip' -ResultsRoot $ResultsRoot -Path $BundlePath -ContentType 'application/zip'
+
+  foreach ($chunk in @(ConvertTo-ObjectArray -InputObject $ChunkReceipts | Sort-Object { [int]$_.chunkOrdinal }, { [string]$_.chunkId })) {
+    $outputsNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
+    $chunkId = [string]$chunk.chunkId
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'chunk-root' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'chunkRoot') -ChunkId $chunkId
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'chunk-receipt-json' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'receiptPath') -ChunkId $chunkId -ContentType 'application/json'
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'chunk-manifest-json' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'manifestPath') -ChunkId $chunkId -ContentType 'application/json'
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'chunk-run-output' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'runOutputPath') -ChunkId $chunkId -ContentType 'text/plain'
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'history-results-dir' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyResultsDir') -ChunkId $chunkId
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'history-manifest-json' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyManifestPath') -ChunkId $chunkId -ContentType 'application/json'
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'history-summary-json' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historySummaryJson') -ChunkId $chunkId -ContentType 'application/json'
+    Add-SurfaceReference -Target $renderSurfaces -Scope 'chunk' -Kind 'history-report-markdown' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyReportMd') -ChunkId $chunkId -ContentType 'text/markdown'
+    Add-SurfaceReference -Target $renderSurfaces -Scope 'chunk' -Kind 'history-report-html' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'historyReportHtml') -ChunkId $chunkId -ContentType 'text/html'
+    Add-SurfaceReference -Target $renderSurfaces -Scope 'chunk' -Kind 'mode-summary-markdown' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'modeSummaryPath') -ChunkId $chunkId -ContentType 'text/markdown'
+    Add-SurfaceReference -Target $artifactSurfaces -Scope 'chunk' -Kind 'mode-summary-json' -ResultsRoot $ResultsRoot -Path (Get-OptionalPropertyValue -InputObject $outputsNode -PropertyName 'modeSummaryJsonPath') -ChunkId $chunkId -ContentType 'application/json'
+  }
+
+  return [pscustomobject]@{
+    renderSurfaces = @(
+      $renderSurfaces |
+        Sort-Object { [string]$_.scope }, { [string]$_.kind }, { [string]$_.chunkId }, { [string]$_.relativePath } |
+        ForEach-Object { $_ }
+    )
+    artifactSurfaces = @(
+      $artifactSurfaces |
+        Sort-Object { [string]$_.scope }, { [string]$_.kind }, { [string]$_.chunkId }, { [string]$_.relativePath } |
+        ForEach-Object { $_ }
+    )
+  }
+}
+
+function New-EvidenceGraph {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Catalog,
+    [Parameter(Mandatory = $true)]
+    $ChunkPlan,
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [Parameter(Mandatory = $true)]
+    [string[]]$RequestedModes,
+    [Parameter(Mandatory = $true)]
+    [string]$NoisePolicy,
+    [Parameter(Mandatory = $true)]
+    $SurfaceAggregate,
+    [Parameter(Mandatory = $true)]
+    $RunStats,
+    [Parameter(Mandatory = $true)]
+    [string]$RevisionCatalogPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ChunkPlanPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ChunkReceiptsRoot,
+    [Parameter(Mandatory = $true)]
+    [string]$ExplorationRunPath,
+    [Parameter(Mandatory = $true)]
+    [string]$IndexMdPath,
+    [Parameter(Mandatory = $true)]
+    [string]$IndexHtmlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$TimelineMdPath,
+    [Parameter(Mandatory = $true)]
+    [string]$TimelineHtmlPath,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$BundlePath
+  )
+
+  $continuitySegments = @(New-ContinuitySegmentArray -Catalog $Catalog -ChunkPlan $ChunkPlan -ChunkReceipts $ChunkReceipts)
+  $continuityBreaks = @(New-ContinuityBreakArray -Segments $continuitySegments)
+  $chunkEvidence = @(New-ChunkEvidenceArray -ChunkReceipts $ChunkReceipts -ResultsRoot $ResultsRoot)
+  $surfaceReferences = New-SurfaceReferenceCollection `
+    -ChunkReceipts $ChunkReceipts `
+    -ResultsRoot $ResultsRoot `
+    -RevisionCatalogPath $RevisionCatalogPath `
+    -ChunkPlanPath $ChunkPlanPath `
+    -ExplorationRunPath $ExplorationRunPath `
+    -IndexMdPath $IndexMdPath `
+    -IndexHtmlPath $IndexHtmlPath `
+    -TimelineMdPath $TimelineMdPath `
+    -TimelineHtmlPath $TimelineHtmlPath `
+    -BundlePath $BundlePath
+
+  return [ordered]@{
+    schema = 'comparevi-history/evidence-graph@v1'
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    consumer = [ordered]@{
+      repository = [string]$Catalog.consumer.repository
+      ref = [string]$Catalog.consumer.ref
+    }
+    target = [ordered]@{
+      path = [string]$Catalog.target.path
+      selectedRef = [string]$Catalog.target.selectedRef
+      extension = '.vi'
+    }
+    configuration = [ordered]@{
+      requestedModes = @($RequestedModes)
+      noisePolicy = $NoisePolicy
+      includeMergeParents = [bool]$Catalog.discovery.includeMergeParents
+    }
+    discovery = [ordered]@{
+      revisionCatalogPath = ConvertTo-ArtifactReference -Path $RevisionCatalogPath -ResultsRoot $ResultsRoot
+      revisionCount = [int]$Catalog.summary.revisionCount
+      historyMode = [string]$Catalog.discovery.historyMode
+      followRenames = [bool]$Catalog.discovery.followRenames
+      catalogComplete = [bool]$Catalog.discovery.complete
+      catalogCompletenessReason = [string]$Catalog.discovery.completenessReason
+    }
+    continuity = [ordered]@{
+      status = [string]$Catalog.summary.continuityStatus
+      breakCount = @($continuityBreaks).Count
+      segmentCount = @($continuitySegments).Count
+      segments = @($continuitySegments)
+      breaks = @($continuityBreaks)
+    }
+    execution = [ordered]@{
+      chunkPlanPath = ConvertTo-ArtifactReference -Path $ChunkPlanPath -ResultsRoot $ResultsRoot
+      chunkReceiptsRoot = ConvertTo-ArtifactReference -Path $ChunkReceiptsRoot -ResultsRoot $ResultsRoot
+      chunkPairLimit = [int]$ChunkPlan.summary.chunkPairLimit
+      pairCount = [int]$ChunkPlan.summary.pairCount
+      chunkCount = @($chunkEvidence).Count
+      plannedChunkCount = [int]$RunStats.totalChunkCount
+      completedChunkCount = [int]$RunStats.completedChunkCount
+      failedChunkCount = [int]$RunStats.failedChunkCount
+      skippedChunkCount = [int]$RunStats.skippedChunkCount
+      status = [string]$RunStats.finalStatus
+      reason = [string]$RunStats.finalReason
+      chunks = @($chunkEvidence)
+    }
+    surfaces = [ordered]@{
+      suppressionProfile = [string]$SurfaceAggregate.suppressionProfile
+      comparisonArtifactCount = [int]$SurfaceAggregate.comparisonArtifactCount
+      captureCount = [int]$SurfaceAggregate.captureCount
+      imageArtifactCount = [int]$SurfaceAggregate.imageArtifactCount
+      imageMimeTypes = @($SurfaceAggregate.imageMimeTypes)
+      chunkCountWithMetadata = [int]$SurfaceAggregate.chunkCountWithMetadata
+      categoryCounts = $SurfaceAggregate.categoryCounts
+      comparisonPairs = @($SurfaceAggregate.comparisonPairs)
+      bucketCounts = $SurfaceAggregate.bucketCounts
+      previewImages = @(ConvertTo-PreviewImageArray -Value $SurfaceAggregate.previewImages)
+      renderSurfaces = @($surfaceReferences.renderSurfaces)
+      artifactSurfaces = @($surfaceReferences.artifactSurfaces)
+    }
+    completeness = [ordered]@{
+      catalogComplete = [bool]$RunStats.catalogComplete
+      catalogCompletenessReason = [string]$RunStats.catalogCompletenessReason
+      finalStatus = [string]$RunStats.finalStatus
+      finalReason = [string]$RunStats.finalReason
+      replayStatus = [string]$RunStats.replayStatus
+      replayReason = [string]$RunStats.replayReason
+      bundleStatus = [string]$RunStats.bundleStatus
+      bundleReason = [string]$RunStats.bundleReason
+      previewImageCount = [int]$RunStats.previewImageCount
+      previewGalleryCap = [int]$RunStats.previewGalleryCap
+      previewGalleryCount = [int]$RunStats.previewGalleryCount
+      previewGalleryOmittedCount = [int]$RunStats.previewGalleryOmittedCount
+      stepSummaryPreviewCap = [int]$RunStats.stepSummaryPreviewCap
+      stepSummaryPreviewCount = [int]$RunStats.stepSummaryPreviewCount
+      stepSummaryPreviewOmittedCount = [int]$RunStats.stepSummaryPreviewOmittedCount
+      stepSummaryPreviewByteBudget = [int]$RunStats.stepSummaryPreviewByteBudget
+    }
+  }
+}
+
 function Get-HtmlStatusClass {
   param(
     [Parameter(Mandatory = $true)]
@@ -1692,6 +2133,7 @@ $resultsDirResolved = if ([string]::IsNullOrWhiteSpace($ResultsDir)) {
 }
 New-Item -ItemType Directory -Path $resultsDirResolved -Force | Out-Null
 $explorationRunPath = Join-Path $resultsDirResolved 'exploration-run.json'
+$evidenceGraphPath = Join-Path $resultsDirResolved 'evidence-graph.json'
 $chunkReceiptsRoot = if ($chunkPlan.summary.chunkCount -eq 0) {
   Join-Path $resultsDirResolved 'chunk-receipts'
 } else {
@@ -1883,6 +2325,10 @@ $explorationRun = [ordered]@{
     catalogCompletenessReason = [string]$catalog.discovery.completenessReason
     continuityStatus = [string]$catalog.summary.continuityStatus
   }
+  evidence = [ordered]@{
+    schema = 'comparevi-history/evidence-graph@v1'
+    graphPath = $evidenceGraphPath
+  }
   planning = [ordered]@{
     chunkPlanPath = $chunkPlanPathResolved
     chunkReceiptsRoot = $chunkReceiptsRoot
@@ -1907,6 +2353,7 @@ $explorationRun = [ordered]@{
     chunkPlanPath = $chunkPlanPathResolved
     chunkReceiptsRoot = $chunkReceiptsRoot
     explorationRunPath = $explorationRunPath
+    evidenceGraphPath = $evidenceGraphPath
     indexMd = $indexMdResolved
     indexHtml = $indexHtmlResolved
     timelineMd = $timelineMdResolved
@@ -1941,7 +2388,28 @@ $explorationRun = [ordered]@{
 }
 $explorationRun | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $explorationRunPath -Encoding utf8
 
+$evidenceGraph = New-EvidenceGraph `
+  -Catalog $catalog `
+  -ChunkPlan $chunkPlan `
+  -ChunkReceipts $chunkReceipts `
+  -ResultsRoot $resultsDirResolved `
+  -RequestedModes $requestedModes `
+  -NoisePolicy $NoisePolicy `
+  -SurfaceAggregate $surfaceAggregate `
+  -RunStats $runStats `
+  -RevisionCatalogPath $revisionCatalogPathResolved `
+  -ChunkPlanPath $chunkPlanPathResolved `
+  -ChunkReceiptsRoot $chunkReceiptsRoot `
+  -ExplorationRunPath $explorationRunPath `
+  -IndexMdPath $indexMdResolved `
+  -IndexHtmlPath $indexHtmlResolved `
+  -TimelineMdPath $timelineMdResolved `
+  -TimelineHtmlPath $timelineHtmlResolved `
+  -BundlePath $bundlePathResolved
+$evidenceGraph | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $evidenceGraphPath -Encoding utf8
+
 Write-ActionOutput -Key 'exploration-run-path' -Value $explorationRunPath
+Write-ActionOutput -Key 'evidence-graph-path' -Value $evidenceGraphPath
 Write-ActionOutput -Key 'exploration-status' -Value $finalStatus
 Write-ActionOutput -Key 'exploration-reason' -Value $finalReason
 Write-ActionOutput -Key 'index-md' -Value $indexMdResolved
@@ -1957,6 +2425,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     '## comparevi-history exploration run'
     ''
     ('- Exploration run: `{0}`' -f $explorationRunPath)
+    ('- Evidence graph: `{0}`' -f $evidenceGraphPath)
     ('- Revision count: `{0}`' -f [int]$catalog.summary.revisionCount)
     ('- Pair count: `{0}`' -f $pairCount)
     ('- Total chunk count: `{0}`' -f $runStats.totalChunkCount)

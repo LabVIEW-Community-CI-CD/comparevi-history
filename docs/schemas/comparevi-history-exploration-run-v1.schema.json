@@ -265,6 +265,22 @@
       },
       "additionalProperties": false
     },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "schema",
+        "graphPath"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/evidence-graph@v1"
+        },
+        "graphPath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "planning": {
       "type": "object",
       "required": [
@@ -386,6 +402,12 @@
         },
         "explorationRunPath": {
           "type": "string"
+        },
+        "evidenceGraphPath": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "indexMd": {
           "type": "string"

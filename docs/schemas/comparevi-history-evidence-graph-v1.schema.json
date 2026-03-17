@@ -1,0 +1,957 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-evidence-graph-v1.schema.json",
+  "title": "comparevi-history evidence graph v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "consumer",
+    "target",
+    "configuration",
+    "discovery",
+    "continuity",
+    "execution",
+    "surfaces",
+    "completeness"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/evidence-graph@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumer": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "selectedRef",
+        "extension"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "selectedRef": {
+          "type": "string"
+        },
+        "extension": {
+          "type": "string",
+          "const": ".vi"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "object",
+      "required": [
+        "requestedModes",
+        "noisePolicy",
+        "includeMergeParents"
+      ],
+      "properties": {
+        "requestedModes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "noisePolicy": {
+          "type": "string"
+        },
+        "includeMergeParents": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "discovery": {
+      "type": "object",
+      "required": [
+        "revisionCatalogPath",
+        "revisionCount",
+        "historyMode",
+        "followRenames",
+        "catalogComplete",
+        "catalogCompletenessReason"
+      ],
+      "properties": {
+        "revisionCatalogPath": {
+          "type": "string"
+        },
+        "revisionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "historyMode": {
+          "type": "string"
+        },
+        "followRenames": {
+          "type": "boolean"
+        },
+        "catalogComplete": {
+          "type": "boolean"
+        },
+        "catalogCompletenessReason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "continuity": {
+      "type": "object",
+      "required": [
+        "status",
+        "breakCount",
+        "segmentCount",
+        "segments",
+        "breaks"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "continuous",
+            "break-detected"
+          ]
+        },
+        "breakCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "segmentCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "segmentOrdinal",
+              "startRevisionOrdinal",
+              "endRevisionOrdinal",
+              "revisionCount",
+              "pairCount",
+              "continuityStartReason",
+              "continuityBreakAfterRevisionOrdinal",
+              "continuityBreakReason",
+              "chunkIds",
+              "revisions"
+            ],
+            "properties": {
+              "segmentOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "startRevisionOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "endRevisionOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "revisionCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pairCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "continuityStartReason": {
+                "type": "string"
+              },
+              "continuityBreakAfterRevisionOrdinal": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "continuityBreakReason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "chunkIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "revisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "ordinal",
+                    "commit",
+                    "committedAtUtc",
+                    "subject",
+                    "changeKind",
+                    "statusToken",
+                    "path",
+                    "previousPath"
+                  ],
+                  "properties": {
+                    "ordinal": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "commit": {
+                      "type": "string"
+                    },
+                    "committedAtUtc": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "subject": {
+                      "type": "string"
+                    },
+                    "changeKind": {
+                      "type": "string",
+                      "enum": [
+                        "added",
+                        "modified",
+                        "deleted",
+                        "renamed",
+                        "copied",
+                        "type-changed",
+                        "unknown"
+                      ]
+                    },
+                    "statusToken": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "previousPath": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "breaks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "segmentOrdinal",
+              "afterRevisionOrdinal",
+              "afterCommit",
+              "afterPath",
+              "reason",
+              "nextSegmentOrdinal",
+              "nextStartReason"
+            ],
+            "properties": {
+              "segmentOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "afterRevisionOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "afterCommit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "afterPath": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "nextSegmentOrdinal": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "nextStartReason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "chunkPlanPath",
+        "chunkReceiptsRoot",
+        "chunkPairLimit",
+        "pairCount",
+        "chunkCount",
+        "plannedChunkCount",
+        "completedChunkCount",
+        "failedChunkCount",
+        "skippedChunkCount",
+        "status",
+        "reason",
+        "chunks"
+      ],
+      "properties": {
+        "chunkPlanPath": {
+          "type": "string"
+        },
+        "chunkReceiptsRoot": {
+          "type": "string"
+        },
+        "chunkPairLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "chunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plannedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "chunkId",
+              "chunkOrdinal",
+              "segmentOrdinal",
+              "status",
+              "pairCount",
+              "pairOrdinalStart",
+              "pairOrdinalEnd",
+              "revisionOrdinalStart",
+              "revisionOrdinalEnd",
+              "execution",
+              "outputs",
+              "summary",
+              "failure",
+              "replay"
+            ],
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              },
+              "chunkOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "segmentOrdinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "type": "string"
+              },
+              "pairCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pairOrdinalStart": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "pairOrdinalEnd": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "revisionOrdinalStart": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "revisionOrdinalEnd": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "execution": {
+                "type": "object",
+                "required": [
+                  "startRef",
+                  "endRef",
+                  "maxPairs",
+                  "toolingSource",
+                  "compareviRepository",
+                  "compareviRef",
+                  "invokeScriptPath"
+                ],
+                "properties": {
+                  "startRef": {
+                    "type": "string"
+                  },
+                  "endRef": {
+                    "type": "string"
+                  },
+                  "maxPairs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "toolingSource": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "compareviRepository": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "compareviRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "invokeScriptPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "outputs": {
+                "type": "object",
+                "required": [
+                  "chunkRoot",
+                  "receiptPath",
+                  "manifestPath",
+                  "runOutputPath",
+                  "historyResultsDir",
+                  "historyManifestPath",
+                  "historySummaryJson",
+                  "historyReportMd",
+                  "historyReportHtml",
+                  "modeSummaryPath",
+                  "modeSummaryJsonPath"
+                ],
+                "properties": {
+                  "chunkRoot": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "receiptPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "manifestPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "runOutputPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "historyResultsDir": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "historyManifestPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "historySummaryJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "historyReportMd": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "historyReportHtml": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "modeSummaryPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "modeSummaryJsonPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "summary": {
+                "type": "object",
+                "required": [
+                  "requestedModes",
+                  "executedModes",
+                  "modeCount",
+                  "totalProcessed",
+                  "totalDiffs",
+                  "stopReason",
+                  "finalStatus",
+                  "finalReason"
+                ],
+                "properties": {
+                  "requestedModes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "executedModes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "modeCount": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "totalProcessed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "totalDiffs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "stopReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "finalStatus": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "finalReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "failure": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "replay": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "status",
+                  "reason"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "surfaces": {
+      "type": "object",
+      "required": [
+        "suppressionProfile",
+        "comparisonArtifactCount",
+        "captureCount",
+        "imageArtifactCount",
+        "imageMimeTypes",
+        "chunkCountWithMetadata",
+        "categoryCounts",
+        "comparisonPairs",
+        "bucketCounts",
+        "previewImages",
+        "renderSurfaces",
+        "artifactSurfaces"
+      ],
+      "properties": {
+        "suppressionProfile": {
+          "type": "string",
+          "enum": [
+            "unsuppressed",
+            "suppressed",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "comparisonArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageMimeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chunkCountWithMetadata": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "comparisonPairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "firstPath",
+              "secondPath",
+              "count"
+            ],
+            "properties": {
+              "firstPath": {
+                "type": "string"
+              },
+              "secondPath": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "bucketCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "previewImages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "chunkId",
+              "mode",
+              "category",
+              "comparisonPair",
+              "mimeType",
+              "byteLength",
+              "relativePath",
+              "sortKey"
+            ],
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "comparisonPair": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "firstPath",
+                  "secondPath"
+                ],
+                "properties": {
+                  "firstPath": {
+                    "type": "string"
+                  },
+                  "secondPath": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "byteLength": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "sortKey": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "renderSurfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceReference"
+          }
+        },
+        "artifactSurfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceReference"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "completeness": {
+      "type": "object",
+      "required": [
+        "catalogComplete",
+        "catalogCompletenessReason",
+        "finalStatus",
+        "finalReason",
+        "replayStatus",
+        "replayReason",
+        "bundleStatus",
+        "bundleReason",
+        "previewImageCount",
+        "previewGalleryCap",
+        "previewGalleryCount",
+        "previewGalleryOmittedCount",
+        "stepSummaryPreviewCap",
+        "stepSummaryPreviewCount",
+        "stepSummaryPreviewOmittedCount",
+        "stepSummaryPreviewByteBudget"
+      ],
+      "properties": {
+        "catalogComplete": {
+          "type": "boolean"
+        },
+        "catalogCompletenessReason": {
+          "type": "string"
+        },
+        "finalStatus": {
+          "type": "string"
+        },
+        "finalReason": {
+          "type": "string"
+        },
+        "replayStatus": {
+          "type": "string"
+        },
+        "replayReason": {
+          "type": "string"
+        },
+        "bundleStatus": {
+          "type": "string"
+        },
+        "bundleReason": {
+          "type": "string"
+        },
+        "previewImageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewGalleryCap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewGalleryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewGalleryOmittedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewCap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewOmittedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewByteBudget": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "surfaceReference": {
+      "type": "object",
+      "required": [
+        "scope",
+        "kind",
+        "chunkId",
+        "relativePath",
+        "pathType",
+        "contentType"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "run",
+            "chunk"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "chunkId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "pathType": {
+          "type": "string",
+          "enum": [
+            "file",
+            "directory"
+          ]
+        },
+        "contentType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

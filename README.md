@@ -131,6 +131,7 @@ Manual exploration workflows emit additive planning receipts alongside the actio
 - `chunk-plan.json`
 - `chunk-receipts/`
 - `exploration-run.json` (`comparevi-history/exploration-run@v1`)
+- `evidence-graph.json` (`comparevi-history/evidence-graph@v1`)
 - `index.md`
 - `index.html`
 - `timeline.md`
@@ -156,8 +157,11 @@ The current execution slice stays additive on top of the discovery-first baselin
 - the platform keeps unsuppressed LVCompare output in-band and surfaces deterministic metadata summaries for capture
   artifacts such as images instead of collapsing them into generic noise counts
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
+- the platform emits `evidence-graph.json` as the canonical unsuppressed evidence contract for downstream processing
 - the platform keeps `categoryCounts` semantic and emits structured `comparisonPairs` separately so HTML-rendered
   compare identity fragments remain machine-readable instead of leaking into category keys
+- the canonical evidence graph also surfaces continuity segments/breaks, chunk execution outputs, preview images, and
+  render/artifact surfaces explicitly instead of leaving downstream tooling to scrape presentation-only reports
 - the platform writes `index.md` and `index.html` as the first operator-facing navigation surfaces
 - the platform also writes `timeline.md` and `timeline.html` for the deeper chunk-by-chunk timeline view
 - the platform packages the timeline, receipts, and per-chunk reports into one deterministic bundle
