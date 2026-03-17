@@ -17,6 +17,11 @@ on:
         required: false
         default: ''
         type: string
+      allow_trusted_fork_execution:
+        description: Allow a maintainer-triggered run to execute against a fork head when the checked-in PR policy permits it.
+        required: false
+        default: false
+        type: boolean
       results_dir:
         description: Workflow-owned results root for aggregate PR diagnostics receipts and per-target runs.
         required: false
@@ -141,6 +146,7 @@ jobs:
             -Repository '${{ steps.defaults.outputs.consumer_repository }}' `
             -TargetSpecPath (Join-Path $env:GITHUB_WORKSPACE 'trusted-consumer' '${{ inputs.target_spec_path }}') `
             -PrPolicyPath $(if ([string]::IsNullOrWhiteSpace('${{ inputs.pr_policy_path }}')) { '' } else { (Join-Path $env:GITHUB_WORKSPACE 'trusted-consumer' '${{ inputs.pr_policy_path }}') }) `
+            -AllowTrustedForkExecution:('${{ inputs.allow_trusted_fork_execution }}' -eq 'true') `
             -ResultsDir '${{ steps.results_root.outputs['results-root'] }}' `
             -GitHubToken $env:GITHUB_TOKEN `
             -GitHubOutputPath $env:GITHUB_OUTPUT `

@@ -113,7 +113,8 @@
         "forkBehavior": {
           "type": "string",
           "enum": [
-            "block"
+            "block",
+            "maintainer-dispatch"
           ]
         }
       }

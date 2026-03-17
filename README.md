@@ -217,7 +217,8 @@ The current first slice stays intentionally narrow:
 - only PR-policy-eligible catalog targets whose `path` matches a changed `.vi` path are executed
 - same-repo pull requests can auto-run immediately
 - cross-repository and fork pull requests fail closed by producing a blocked discovery receipt instead of executing the
-  backend
+  backend unless a maintainer-triggered caller explicitly sets `allow_trusted_fork_execution: true` and the checked-in
+  PR policy allows `trust.forkBehavior = maintainer-dispatch`
 - each matched target reuses the existing `request.json`, `public-run.json`, `shared-evidence.json`, and reviewer
   artifact path without inventing a second backend execution contract
 - the workflow aggregates those per-target runs into `pr-run.json`, `pr-comment.md`, and `pr-step-summary.md`
@@ -342,7 +343,7 @@ Automatic PR diagnostics consumers should also check in a PR policy using `compa
 - public mode narrowing for reviewer surfaces
 - branch-budget defaults and no-diff artifact policy
 - reviewer comment and step-summary emission toggles
-- trust defaults for fork PR blocking
+- trust defaults for fork PR blocking or maintainer-dispatched fallback eligibility
 
 ## Trust boundaries
 

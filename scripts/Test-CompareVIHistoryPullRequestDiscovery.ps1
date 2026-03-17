@@ -171,6 +171,11 @@ try {
   if ($receipt.matchedTargets[0].keepArtifactsOnNoDiff -ne $true) {
     throw 'PR policy keepArtifactsOnNoDiff was not surfaced.'
   }
+  if ($receipt.executionContext.trustedForkExecutionRequested -ne $false -or
+    $receipt.executionContext.trustedForkExecutionEligible -ne $false -or
+    $receipt.executionContext.trustedForkExecutionApplied -ne $false) {
+    throw 'Same-repo discovery should not mark trusted fork execution state.'
+  }
   if (-not ($receipt.excludedViFiles | Where-Object { $_.currentPath -eq 'Tooling/deployment/VIP_Pre-Install Custom Action.vi' -and $_.exclusionReason -eq 'target-id-not-allowed' })) {
     throw 'Expected target-id exclusion for the pre-install VI.'
   }
@@ -257,6 +262,61 @@ try {
   }
   if ($forkReceipt.summary.executionReason -ne 'untrusted-cross-repository-pull-request') {
     throw 'Fork pull request block reason mismatch.'
+  }
+
+  $maintainerForkPolicyPath = Join-Path $tempRoot 'maintainer-fork-pr-policy.json'
+  @"
+{
+  "schema": "comparevi-history/pr-policy@v1",
+  "discovery": {
+    "includePaths": [
+      "Tooling/deployment/**/*.vi"
+    ]
+  },
+  "trust": {
+    "forkBehavior": "maintainer-dispatch"
+  }
+}
+"@ | Set-Content -LiteralPath $maintainerForkPolicyPath -Encoding utf8
+
+  $fallbackRequiredJson = & $scriptPath `
+    -EventName 'pull_request_target' `
+    -EventPath $forkEventPath `
+    -TargetSpecPath $targetSpecPath `
+    -PrPolicyPath $maintainerForkPolicyPath `
+    -ResultsDir (Join-Path $tempRoot 'fallback-required-results') `
+    -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+    -FilesPayloadPath $filesPayloadPath
+  $fallbackRequiredReceipt = $fallbackRequiredJson | ConvertFrom-Json -Depth 64
+  if ($fallbackRequiredReceipt.summary.executionStatus -ne 'blocked') {
+    throw 'Fork PR should stay blocked until trusted fallback is explicitly requested.'
+  }
+  if ($fallbackRequiredReceipt.summary.executionReason -ne 'trusted-fork-fallback-required') {
+    throw 'Trusted fork fallback block reason mismatch.'
+  }
+  if ($fallbackRequiredReceipt.executionContext.trustedForkExecutionEligible -ne $true -or
+    $fallbackRequiredReceipt.executionContext.trustedForkExecutionRequested -ne $false -or
+    $fallbackRequiredReceipt.executionContext.trustedForkExecutionApplied -ne $false) {
+    throw 'Fallback-required discovery execution context mismatch.'
+  }
+
+  $fallbackAppliedJson = & $scriptPath `
+    -EventName 'pull_request_target' `
+    -EventPath $forkEventPath `
+    -TargetSpecPath $targetSpecPath `
+    -PrPolicyPath $maintainerForkPolicyPath `
+    -AllowTrustedForkExecution $true `
+    -ResultsDir (Join-Path $tempRoot 'fallback-applied-results') `
+    -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+    -FilesPayloadPath $filesPayloadPath
+  $fallbackAppliedReceipt = $fallbackAppliedJson | ConvertFrom-Json -Depth 64
+  if ($fallbackAppliedReceipt.summary.executionStatus -ne 'ready') {
+    throw 'Trusted fallback should allow the fork PR discovery to proceed.'
+  }
+  if ($fallbackAppliedReceipt.executionContext.trustedForkExecutionEligible -ne $true -or
+    $fallbackAppliedReceipt.executionContext.trustedForkExecutionRequested -ne $true -or
+    $fallbackAppliedReceipt.executionContext.trustedForkExecutionApplied -ne $true) {
+    throw 'Trusted fallback applied execution context mismatch.'
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

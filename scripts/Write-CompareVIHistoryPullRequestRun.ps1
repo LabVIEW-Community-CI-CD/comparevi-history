@@ -152,10 +152,14 @@ if ($null -ne $targetRunsManifestPathResolved -and (Test-Path -LiteralPath $targ
 }
 
 $policy = Get-NestedValue -Object $discovery -Path @('prPolicy')
+$discoveryExecutionContext = Get-NestedValue -Object $discovery -Path @('executionContext')
 $emitCommentBody = [bool](Get-NestedValue -Object $policy -Path @('reviewerSurface', 'emitCommentBody') -Default $true)
 $emitStepSummary = [bool](Get-NestedValue -Object $policy -Path @('reviewerSurface', 'emitStepSummary') -Default $true)
 $policyPath = Get-OptionalString -Value (Get-NestedValue -Object $policy -Path @('path'))
 $policyApplied = [bool](Get-NestedValue -Object $policy -Path @('applied') -Default $false)
+$trustedForkExecutionRequested = [bool](Get-NestedValue -Object $discoveryExecutionContext -Path @('trustedForkExecutionRequested') -Default $false)
+$trustedForkExecutionEligible = [bool](Get-NestedValue -Object $discoveryExecutionContext -Path @('trustedForkExecutionEligible') -Default $false)
+$trustedForkExecutionApplied = [bool](Get-NestedValue -Object $discoveryExecutionContext -Path @('trustedForkExecutionApplied') -Default $false)
 
 $discoveryStatus = [string]$discovery.summary.executionStatus
 $discoveryReason = [string]$discovery.summary.executionReason
@@ -212,6 +216,9 @@ $commentLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
 $commentLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
 $commentLines.Add(('- PR policy: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($policyPath)) { 'platform defaults' } else { $policyPath }))) | Out-Null
 $commentLines.Add(('- PR policy applied: `{0}`' -f $policyApplied.ToString().ToLowerInvariant())) | Out-Null
+$commentLines.Add(('- Trusted fork execution requested: `{0}`' -f $trustedForkExecutionRequested.ToString().ToLowerInvariant())) | Out-Null
+$commentLines.Add(('- Trusted fork execution eligible: `{0}`' -f $trustedForkExecutionEligible.ToString().ToLowerInvariant())) | Out-Null
+$commentLines.Add(('- Trusted fork execution applied: `{0}`' -f $trustedForkExecutionApplied.ToString().ToLowerInvariant())) | Out-Null
 $commentLines.Add(('- Changed VIs: `{0}`' -f $changedViCount)) | Out-Null
 $commentLines.Add(('- Policy-eligible changed VIs: `{0}`' -f $eligibleChangedViCount)) | Out-Null
 $commentLines.Add(('- Excluded changed VIs: `{0}`' -f $excludedViCount)) | Out-Null
@@ -326,6 +333,11 @@ $receipt = [ordered]@{
     isFork = [bool]$discovery.pullRequest.isFork
   }
   prPolicy = $policy
+  executionContext = [ordered]@{
+    trustedForkExecutionRequested = $trustedForkExecutionRequested
+    trustedForkExecutionEligible = $trustedForkExecutionEligible
+    trustedForkExecutionApplied = $trustedForkExecutionApplied
+  }
   discovery = [ordered]@{
     schema = 'comparevi-history/changed-vi-discovery@v1'
     path = $discoveryPathResolved

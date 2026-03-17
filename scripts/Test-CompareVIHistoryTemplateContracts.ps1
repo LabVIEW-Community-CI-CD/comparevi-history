@@ -159,6 +159,7 @@ Assert-Match -Content $manualExplorationWorkflow -Pattern "steps\.exploration\.o
 Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*workflow_call:\s*$' -Message 'Pull request workflow must be reusable.'
 Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*target_spec_path:\s*$' -Message 'Pull request workflow must accept target_spec_path.'
 Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*pr_policy_path:\s*$' -Message 'Pull request workflow must accept pr_policy_path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*allow_trusted_fork_execution:\s*$' -Message 'Pull request workflow must accept allow_trusted_fork_execution for maintainer-triggered fork fallback.'
 Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*default:\s+\.github/comparevi-history-targets\.json\s*$' -Message 'Pull request workflow must default to the checked-in target catalog path.'
 Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Pull request workflow must pin the NI Linux image.'
 Assert-Match -Content $pullRequestWorkflow -Pattern 'Write-CompareVIHistoryPullRequestDiscovery\.ps1' -Message 'Pull request workflow must discover changed VI targets.'

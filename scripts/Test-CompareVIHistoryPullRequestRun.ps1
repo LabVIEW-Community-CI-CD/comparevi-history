@@ -49,6 +49,11 @@ try {
       "forkBehavior": "block"
     }
   },
+  "executionContext": {
+    "trustedForkExecutionRequested": false,
+    "trustedForkExecutionEligible": false,
+    "trustedForkExecutionApplied": false
+  },
   "pullRequest": {
     "number": 22,
     "htmlUrl": "https://github.com/example/repo/pull/22",
@@ -177,6 +182,9 @@ try {
   if ($receipt.targets[0].keepArtifactsOnNoDiff -ne $true) {
     throw 'PR run receipt did not retain keep-artifacts policy.'
   }
+  if ($receipt.executionContext.trustedForkExecutionApplied -ne $false) {
+    throw 'Same-repo PR run should not mark trusted fork execution as applied.'
+  }
   if (($receipt.targets[0].requestedModes -join ',') -ne 'attributes,front-panel') {
     throw 'PR run receipt did not preserve requested modes.'
   }
@@ -233,6 +241,11 @@ try {
       "forkBehavior": "block"
     }
   },
+  "executionContext": {
+    "trustedForkExecutionRequested": false,
+    "trustedForkExecutionEligible": true,
+    "trustedForkExecutionApplied": false
+  },
   "pullRequest": {
     "number": 23,
     "htmlUrl": null,
@@ -250,7 +263,7 @@ try {
   "matchedTargets": [],
   "summary": {
     "executionStatus": "blocked",
-    "executionReason": "untrusted-cross-repository-pull-request",
+    "executionReason": "trusted-fork-fallback-required",
     "changedViCount": 0,
     "eligibleChangedViCount": 0,
     "excludedViCount": 0,
@@ -266,6 +279,10 @@ try {
   $blockedReceipt = $blockedReceiptJson | ConvertFrom-Json -Depth 64
   if ($blockedReceipt.summary.finalStatus -ne 'blocked') {
     throw 'Blocked discovery should remain blocked in PR run receipt.'
+  }
+  if ($blockedReceipt.executionContext.trustedForkExecutionEligible -ne $true -or
+    $blockedReceipt.executionContext.trustedForkExecutionApplied -ne $false) {
+    throw 'Blocked PR run should preserve trusted fork fallback state.'
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
