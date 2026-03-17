@@ -23,7 +23,7 @@ jobs:
       DEFAULT_COMPARE_MODES: attributes,front-panel,block-diagram
       DEFAULT_MAX_PAIRS: '5'
       DEFAULT_MAX_SIGNAL_PAIRS: '5'
-      FACADE_REF: v1.2.0
+      FACADE_REF: v1.3.0
       COMPAREVI_NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
     steps:
       - name: Validate maintainer command and resolve PR head
@@ -105,7 +105,7 @@ jobs:
 
       - name: Run comparevi-history
         id: history
-        uses: LabVIEW-Community-CI-CD/comparevi-history@v1.2.0
+        uses: LabVIEW-Community-CI-CD/comparevi-history@v1.3.0
         with:
           target_spec_path: .github/comparevi-history-targets.json
           target_id: ${{ steps.request.outputs['target-id'] }}
@@ -151,7 +151,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1.2.0
+          ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1.3.0
           COMMENT_PATH: ${{ steps.history.outputs['public-comment-path'] }}
         run: |
           Set-StrictMode -Version Latest
@@ -192,5 +192,3 @@ jobs:
               ('- PR comment publication: `skipped` ({0})' -f $warning)
             ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           }
-
-
