@@ -4,8 +4,10 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $manualTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-workflow-dispatch.yml'
 $commentTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-comment-gated.yml'
+$manualExplorationTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-manual-vi-exploration.yml'
 $safeTemplatesPath = Join-Path $repoRoot 'docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md'
 $publishedValidationWorkflowPath = Join-Path $repoRoot '.github/workflows/published-consumer-validation.yml'
+$manualExplorationWorkflowPath = Join-Path $repoRoot '.github/workflows/manual-vi-exploration.yml'
 $smokeWorkflowPath = Join-Path $repoRoot '.github/workflows/smoke.yml'
 $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
 $releaseReadinessScriptPath = Join-Path $repoRoot 'scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1'
@@ -59,8 +61,10 @@ function Assert-Equal {
 
 $manualTemplate = Get-Content -LiteralPath $manualTemplatePath -Raw
 $commentTemplate = Get-Content -LiteralPath $commentTemplatePath -Raw
+$manualExplorationTemplate = Get-Content -LiteralPath $manualExplorationTemplatePath -Raw
 $safeTemplates = Get-Content -LiteralPath $safeTemplatesPath -Raw
 $publishedValidationWorkflow = Get-Content -LiteralPath $publishedValidationWorkflowPath -Raw
+$manualExplorationWorkflow = Get-Content -LiteralPath $manualExplorationWorkflowPath -Raw
 $smokeWorkflow = Get-Content -LiteralPath $smokeWorkflowPath -Raw
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
 $releaseReadinessScript = Get-Content -LiteralPath $releaseReadinessScriptPath -Raw
@@ -76,6 +80,21 @@ Assert-Match -Content $manualTemplate -Pattern 'target_id:\s+\$\{\{ inputs\.targ
 Assert-Match -Content $manualTemplate -Pattern 'reviewer_surface:\s+manual' -Message 'Manual template must declare the manual reviewer surface.'
 Assert-Match -Content $manualTemplate -Pattern 'public-step-summary-path' -Message 'Manual template must consume the action-owned public step summary output.'
 Assert-NotMatch -Content $manualTemplate -Pattern '## comparevi-history manual PR diagnostics' -Message 'Manual template must not rebuild the diagnostics summary inline.'
+
+Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*vi_path:\s*$' -Message 'Manual exploration template must accept vi_path.'
+Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*default:\s+develop\s*$' -Message 'Manual exploration template must default the consumer ref to develop.'
+Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*default:\s+attributes,front-panel,block-diagram\s*$' -Message 'Manual exploration template must default to explicit public modes only.'
+Assert-Match -Content $manualExplorationTemplate -Pattern 'LabVIEW-Community-CI-CD/comparevi-history/\.github/workflows/manual-vi-exploration\.yml@v1' -Message 'Manual exploration template must call the reusable workflow surface.'
+Assert-Match -Content $manualExplorationTemplate -Pattern 'platform_ref:\s+v1' -Message 'Manual exploration template must keep platform_ref aligned with the workflow pin.'
+Assert-NotMatch -Content $manualExplorationTemplate -Pattern 'target_id:' -Message 'Manual exploration template must not require a curated target id.'
+Assert-NotMatch -Content $manualExplorationTemplate -Pattern 'target_spec_path:' -Message 'Manual exploration template must not require a curated target spec.'
+
+Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*workflow_call:\s*$' -Message 'Manual exploration workflow must be reusable.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*workflow_dispatch:\s*$' -Message 'Manual exploration workflow must remain manually dispatchable.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern '(?m)^\s*vi_path:\s*$' -Message 'Manual exploration workflow must accept vi_path.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryRevisionCatalog\.ps1' -Message 'Manual exploration workflow must write the revision catalog.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern 'revision-catalog-path' -Message 'Manual exploration workflow must expose the revision catalog output.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern 'platform_ref' -Message 'Manual exploration workflow must expose the platform_ref seam explicitly.'
 
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
@@ -117,6 +136,8 @@ Assert-NotMatch -Content $releaseWorkflow -Pattern 'git push --atomic origin HEA
 Assert-Match -Content $releaseReadinessScript -Pattern 'Sync-CompareVIHistoryPublishedTemplates\.ps1' -Message 'Release readiness helper must derive desired publish content through the published template sync script.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/consumer-targets@v1' -Message 'README must document the target catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/public-run@v1' -Message 'README must document the public run contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/revision-catalog@v1' -Message 'README must document the revision catalog contract.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-manual-vi-exploration\.yml' -Message 'README must point to the manual exploration wrapper example.'
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'public-comment-path' -Message 'README must document the action-owned public comment output.'
 Assert-Match -Content $readme -Pattern 'attributes`, `front-panel`, and `block-diagram' -Message 'README must document explicit public modes only.'
