@@ -156,6 +156,8 @@ The current execution slice stays additive on top of the discovery-first baselin
 - the platform keeps unsuppressed LVCompare output in-band and surfaces deterministic metadata summaries for capture
   artifacts such as images instead of collapsing them into generic noise counts
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
+- the platform keeps `categoryCounts` semantic and emits structured `comparisonPairs` separately so HTML-rendered
+  compare identity fragments remain machine-readable instead of leaking into category keys
 - the platform writes `index.md` and `index.html` as the first operator-facing navigation surfaces
 - the platform also writes `timeline.md` and `timeline.html` for the deeper chunk-by-chunk timeline view
 - the platform packages the timeline, receipts, and per-chunk reports into one deterministic bundle

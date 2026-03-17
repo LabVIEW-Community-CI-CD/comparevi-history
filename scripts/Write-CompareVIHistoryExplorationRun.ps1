@@ -264,6 +264,179 @@ function Format-CountMapText {
   return (($normalized.Keys | ForEach-Object { '{0} ({1})' -f $_, [int]$normalized[$_] }) -join ', ')
 }
 
+function Normalize-CategoryLabel {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Value
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ''
+  }
+
+  $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+  $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
+  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+}
+
+function Try-ParseComparisonPairLabel {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Label
+  )
+
+  $normalizedLabel = Normalize-CategoryLabel -Value $Label
+  if ([string]::IsNullOrWhiteSpace($normalizedLabel)) {
+    return $null
+  }
+
+  $pattern = '^\s*First\s+VI:\s*(?<first>.+?)\s+Second\s+VI:\s*(?<second>.+?)\s*$'
+  if ($normalizedLabel -notmatch $pattern) {
+    return $null
+  }
+
+  return [ordered]@{
+    firstPath = $Matches['first'].Trim()
+    secondPath = $Matches['second'].Trim()
+  }
+}
+
+function Add-ComparisonPairAggregate {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [Parameter(Mandatory = $true)]
+    [string]$FirstPath,
+    [Parameter(Mandatory = $true)]
+    [string]$SecondPath,
+    [int]$Count = 1
+  )
+
+  $key = '{0}`n{1}' -f $FirstPath, $SecondPath
+  if (-not $Target.Contains($key)) {
+    $Target[$key] = [ordered]@{
+      firstPath = $FirstPath
+      secondPath = $SecondPath
+      count = 0
+    }
+  }
+
+  $Target[$key].count = [int]$Target[$key].count + [int]$Count
+}
+
+function ConvertTo-ComparisonPairArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [System.Collections.IDictionary]) {
+    return @(
+      $Value.GetEnumerator() |
+        Sort-Object { [string]$_.Value.firstPath }, { [string]$_.Value.secondPath } |
+        ForEach-Object {
+          [ordered]@{
+            firstPath = [string]$_.Value.firstPath
+            secondPath = [string]$_.Value.secondPath
+            count = [int]$_.Value.count
+          }
+        }
+    )
+  }
+
+  $pairs = New-Object System.Collections.Generic.List[object]
+  foreach ($pair in @(ConvertTo-ObjectArray -InputObject $Value)) {
+    $firstPath = [string](Get-OptionalPropertyValue -InputObject $pair -PropertyName 'firstPath' -Default '')
+    $secondPath = [string](Get-OptionalPropertyValue -InputObject $pair -PropertyName 'secondPath' -Default '')
+    if ([string]::IsNullOrWhiteSpace($firstPath) -or [string]::IsNullOrWhiteSpace($secondPath)) {
+      continue
+    }
+
+    $pairs.Add([ordered]@{
+        firstPath = $firstPath.Trim()
+        secondPath = $secondPath.Trim()
+        count = [int](Get-OptionalPropertyValue -InputObject $pair -PropertyName 'count' -Default 0)
+      }) | Out-Null
+  }
+
+  return @(
+    $pairs |
+      Sort-Object { [string]$_.firstPath }, { [string]$_.secondPath } |
+      ForEach-Object { $_ }
+  )
+}
+
+function Merge-ComparisonPairCollection {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [AllowNull()]
+    $Source
+  )
+
+  foreach ($pair in @(ConvertTo-ComparisonPairArray -Value $Source)) {
+    Add-ComparisonPairAggregate -Target $Target -FirstPath ([string]$pair.firstPath) -SecondPath ([string]$pair.secondPath) -Count ([int]$pair.count)
+  }
+}
+
+function ConvertTo-NormalizedCategorySurface {
+  param(
+    [AllowNull()]
+    $CategoryCounts,
+    [AllowNull()]
+    $ComparisonPairs
+  )
+
+  $normalizedCategoryCounts = @{}
+  $comparisonPairAggregate = @{}
+
+  foreach ($rawKey in @((ConvertTo-OrderedCountMap -Value $CategoryCounts).Keys | Sort-Object)) {
+    $count = [int](ConvertTo-OrderedCountMap -Value $CategoryCounts)[$rawKey]
+    $comparisonPair = Try-ParseComparisonPairLabel -Label ([string]$rawKey)
+    if ($null -ne $comparisonPair) {
+      Add-ComparisonPairAggregate -Target $comparisonPairAggregate -FirstPath ([string]$comparisonPair.firstPath) -SecondPath ([string]$comparisonPair.secondPath) -Count $count
+      continue
+    }
+
+    $normalizedLabel = Normalize-CategoryLabel -Value ([string]$rawKey)
+    if ([string]::IsNullOrWhiteSpace($normalizedLabel)) {
+      continue
+    }
+
+    if (-not $normalizedCategoryCounts.Contains($normalizedLabel)) {
+      $normalizedCategoryCounts[$normalizedLabel] = 0
+    }
+    $normalizedCategoryCounts[$normalizedLabel] = [int]$normalizedCategoryCounts[$normalizedLabel] + $count
+  }
+
+  Merge-ComparisonPairCollection -Target $comparisonPairAggregate -Source $ComparisonPairs
+
+  return [pscustomobject]@{
+    categoryCounts = ConvertTo-OrderedCountMap -Value $normalizedCategoryCounts
+    comparisonPairs = @(ConvertTo-ComparisonPairArray -Value $comparisonPairAggregate)
+  }
+}
+
+function Format-ComparisonPairText {
+  param(
+    [AllowNull()]
+    $Pairs
+  )
+
+  $pairArray = @(ConvertTo-ComparisonPairArray -Value $Pairs)
+  if ($pairArray.Count -eq 0) {
+    return 'none'
+  }
+
+  return (($pairArray | ForEach-Object { '{0} -> {1} ({2})' -f [string]$_.firstPath, [string]$_.secondPath, [int]$_.count }) -join ', ')
+}
+
 function New-ExplorationSurfaceAggregate {
   param(
     [Parameter(Mandatory = $true)]
@@ -275,6 +448,7 @@ function New-ExplorationSurfaceAggregate {
   $hasUnknownProfile = $false
   $aggregateCategoryCounts = @{}
   $aggregateBucketCounts = @{}
+  $aggregateComparisonPairs = @{}
   $captureCount = 0
   $imageArtifactCount = 0
   $comparisonArtifactCount = 0
@@ -295,7 +469,11 @@ function New-ExplorationSurfaceAggregate {
       [void]$suppressionProfiles.Add($profile)
     }
 
-    Merge-CountMap -Target $aggregateCategoryCounts -Source (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'categoryCounts')
+    $normalizedSurface = ConvertTo-NormalizedCategorySurface `
+      -CategoryCounts (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'categoryCounts') `
+      -ComparisonPairs (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'comparisonPairs')
+    Merge-CountMap -Target $aggregateCategoryCounts -Source $normalizedSurface.categoryCounts
+    Merge-ComparisonPairCollection -Target $aggregateComparisonPairs -Source $normalizedSurface.comparisonPairs
     Merge-CountMap -Target $aggregateBucketCounts -Source (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'bucketCounts')
 
     $metadataNode = Get-SurfaceMetadataNode -SurfaceNode $surfaceNode
@@ -338,6 +516,7 @@ function New-ExplorationSurfaceAggregate {
     imageMimeTypes = @($imageMimeTypes | Sort-Object)
     chunkCountWithMetadata = $chunkCountWithMetadata
     categoryCounts = ConvertTo-OrderedCountMap -Value $aggregateCategoryCounts
+    comparisonPairs = @(ConvertTo-ComparisonPairArray -Value $aggregateComparisonPairs)
     bucketCounts = ConvertTo-OrderedCountMap -Value $aggregateBucketCounts
   }
 }
@@ -410,6 +589,7 @@ function New-ExplorationSurfaceStats {
     imageMimeTypes            = @($SurfaceAggregate.imageMimeTypes)
     chunkCountWithMetadata    = [int]$SurfaceAggregate.chunkCountWithMetadata
     categoryCounts            = $SurfaceAggregate.categoryCounts
+    comparisonPairs           = @($SurfaceAggregate.comparisonPairs)
     bucketCounts              = $SurfaceAggregate.bucketCounts
   }
 }
@@ -499,6 +679,9 @@ function New-MarkdownTimeline {
   if ($RunStats.categoryCounts.Count -gt 0) {
     $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $RunStats.categoryCounts))) | Out-Null
   }
+  if (@($RunStats.comparisonPairs).Count -gt 0) {
+    $lines.Add(('- Comparison pairs: `{0}`' -f (Format-ComparisonPairText -Pairs $RunStats.comparisonPairs))) | Out-Null
+  }
   if ($RunStats.bucketCounts.Count -gt 0) {
     $lines.Add(('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $RunStats.bucketCounts))) | Out-Null
   }
@@ -543,6 +726,9 @@ function New-MarkdownTimeline {
       $lines.Add(('- Total diffs: `{0}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))) | Out-Null
       $lines.Add(('- Final reason: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'finalReason' -Default 'planned'))) | Out-Null
       if ($chunkSurfaces) {
+        $chunkNormalizedSurface = ConvertTo-NormalizedCategorySurface `
+          -CategoryCounts (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'categoryCounts') `
+          -ComparisonPairs (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'comparisonPairs')
         $lines.Add(('- Suppression profile: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown'))) | Out-Null
         $mimeTypeText = if (@(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())).Count -gt 0) {
           @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())) -join ', '
@@ -550,9 +736,11 @@ function New-MarkdownTimeline {
           'none'
         }
         $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0), $mimeTypeText)) | Out-Null
-        $chunkCategoryCounts = Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'categoryCounts'
-        if ((ConvertTo-OrderedCountMap -Value $chunkCategoryCounts).Count -gt 0) {
-          $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $chunkCategoryCounts))) | Out-Null
+        if ($chunkNormalizedSurface.categoryCounts.Count -gt 0) {
+          $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $chunkNormalizedSurface.categoryCounts))) | Out-Null
+        }
+        if (@($chunkNormalizedSurface.comparisonPairs).Count -gt 0) {
+          $lines.Add(('- Comparison pairs: `{0}`' -f (Format-ComparisonPairText -Pairs $chunkNormalizedSurface.comparisonPairs))) | Out-Null
         }
         $chunkBucketCounts = Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'bucketCounts'
         if ((ConvertTo-OrderedCountMap -Value $chunkBucketCounts).Count -gt 0) {
@@ -642,6 +830,9 @@ function New-MarkdownIndex {
   if ($RunStats.categoryCounts.Count -gt 0) {
     $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $RunStats.categoryCounts))) | Out-Null
   }
+  if (@($RunStats.comparisonPairs).Count -gt 0) {
+    $lines.Add(('- Comparison pairs: `{0}`' -f (Format-ComparisonPairText -Pairs $RunStats.comparisonPairs))) | Out-Null
+  }
   if ($RunStats.bucketCounts.Count -gt 0) {
     $lines.Add(('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $RunStats.bucketCounts))) | Out-Null
   }
@@ -692,6 +883,9 @@ function New-MarkdownIndex {
     $lines.Add(('- Pair ordinals: `{0}` -> `{1}`' -f [int]$chunk.pairOrdinalStart, [int]$chunk.pairOrdinalEnd)) | Out-Null
     $lines.Add(('- Total diffs: `{0}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))) | Out-Null
     if ($chunkSurfaces) {
+      $chunkNormalizedSurface = ConvertTo-NormalizedCategorySurface `
+        -CategoryCounts (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'categoryCounts') `
+        -ComparisonPairs (Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'comparisonPairs')
       $lines.Add(('- Suppression profile: `{0}`' -f [string](Get-OptionalPropertyValue -InputObject $chunkSurfaces -PropertyName 'suppressionProfile' -Default 'unknown'))) | Out-Null
       $mimeTypeText = if (@(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())).Count -gt 0) {
         @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageMimeTypes' -Default @())) -join ', '
@@ -699,6 +893,12 @@ function New-MarkdownIndex {
         'none'
       }
       $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'captureCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'imageArtifactCount' -Default 0), [int](Get-OptionalPropertyValue -InputObject $chunkMetadata -PropertyName 'comparisonArtifactCount' -Default 0), $mimeTypeText)) | Out-Null
+      if ($chunkNormalizedSurface.categoryCounts.Count -gt 0) {
+        $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $chunkNormalizedSurface.categoryCounts))) | Out-Null
+      }
+      if (@($chunkNormalizedSurface.comparisonPairs).Count -gt 0) {
+        $lines.Add(('- Comparison pairs: `{0}`' -f (Format-ComparisonPairText -Pairs $chunkNormalizedSurface.comparisonPairs))) | Out-Null
+      }
     }
     if ($receiptReference) {
       $lines.Add(('- Receipt: {0}' -f (Format-MarkdownLink -Label 'chunk-receipt.json' -Href $receiptReference))) | Out-Null
@@ -814,6 +1014,7 @@ function New-HtmlTimeline {
     <strong>Metadata surfaces</strong><span>captures=$([int]$RunStats.captureCount), images=$([int]$RunStats.imageArtifactCount), artifact-dirs=$([int]$RunStats.comparisonArtifactCount)</span>
     <strong>Image MIME types</strong><span>$(if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' })</span>
     <strong>Category counts</strong><span>$(Format-CountMapText -Map $RunStats.categoryCounts)</span>
+    <strong>Comparison pairs</strong><span>$(Format-ComparisonPairText -Pairs $RunStats.comparisonPairs)</span>
     <strong>Bucket counts</strong><span>$(Format-CountMapText -Map $RunStats.bucketCounts)</span>
     <strong>Completed chunks</strong><span>$([int]$RunStats.completedChunkCount)</span>
     <strong>Failed chunks</strong><span>$([int]$RunStats.failedChunkCount)</span>
@@ -1001,6 +1202,7 @@ function New-HtmlIndex {
     <strong>Metadata surfaces</strong><span>captures=$([int]$RunStats.captureCount), images=$([int]$RunStats.imageArtifactCount), artifact-dirs=$([int]$RunStats.comparisonArtifactCount)</span>
     <strong>Image MIME types</strong><span>$(if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' })</span>
     <strong>Category counts</strong><span>$(Format-CountMapText -Map $RunStats.categoryCounts)</span>
+    <strong>Comparison pairs</strong><span>$(Format-ComparisonPairText -Pairs $RunStats.comparisonPairs)</span>
     <strong>Bucket counts</strong><span>$(Format-CountMapText -Map $RunStats.bucketCounts)</span>
     <strong>Completed chunks</strong><span>$([int]$RunStats.completedChunkCount)</span>
     <strong>Failed chunks</strong><span>$([int]$RunStats.failedChunkCount)</span>
@@ -1252,6 +1454,7 @@ $explorationRun = [ordered]@{
     imageMimeTypes = @($surfaceAggregate.imageMimeTypes)
     chunkCountWithMetadata = [int]$surfaceAggregate.chunkCountWithMetadata
     categoryCounts = $surfaceAggregate.categoryCounts
+    comparisonPairs = @($surfaceAggregate.comparisonPairs)
     bucketCounts = $surfaceAggregate.bucketCounts
   }
   discovery = [ordered]@{
@@ -1345,6 +1548,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Suppression profile: `{0}`' -f [string]$surfaceAggregate.suppressionProfile)
     ('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}`' -f [int]$surfaceAggregate.captureCount, [int]$surfaceAggregate.imageArtifactCount, [int]$surfaceAggregate.comparisonArtifactCount)
     ('- Category counts: `{0}`' -f (Format-CountMapText -Map $surfaceAggregate.categoryCounts))
+    ('- Comparison pairs: `{0}`' -f (Format-ComparisonPairText -Pairs $surfaceAggregate.comparisonPairs))
     ('- Bucket counts: `{0}`' -f (Format-CountMapText -Map $surfaceAggregate.bucketCounts))
     ('- Index (md): `{0}`' -f $indexMdResolved)
     ('- Index (html): `{0}`' -f $indexHtmlResolved)

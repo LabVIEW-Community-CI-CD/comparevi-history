@@ -211,7 +211,10 @@ try {
       imageArtifactCount = 1
       imageMimeTypes = @('image/png')
       chunkCountWithMetadata = 1
-      categoryCounts = [ordered]@{ attributes = 1 }
+      categoryCounts = [ordered]@{
+        '<div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div>' = 2
+        'Block Diagram objects' = 1
+      }
       bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
     }
     failure = $null
@@ -303,6 +306,18 @@ try {
   if (($executedRun.surfaces.imageMimeTypes -join ',') -ne 'image/png') {
     throw 'Executed exploration run mime-type aggregation mismatch.'
   }
+  if ($executedRun.surfaces.categoryCounts.PSObject.Properties.Name -match 'First VI') {
+    throw 'Executed exploration run category counts must not retain raw comparison identity fragments.'
+  }
+  if ($executedRun.surfaces.categoryCounts.'Block Diagram objects' -ne 1) {
+    throw 'Executed exploration run normalized category counts mismatch.'
+  }
+  if ($executedRun.surfaces.comparisonPairs.Count -ne 1) {
+    throw 'Executed exploration run comparison pair count mismatch.'
+  }
+  if ($executedRun.surfaces.comparisonPairs[0].firstPath -ne '/compare/m0/Base.vi' -or $executedRun.surfaces.comparisonPairs[0].secondPath -ne '/compare/m0/Head.vi' -or $executedRun.surfaces.comparisonPairs[0].count -ne 2) {
+    throw 'Executed exploration run comparison pair normalization mismatch.'
+  }
 
   $timelineMarkdown = Get-Content -LiteralPath $executedRun.outputs.timelineMd -Raw
   if ($timelineMarkdown -notmatch [regex]::Escape([string]$chunkPlan.chunks[0].chunkId)) {
@@ -315,6 +330,7 @@ try {
       'Failed chunk count: `1`',
       'Suppression profile: `unsuppressed`',
       'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
+      'Comparison pairs: `/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\)`',
       'Remaining planned chunk count: `0`',
       'Replay status: `degraded` \(partial-chunk-execution\)'
     )) {
@@ -333,6 +349,7 @@ try {
       'Failed chunk count: `1`',
       'Suppression profile: `unsuppressed`',
       'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
+      'Comparison pairs: `/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\)`',
       'Replay status: `degraded` \(partial-chunk-execution\)',
       'Bundle status: `not-required`'
     )) {
@@ -346,6 +363,7 @@ try {
       'Failed chunk count: `1`',
       'Remaining planned chunk count: `0`',
       'Continuity break count: `0`',
+      'Comparison pairs: `/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\)`',
       'Replay status: `degraded` \(partial-chunk-execution\)'
     )) {
     if ($executedSummary -notmatch $requiredFragment) {

@@ -188,6 +188,7 @@ Assert-Match -Content $readme -Pattern 'comparevi-history/revision-catalog@v1' -
 Assert-Match -Content $readme -Pattern 'comparevi-history/exploration-run@v1' -Message 'README must document the exploration run contract.'
 Assert-Match -Content $readme -Pattern 'modes=full' -Message 'README must document the raw manual exploration mode default.'
 Assert-Match -Content $readme -Pattern 'noise_policy=include' -Message 'README must document the raw manual exploration noise-policy default.'
+Assert-Match -Content $readme -Pattern 'structured `comparisonPairs` separately' -Message 'README must document structured comparison-pair outputs for manual exploration.'
 Assert-Match -Content $readme -Pattern 'mode-summary\.json' -Message 'README must document the machine-readable mode summary output.'
 Assert-Match -Content $readme -Pattern 'index\.md' -Message 'README must document the index markdown output.'
 Assert-Match -Content $readme -Pattern 'index\.html' -Message 'README must document the index HTML output.'
