@@ -132,6 +132,8 @@ try {
       'revision-catalog.json',
       'chunk-plan.json',
       'exploration-run.json',
+      'index.md',
+      'index.html',
       'timeline.md',
       'timeline.html',
       'chunk-receipts/chunk-001/chunk-receipt.json',

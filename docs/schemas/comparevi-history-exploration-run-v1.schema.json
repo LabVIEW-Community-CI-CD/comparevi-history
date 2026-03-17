@@ -217,6 +217,8 @@
         "chunkPlanPath",
         "chunkReceiptsRoot",
         "explorationRunPath",
+        "indexMd",
+        "indexHtml",
         "timelineMd",
         "timelineHtml",
         "bundlePath"
@@ -235,6 +237,12 @@
           "type": "string"
         },
         "explorationRunPath": {
+          "type": "string"
+        },
+        "indexMd": {
+          "type": "string"
+        },
+        "indexHtml": {
           "type": "string"
         },
         "timelineMd": {

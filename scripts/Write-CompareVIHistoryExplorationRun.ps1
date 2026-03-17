@@ -10,6 +10,8 @@ param(
   [switch]$IncludeMergeParents,
   [string]$TimelineMd,
   [string]$TimelineHtml,
+  [string]$IndexMd,
+  [string]$IndexHtml,
   [string]$BundlePath,
   [string]$BundleStatus,
   [string]$BundleReason,
@@ -124,6 +126,70 @@ function Get-OptionalPropertyValue {
   return $property.Value
 }
 
+function ConvertTo-ArtifactReference {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [switch]$OnlyIfExists
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $resolved = Resolve-AbsolutePath -Path $Path -BasePath $ResultsRoot
+  if ($OnlyIfExists.IsPresent -and -not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+    return $null
+  }
+
+  $resultsRootResolved = [System.IO.Path]::GetFullPath($ResultsRoot)
+  $resultsRootWithSeparator = $resultsRootResolved
+  if (-not $resultsRootWithSeparator.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+    $resultsRootWithSeparator += [System.IO.Path]::DirectorySeparatorChar
+  }
+
+  if ($resolved.StartsWith($resultsRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $resolved.Substring($resultsRootWithSeparator.Length).Replace('\', '/')
+  }
+
+  return $resolved.Replace('\', '/')
+}
+
+function Format-MarkdownLink {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Label,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Href
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Href)) {
+    return ''
+  }
+
+  return ('[{0}]({1})' -f $Label, $Href)
+}
+
+function Format-HtmlLink {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Label,
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Href
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Href)) {
+    return ''
+  }
+
+  return ('<a href="{0}">{1}</a>' -f $Href, $Label)
+}
+
 function New-MarkdownTimeline {
   param(
     [Parameter(Mandatory = $true)]
@@ -187,6 +253,97 @@ function New-MarkdownTimeline {
       }
       $lines.Add('') | Out-Null
     }
+  }
+
+  return ($lines -join [Environment]::NewLine)
+}
+
+function New-MarkdownIndex {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Catalog,
+    [Parameter(Mandatory = $true)]
+    $ChunkPlan,
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$FinalStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$FinalReason,
+    [Parameter(Mandatory = $true)]
+    [string]$BundleStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$BundleReason,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [AllowNull()]
+    [string]$TimelineMdPath,
+    [AllowNull()]
+    [string]$TimelineHtmlPath,
+    [AllowNull()]
+    [string]$BundlePath
+  )
+
+  $timelineMdReference = ConvertTo-ArtifactReference -Path $TimelineMdPath -ResultsRoot $ResultsRoot
+  $timelineHtmlReference = ConvertTo-ArtifactReference -Path $TimelineHtmlPath -ResultsRoot $ResultsRoot
+  $bundleReference = ConvertTo-ArtifactReference -Path $BundlePath -ResultsRoot $ResultsRoot -OnlyIfExists
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('# comparevi-history manual exploration index') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Target path: `{0}`' -f [string]$Catalog.target.path)) | Out-Null
+  $lines.Add(('- Selected ref: `{0}`' -f [string]$Catalog.target.selectedRef)) | Out-Null
+  $lines.Add(('- Revision count: `{0}`' -f [int]$Catalog.summary.revisionCount)) | Out-Null
+  $lines.Add(('- Pair count: `{0}`' -f [int]$ChunkPlan.summary.pairCount)) | Out-Null
+  $lines.Add(('- Final status: `{0}`' -f $FinalStatus)) | Out-Null
+  $lines.Add(('- Final reason: `{0}`' -f $FinalReason)) | Out-Null
+  $lines.Add(('- Catalog complete: `{0}` ({1})' -f [bool]$Catalog.discovery.complete, [string]$Catalog.discovery.completenessReason)) | Out-Null
+  $lines.Add(('- Continuity status: `{0}`' -f [string]$Catalog.summary.continuityStatus)) | Out-Null
+  $lines.Add(('- Bundle status: `{0}`' -f $BundleStatus)) | Out-Null
+  $lines.Add(('- Bundle reason: `{0}`' -f $BundleReason)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('## Top-level surfaces') | Out-Null
+  $lines.Add('') | Out-Null
+  if ($timelineMdReference) {
+    $lines.Add(('- Timeline markdown: {0}' -f (Format-MarkdownLink -Label 'timeline.md' -Href $timelineMdReference))) | Out-Null
+  }
+  if ($timelineHtmlReference) {
+    $lines.Add(('- Timeline HTML: {0}' -f (Format-MarkdownLink -Label 'timeline.html' -Href $timelineHtmlReference))) | Out-Null
+  }
+  if ($bundleReference) {
+    $lines.Add(('- Bundle zip: {0}' -f (Format-MarkdownLink -Label 'manual-vi-exploration-bundle.zip' -Href $bundleReference))) | Out-Null
+  }
+  $lines.Add('') | Out-Null
+  $lines.Add('## Chunk navigation') | Out-Null
+  $lines.Add('') | Out-Null
+
+  foreach ($chunk in $ChunkReceipts) {
+    $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
+    $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+    $receiptReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $historyReportMdReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $historyReportHtmlReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $modeSummaryReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+
+    $lines.Add(('### {0}' -f [string]$chunk.chunkId)) | Out-Null
+    $lines.Add(('- Status: `{0}`' -f [string]$chunk.status)) | Out-Null
+    $lines.Add(('- Segment: `{0}`' -f [int]$chunk.segmentOrdinal)) | Out-Null
+    $lines.Add(('- Revision ordinals: `{0}` -> `{1}`' -f [int]$chunk.revisionOrdinalStart, [int]$chunk.revisionOrdinalEnd)) | Out-Null
+    $lines.Add(('- Pair ordinals: `{0}` -> `{1}`' -f [int]$chunk.pairOrdinalStart, [int]$chunk.pairOrdinalEnd)) | Out-Null
+    $lines.Add(('- Total diffs: `{0}`' -f [int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))) | Out-Null
+    if ($receiptReference) {
+      $lines.Add(('- Receipt: {0}' -f (Format-MarkdownLink -Label 'chunk-receipt.json' -Href $receiptReference))) | Out-Null
+    }
+    if ($historyReportMdReference) {
+      $lines.Add(('- History report (md): {0}' -f (Format-MarkdownLink -Label 'history-report.md' -Href $historyReportMdReference))) | Out-Null
+    }
+    if ($historyReportHtmlReference) {
+      $lines.Add(('- History report (html): {0}' -f (Format-MarkdownLink -Label 'history-report.html' -Href $historyReportHtmlReference))) | Out-Null
+    }
+    if ($modeSummaryReference) {
+      $lines.Add(('- Mode summary: {0}' -f (Format-MarkdownLink -Label 'mode-summary.md' -Href $modeSummaryReference))) | Out-Null
+    }
+    $lines.Add('') | Out-Null
   }
 
   return ($lines -join [Environment]::NewLine)
@@ -261,6 +418,126 @@ $($rows -join [Environment]::NewLine)
 "@
 }
 
+function New-HtmlIndex {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Catalog,
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$FinalStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$FinalReason,
+    [Parameter(Mandatory = $true)]
+    [string]$BundleStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$BundleReason,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [AllowNull()]
+    [string]$TimelineMdPath,
+    [AllowNull()]
+    [string]$TimelineHtmlPath,
+    [AllowNull()]
+    [string]$BundlePath
+  )
+
+  $timelineMdReference = ConvertTo-ArtifactReference -Path $TimelineMdPath -ResultsRoot $ResultsRoot
+  $timelineHtmlReference = ConvertTo-ArtifactReference -Path $TimelineHtmlPath -ResultsRoot $ResultsRoot
+  $bundleReference = ConvertTo-ArtifactReference -Path $BundlePath -ResultsRoot $ResultsRoot -OnlyIfExists
+  $rows = New-Object System.Collections.Generic.List[string]
+  foreach ($chunk in $ChunkReceipts) {
+    $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
+    $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+    $receiptReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'receiptPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $historyReportMdReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportMd') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $historyReportHtmlReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'historyReportHtml') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $modeSummaryReference = ConvertTo-ArtifactReference -Path (Get-OptionalPropertyValue -InputObject $chunkOutputs -PropertyName 'modeSummaryPath') -ResultsRoot $ResultsRoot -OnlyIfExists
+    $receiptLink = Format-HtmlLink -Label 'chunk-receipt.json' -Href $receiptReference
+    $historyReportMdLink = Format-HtmlLink -Label 'history-report.md' -Href $historyReportMdReference
+    $historyReportHtmlLink = Format-HtmlLink -Label 'history-report.html' -Href $historyReportHtmlReference
+    $modeSummaryLink = Format-HtmlLink -Label 'mode-summary.md' -Href $modeSummaryReference
+    $rows.Add(@"
+<tr>
+  <td>$([string]$chunk.chunkId)</td>
+  <td>$([string]$chunk.status)</td>
+  <td>$([int]$chunk.segmentOrdinal)</td>
+  <td>$([int]$chunk.revisionOrdinalStart)-$([int]$chunk.revisionOrdinalEnd)</td>
+  <td>$([int]$chunk.pairOrdinalStart)-$([int]$chunk.pairOrdinalEnd)</td>
+  <td>$([int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))</td>
+  <td>$receiptLink</td>
+  <td>$historyReportMdLink</td>
+  <td>$historyReportHtmlLink</td>
+  <td>$modeSummaryLink</td>
+</tr>
+"@) | Out-Null
+  }
+
+  $topLevelLinks = New-Object System.Collections.Generic.List[string]
+  if ($timelineMdReference) {
+    $topLevelLinks.Add(('<li><a href="{0}">timeline.md</a></li>' -f $timelineMdReference)) | Out-Null
+  }
+  if ($timelineHtmlReference) {
+    $topLevelLinks.Add(('<li><a href="{0}">timeline.html</a></li>' -f $timelineHtmlReference)) | Out-Null
+  }
+  if ($bundleReference) {
+    $topLevelLinks.Add(('<li><a href="{0}">manual-vi-exploration-bundle.zip</a></li>' -f $bundleReference)) | Out-Null
+  }
+
+  return @"
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>comparevi-history manual exploration index</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #f3f3f3; }
+    .meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; margin-bottom: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>comparevi-history manual exploration index</h1>
+  <div class="meta">
+    <strong>Target path</strong><span>$([string]$Catalog.target.path)</span>
+    <strong>Selected ref</strong><span>$([string]$Catalog.target.selectedRef)</span>
+    <strong>Revision count</strong><span>$([int]$Catalog.summary.revisionCount)</span>
+    <strong>Final status</strong><span>$FinalStatus</span>
+    <strong>Final reason</strong><span>$FinalReason</span>
+    <strong>Bundle status</strong><span>$BundleStatus</span>
+    <strong>Bundle reason</strong><span>$BundleReason</span>
+  </div>
+  <h2>Top-level surfaces</h2>
+  <ul>
+$($topLevelLinks -join [Environment]::NewLine)
+  </ul>
+  <h2>Chunk navigation</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Chunk</th>
+        <th>Status</th>
+        <th>Segment</th>
+        <th>Revision ordinals</th>
+        <th>Pair ordinals</th>
+        <th>Diffs</th>
+        <th>Receipt</th>
+        <th>Markdown</th>
+        <th>HTML</th>
+        <th>Mode summary</th>
+      </tr>
+    </thead>
+    <tbody>
+$($rows -join [Environment]::NewLine)
+    </tbody>
+  </table>
+</body>
+</html>
+"@
+}
+
 $revisionCatalogPathResolved = Resolve-AbsolutePath -Path $RevisionCatalogPath -BasePath (Get-Location).Path
 $chunkPlanPathResolved = Resolve-AbsolutePath -Path $ChunkPlanPath -BasePath (Get-Location).Path
 if (-not (Test-Path -LiteralPath $revisionCatalogPathResolved -PathType Leaf)) {
@@ -299,6 +576,8 @@ if ($requestedModes.Count -eq 0) {
 
 $timelineMdResolved = if ([string]::IsNullOrWhiteSpace($TimelineMd)) { Join-Path $resultsDirResolved 'timeline.md' } else { Resolve-AbsolutePath -Path $TimelineMd -BasePath $resultsDirResolved }
 $timelineHtmlResolved = if ([string]::IsNullOrWhiteSpace($TimelineHtml)) { Join-Path $resultsDirResolved 'timeline.html' } else { Resolve-AbsolutePath -Path $TimelineHtml -BasePath $resultsDirResolved }
+$indexMdResolved = if ([string]::IsNullOrWhiteSpace($IndexMd)) { Join-Path $resultsDirResolved 'index.md' } else { Resolve-AbsolutePath -Path $IndexMd -BasePath $resultsDirResolved }
+$indexHtmlResolved = if ([string]::IsNullOrWhiteSpace($IndexHtml)) { Join-Path $resultsDirResolved 'index.html' } else { Resolve-AbsolutePath -Path $IndexHtml -BasePath $resultsDirResolved }
 $bundlePathResolved = Resolve-ExistingPath -Path $BundlePath -BasePath $resultsDirResolved
 $effectiveBundleStatus = if (-not [string]::IsNullOrWhiteSpace($BundleStatus)) {
   $BundleStatus
@@ -383,8 +662,33 @@ if ($planningStatus -eq 'complete' -and $effectiveBundleStatus -eq 'failed') {
 $chunkReceiptArray = $chunkReceipts.ToArray()
 $timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -FinalStatus $finalStatus -FinalReason $finalReason
 $timelineHtml = New-HtmlTimeline -Catalog $catalog -ChunkReceipts $chunkReceiptArray -FinalStatus $finalStatus -FinalReason $finalReason
+$indexMarkdown = New-MarkdownIndex `
+  -Catalog $catalog `
+  -ChunkPlan $chunkPlan `
+  -ChunkReceipts $chunkReceiptArray `
+  -FinalStatus $finalStatus `
+  -FinalReason $finalReason `
+  -BundleStatus $effectiveBundleStatus `
+  -BundleReason $effectiveBundleReason `
+  -ResultsRoot $resultsDirResolved `
+  -TimelineMdPath $timelineMdResolved `
+  -TimelineHtmlPath $timelineHtmlResolved `
+  -BundlePath $bundlePathResolved
+$indexHtml = New-HtmlIndex `
+  -Catalog $catalog `
+  -ChunkReceipts $chunkReceiptArray `
+  -FinalStatus $finalStatus `
+  -FinalReason $finalReason `
+  -BundleStatus $effectiveBundleStatus `
+  -BundleReason $effectiveBundleReason `
+  -ResultsRoot $resultsDirResolved `
+  -TimelineMdPath $timelineMdResolved `
+  -TimelineHtmlPath $timelineHtmlResolved `
+  -BundlePath $bundlePathResolved
 $timelineMarkdown | Set-Content -LiteralPath $timelineMdResolved -Encoding utf8
 $timelineHtml | Set-Content -LiteralPath $timelineHtmlResolved -Encoding utf8
+$indexMarkdown | Set-Content -LiteralPath $indexMdResolved -Encoding utf8
+$indexHtml | Set-Content -LiteralPath $indexHtmlResolved -Encoding utf8
 
 $explorationRun = [ordered]@{
   schema = 'comparevi-history/exploration-run@v1'
@@ -434,6 +738,8 @@ $explorationRun = [ordered]@{
     chunkPlanPath = $chunkPlanPathResolved
     chunkReceiptsRoot = $chunkReceiptsRoot
     explorationRunPath = $explorationRunPath
+    indexMd = $indexMdResolved
+    indexHtml = $indexHtmlResolved
     timelineMd = $timelineMdResolved
     timelineHtml = $timelineHtmlResolved
     bundlePath = $bundlePathResolved
@@ -458,6 +764,8 @@ $explorationRun | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $explorati
 Write-ActionOutput -Key 'exploration-run-path' -Value $explorationRunPath
 Write-ActionOutput -Key 'exploration-status' -Value $finalStatus
 Write-ActionOutput -Key 'exploration-reason' -Value $finalReason
+Write-ActionOutput -Key 'index-md' -Value $indexMdResolved
+Write-ActionOutput -Key 'index-html' -Value $indexHtmlResolved
 Write-ActionOutput -Key 'timeline-md' -Value $timelineMdResolved
 Write-ActionOutput -Key 'timeline-html' -Value $timelineHtmlResolved
 Write-ActionOutput -Key 'bundle-path' -Value $(if ($null -eq $bundlePathResolved) { '' } else { $bundlePathResolved })
@@ -475,6 +783,8 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Failed chunk count: `{0}`' -f $failedChunkCount)
     ('- Final status: `{0}`' -f $finalStatus)
     ('- Final reason: `{0}`' -f $finalReason)
+    ('- Index (md): `{0}`' -f $indexMdResolved)
+    ('- Index (html): `{0}`' -f $indexHtmlResolved)
     ('- Bundle status: `{0}`' -f $effectiveBundleStatus)
     ('- Bundle reason: `{0}`' -f $effectiveBundleReason)
     ('- Bundle path: `{0}`' -f $(if ($null -eq $bundlePathResolved) { '' } else { $bundlePathResolved }))

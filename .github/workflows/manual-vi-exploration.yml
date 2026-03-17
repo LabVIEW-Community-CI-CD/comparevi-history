@@ -107,6 +107,8 @@ jobs:
       exploration-run-path: ${{ steps.exploration.outputs['exploration-run-path'] }}
       exploration-status: ${{ steps.exploration.outputs['exploration-status'] }}
       exploration-reason: ${{ steps.exploration.outputs['exploration-reason'] }}
+      index-md: ${{ steps.exploration.outputs['index-md'] }}
+      index-html: ${{ steps.exploration.outputs['index-html'] }}
       timeline-md: ${{ steps.exploration.outputs['timeline-md'] }}
       timeline-html: ${{ steps.exploration.outputs['timeline-html'] }}
     steps:
@@ -252,6 +254,8 @@ jobs:
             -ChunkPlanPath '${{ steps.plan.outputs['chunk-plan-path'] }}' `
             -ResultsDir 'tests/results/ref-compare/history-exploration' `
             -ExplorationRunPath '${{ steps.exploration_seed.outputs['exploration-run-path'] }}' `
+            -IndexMd '${{ steps.exploration_seed.outputs['index-md'] }}' `
+            -IndexHtml '${{ steps.exploration_seed.outputs['index-html'] }}' `
             -TimelineMd '${{ steps.exploration_seed.outputs['timeline-md'] }}' `
             -TimelineHtml '${{ steps.exploration_seed.outputs['timeline-html'] }}' `
             -GitHubOutputPath $env:GITHUB_OUTPUT `
@@ -272,6 +276,8 @@ jobs:
             -Modes '${{ inputs.modes }}' `
             -NoisePolicy '${{ inputs.noise_policy }}' `
             -IncludeMergeParents:$includeMergeParents `
+            -IndexMd '${{ steps.exploration_seed.outputs['index-md'] }}' `
+            -IndexHtml '${{ steps.exploration_seed.outputs['index-html'] }}' `
             -TimelineMd '${{ steps.exploration_seed.outputs['timeline-md'] }}' `
             -TimelineHtml '${{ steps.exploration_seed.outputs['timeline-html'] }}' `
             -BundlePath '${{ steps.bundle.outputs['bundle-path'] }}' `
@@ -309,6 +315,8 @@ jobs:
             ${{ steps.plan.outputs['chunk-plan-path'] }}
             ${{ steps.plan.outputs['chunk-receipts-root'] }}
             ${{ steps.exploration.outputs['exploration-run-path'] }}
+            ${{ steps.exploration.outputs['index-md'] }}
+            ${{ steps.exploration.outputs['index-html'] }}
             ${{ steps.exploration.outputs['timeline-md'] }}
             ${{ steps.exploration.outputs['timeline-html'] }}
             ${{ steps.bundle.outputs['bundle-path'] }}
