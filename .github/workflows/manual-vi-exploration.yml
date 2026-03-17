@@ -101,6 +101,9 @@ jobs:
       skipped-chunk-count: ${{ steps.execute.outputs['skipped-chunk-count'] }}
       execution-status: ${{ steps.execute.outputs['execution-status'] }}
       execution-reason: ${{ steps.execute.outputs['execution-reason'] }}
+      bundle-path: ${{ steps.bundle.outputs['bundle-path'] }}
+      bundle-status: ${{ steps.bundle.outputs['bundle-status'] }}
+      bundle-reason: ${{ steps.bundle.outputs['bundle-reason'] }}
       exploration-run-path: ${{ steps.exploration.outputs['exploration-run-path'] }}
       exploration-status: ${{ steps.exploration.outputs['exploration-status'] }}
       exploration-reason: ${{ steps.exploration.outputs['exploration-reason'] }}
@@ -219,8 +222,8 @@ jobs:
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
-      - name: Write exploration run receipt
-        id: exploration
+      - name: Seed exploration run receipt
+        id: exploration_seed
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -237,6 +240,46 @@ jobs:
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
+      - name: Write exploration bundle
+        id: bundle
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Write-CompareVIHistoryExplorationBundle.ps1" `
+            -RevisionCatalogPath '${{ steps.catalog.outputs['revision-catalog-path'] }}' `
+            -ChunkPlanPath '${{ steps.plan.outputs['chunk-plan-path'] }}' `
+            -ResultsDir 'tests/results/ref-compare/history-exploration' `
+            -ExplorationRunPath '${{ steps.exploration_seed.outputs['exploration-run-path'] }}' `
+            -TimelineMd '${{ steps.exploration_seed.outputs['timeline-md'] }}' `
+            -TimelineHtml '${{ steps.exploration_seed.outputs['timeline-html'] }}' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+      - name: Finalize exploration run receipt
+        id: exploration
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $includeMergeParents = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Write-CompareVIHistoryExplorationRun.ps1" `
+            -RevisionCatalogPath '${{ steps.catalog.outputs['revision-catalog-path'] }}' `
+            -ChunkPlanPath '${{ steps.plan.outputs['chunk-plan-path'] }}' `
+            -ResultsDir 'tests/results/ref-compare/history-exploration' `
+            -Modes '${{ inputs.modes }}' `
+            -NoisePolicy '${{ inputs.noise_policy }}' `
+            -IncludeMergeParents:$includeMergeParents `
+            -TimelineMd '${{ steps.exploration_seed.outputs['timeline-md'] }}' `
+            -TimelineHtml '${{ steps.exploration_seed.outputs['timeline-html'] }}' `
+            -BundlePath '${{ steps.bundle.outputs['bundle-path'] }}' `
+            -BundleStatus '${{ steps.bundle.outputs['bundle-status'] }}' `
+            -BundleReason '${{ steps.bundle.outputs['bundle-reason'] }}' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
       - name: Append manual exploration request context
         if: ${{ always() }}
         shell: pwsh
@@ -250,6 +293,8 @@ jobs:
             ('- Noise policy: `{0}`' -f '${{ inputs.noise_policy }}')
             ('- Execution status: `{0}`' -f '${{ steps.execute.outputs['execution-status'] }}')
             ('- Execution reason: `{0}`' -f '${{ steps.execute.outputs['execution-reason'] }}')
+            ('- Bundle status: `{0}`' -f '${{ steps.bundle.outputs['bundle-status'] }}')
+            ('- Bundle reason: `{0}`' -f '${{ steps.bundle.outputs['bundle-reason'] }}')
             ('- Exploration status: `{0}`' -f '${{ steps.exploration.outputs['exploration-status'] }}')
             ('- Exploration reason: `{0}`' -f '${{ steps.exploration.outputs['exploration-reason'] }}')
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
@@ -266,4 +311,5 @@ jobs:
             ${{ steps.exploration.outputs['exploration-run-path'] }}
             ${{ steps.exploration.outputs['timeline-md'] }}
             ${{ steps.exploration.outputs['timeline-html'] }}
+            ${{ steps.bundle.outputs['bundle-path'] }}
           if-no-files-found: error

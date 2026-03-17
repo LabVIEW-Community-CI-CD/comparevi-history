@@ -11,6 +11,8 @@ param(
   [string]$TimelineMd,
   [string]$TimelineHtml,
   [string]$BundlePath,
+  [string]$BundleStatus,
+  [string]$BundleReason,
   [string]$GitHubOutputPath,
   [string]$StepSummaryPath
 )
@@ -298,6 +300,20 @@ if ($requestedModes.Count -eq 0) {
 $timelineMdResolved = if ([string]::IsNullOrWhiteSpace($TimelineMd)) { Join-Path $resultsDirResolved 'timeline.md' } else { Resolve-AbsolutePath -Path $TimelineMd -BasePath $resultsDirResolved }
 $timelineHtmlResolved = if ([string]::IsNullOrWhiteSpace($TimelineHtml)) { Join-Path $resultsDirResolved 'timeline.html' } else { Resolve-AbsolutePath -Path $TimelineHtml -BasePath $resultsDirResolved }
 $bundlePathResolved = Resolve-ExistingPath -Path $BundlePath -BasePath $resultsDirResolved
+$effectiveBundleStatus = if (-not [string]::IsNullOrWhiteSpace($BundleStatus)) {
+  $BundleStatus
+} elseif ($null -ne $bundlePathResolved) {
+  'succeeded'
+} else {
+  'not-required'
+}
+$effectiveBundleReason = if (-not [string]::IsNullOrWhiteSpace($BundleReason)) {
+  $BundleReason
+} elseif ($effectiveBundleStatus -eq 'succeeded') {
+  'bundle-created'
+} else {
+  'bundle-not-requested'
+}
 
 $chunkReceipts = New-Object System.Collections.Generic.List[object]
 foreach ($plannedChunk in @($chunkPlan.chunks)) {
@@ -357,6 +373,13 @@ $replayReason = switch ($planningStatus) {
   default { 'chunk-plan-present' }
 }
 
+if ($planningStatus -eq 'complete' -and $effectiveBundleStatus -eq 'failed') {
+  $finalStatus = 'partial'
+  $finalReason = $effectiveBundleReason
+  $replayStatus = 'degraded'
+  $replayReason = 'bundle-packaging-failed'
+}
+
 $chunkReceiptArray = $chunkReceipts.ToArray()
 $timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -FinalStatus $finalStatus -FinalReason $finalReason
 $timelineHtml = New-HtmlTimeline -Catalog $catalog -ChunkReceipts $chunkReceiptArray -FinalStatus $finalStatus -FinalReason $finalReason
@@ -401,6 +424,10 @@ $explorationRun = [ordered]@{
     status = $planningStatus
     reason = $finalReason
   }
+  publication = [ordered]@{
+    bundleStatus = $effectiveBundleStatus
+    bundleReason = $effectiveBundleReason
+  }
   outputs = [ordered]@{
     resultsRoot = $resultsDirResolved
     revisionCatalogPath = $revisionCatalogPathResolved
@@ -433,6 +460,7 @@ Write-ActionOutput -Key 'exploration-status' -Value $finalStatus
 Write-ActionOutput -Key 'exploration-reason' -Value $finalReason
 Write-ActionOutput -Key 'timeline-md' -Value $timelineMdResolved
 Write-ActionOutput -Key 'timeline-html' -Value $timelineHtmlResolved
+Write-ActionOutput -Key 'bundle-path' -Value $(if ($null -eq $bundlePathResolved) { '' } else { $bundlePathResolved })
 
 if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
   @(
@@ -447,6 +475,9 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Failed chunk count: `{0}`' -f $failedChunkCount)
     ('- Final status: `{0}`' -f $finalStatus)
     ('- Final reason: `{0}`' -f $finalReason)
+    ('- Bundle status: `{0}`' -f $effectiveBundleStatus)
+    ('- Bundle reason: `{0}`' -f $effectiveBundleReason)
+    ('- Bundle path: `{0}`' -f $(if ($null -eq $bundlePathResolved) { '' } else { $bundlePathResolved }))
     ('- Timeline (md): `{0}`' -f $timelineMdResolved)
     ('- Timeline (html): `{0}`' -f $timelineHtmlResolved)
   ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
