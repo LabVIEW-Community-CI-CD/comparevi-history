@@ -19,7 +19,7 @@ try {
 
   $targetSpecPath = Join-Path $trustedRoot '.github/comparevi-history-targets.json'
   New-Item -ItemType Directory -Path (Split-Path -Parent $targetSpecPath) -Force | Out-Null
-  @'
+  @"
 {
   "schema": "comparevi-history/consumer-targets@v1",
   "targets": [
@@ -35,10 +35,10 @@ try {
     }
   ]
 }
-'@ | Set-Content -LiteralPath $targetSpecPath -Encoding utf8
+"@ | Set-Content -LiteralPath $targetSpecPath -Encoding utf8
 
   $discoveryPath = Join-Path $resultsDir 'changed-vi-discovery.json'
-  @'
+  @"
 {
   "schema": "comparevi-history/changed-vi-discovery@v1",
   "generatedAtUtc": "2026-03-17T00:00:00Z",
@@ -47,6 +47,35 @@ try {
   "targetCatalog": {
     "schema": "comparevi-history/consumer-targets@v1",
     "path": "placeholder"
+  },
+  "prPolicy": {
+    "schema": "comparevi-history/pr-policy@v1",
+    "path": "C:/repo/.github/comparevi-history-pr-policy.json",
+    "applied": true,
+    "discovery": {
+      "includePaths": ["Tooling/deployment/**/*.vi"],
+      "excludePaths": [],
+      "allowedTargetIds": [],
+      "maxChangedViCount": 4,
+      "unmatchedChangedViBehavior": "ignore"
+    },
+    "execution": {
+      "publicModes": ["attributes", "front-panel"],
+      "history": {
+        "branchBudget": {
+          "sourceBranchRef": "develop",
+          "maxCommitCount": 25
+        },
+        "keepArtifactsOnNoDiff": true
+      }
+    },
+    "reviewerSurface": {
+      "emitCommentBody": true,
+      "emitStepSummary": true
+    },
+    "trust": {
+      "forkBehavior": "block"
+    }
   },
   "pullRequest": {
     "number": 22,
@@ -72,10 +101,22 @@ try {
       "previousPath": null
     }
   ],
+  "excludedViFiles": [],
   "matchedTargets": [
     {
       "targetId": "target-success",
       "targetPath": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "publicModes": ["attributes", "front-panel", "block-diagram"],
+      "requestedModes": ["attributes", "front-panel"],
+      "requestedModeSource": "pr-policy",
+      "history": {
+        "branchBudget": {
+          "sourceBranchRef": "develop",
+          "maxCommitCount": 25,
+          "source": "pr-policy"
+        }
+      },
+      "keepArtifactsOnNoDiff": true,
       "matchKind": "current-path",
       "currentPath": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
       "previousPath": null,
@@ -84,6 +125,17 @@ try {
     {
       "targetId": "target-fail",
       "targetPath": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+      "publicModes": ["attributes", "front-panel", "block-diagram"],
+      "requestedModes": ["attributes", "front-panel"],
+      "requestedModeSource": "pr-policy",
+      "history": {
+        "branchBudget": {
+          "sourceBranchRef": "develop",
+          "maxCommitCount": 25,
+          "source": "pr-policy"
+        }
+      },
+      "keepArtifactsOnNoDiff": true,
       "matchKind": "current-path",
       "currentPath": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
       "previousPath": null,
@@ -94,10 +146,13 @@ try {
     "executionStatus": "ready",
     "executionReason": "matched-targets",
     "changedViCount": 2,
+    "eligibleChangedViCount": 2,
+    "excludedViCount": 0,
+    "unmatchedViCount": 0,
     "matchedTargetCount": 2
   }
 }
-'@ | Set-Content -LiteralPath $discoveryPath -Encoding utf8
+"@ | Set-Content -LiteralPath $discoveryPath -Encoding utf8
 
   @'
 param(
@@ -106,10 +161,13 @@ param(
   [string]$TargetId,
   [string]$StartRef,
   [string]$NoisePolicy,
+  [string]$Mode,
   [string]$ResultsDir,
   [string]$ConsumerRepository,
   [string]$ConsumerRef,
   [string]$SourceBranchRef,
+  [int]$MaxBranchCommits,
+  [switch]$KeepArtifactsOnNoDiff,
   [string]$ReviewerSurface,
   [string]$ReviewerPullRequestNumber,
   [string]$ReviewerIsFork,
@@ -138,10 +196,13 @@ $requestPath = Join-Path $publicRoot 'request.json'
   target = [ordered]@{
     id = $TargetId
     path = $targetPath
-    requestedModes = @('attributes', 'front-panel', 'block-diagram')
+    requestedModes = @($Mode -split ',')
     publicModes = @('attributes', 'front-panel', 'block-diagram')
   }
   history = [ordered]@{
+    sourceBranchRef = $SourceBranchRef
+    maxBranchCommits = $MaxBranchCommits
+    keepArtifactsOnNoDiff = [bool]$KeepArtifactsOnNoDiff.IsPresent
     renderReport = $true
   }
   results = [ordered]@{
@@ -154,8 +215,9 @@ $requestPath = Join-Path $publicRoot 'request.json'
 "target-path=$targetPath" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 "request-path=$requestPath" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 "results-dir=$ResultsDir" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
-"requested-mode-list=attributes,front-panel,block-diagram" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+"requested-mode-list=$Mode" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 "source-branch-ref=$SourceBranchRef" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+"max-branch-commits=$MaxBranchCommits" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 '@ | Set-Content -LiteralPath (Join-Path $platformRoot 'scripts/Resolve-CompareVIHistoryRequest.ps1') -Encoding utf8
 
   @'
@@ -184,9 +246,9 @@ $reportHtmlPath = Join-Path $ResultsDir 'history-report.html'
 "results-dir=$ResultsDir" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 "history-report-md=$reportMdPath" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 "history-report-html=$reportHtmlPath" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
-"requested-mode-list=attributes,front-panel,block-diagram" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
-"executed-mode-list=attributes,front-panel,block-diagram" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
-"mode-count=3" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+"requested-mode-list=attributes,front-panel" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+"executed-mode-list=attributes,front-panel" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
+"mode-count=2" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 "stop-reason=completed" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
 if ($TargetPath -like '*Pre-Install*') {
   "total-processed=0" | Out-File -FilePath $GitHubOutputPath -Encoding utf8 -Append
@@ -213,21 +275,21 @@ $ErrorActionPreference = 'Stop'
 
 @"
 {
-  ""schema"": ""comparevi-history/mode-summary@v1"",
-  ""requestedModes"": [""attributes"", ""front-panel"", ""block-diagram""],
-  ""executedModes"": [""attributes"", ""front-panel"", ""block-diagram""],
-  ""totalProcessed"": $TotalProcessed,
-  ""totalDiffs"": $TotalDiffs,
-  ""stopReason"": ""$StopReason"",
-  ""categoryCounts"": {},
-  ""comparisonPairs"": [],
-  ""bucketCounts"": {},
-  ""previewImages"": [],
-  ""metadata"": {
-    ""comparisonArtifactCount"": 0,
-    ""captureCount"": 0,
-    ""imageArtifactCount"": 0,
-    ""imageMimeTypes"": []
+  "schema": "comparevi-history/mode-summary@v1",
+  "requestedModes": ["attributes", "front-panel"],
+  "executedModes": ["attributes", "front-panel"],
+  "totalProcessed": $TotalProcessed,
+  "totalDiffs": $TotalDiffs,
+  "stopReason": "$StopReason",
+  "categoryCounts": {},
+  "comparisonPairs": [],
+  "bucketCounts": {},
+  "previewImages": [],
+  "metadata": {
+    "comparisonArtifactCount": 0,
+    "captureCount": 0,
+    "imageArtifactCount": 0,
+    "imageMimeTypes": []
   }
 }
 "@ | Set-Content -LiteralPath $JsonOutputPath -Encoding utf8
@@ -335,10 +397,23 @@ $finalReason = if ($RunOutcome -eq 'success') { 'completed' } else { 'facade-ste
   if ($manifest.summary.executedTargetCount -ne 2) {
     throw 'Executed target count mismatch.'
   }
-  if (-not ($manifest.targets | Where-Object { $_.targetId -eq 'target-success' -and $_.finalStatus -eq 'succeeded' })) {
+
+  $successTarget = $manifest.targets | Where-Object { $_.targetId -eq 'target-success' } | Select-Object -First 1
+  if ($null -eq $successTarget -or $successTarget.finalStatus -ne 'succeeded') {
     throw 'Successful target was not recorded.'
   }
-  if (-not ($manifest.targets | Where-Object { $_.targetId -eq 'target-fail' -and $_.finalStatus -eq 'failed' })) {
+  if (($successTarget.requestedModes -join ',') -ne 'attributes,front-panel') {
+    throw 'Requested modes were not preserved on the target manifest.'
+  }
+  if ($successTarget.sourceBranchRef -ne 'develop' -or $successTarget.maxBranchCommits -ne 25) {
+    throw 'Branch budget policy did not flow into the target manifest.'
+  }
+  if ($successTarget.keepArtifactsOnNoDiff -ne $true) {
+    throw 'Keep-artifacts policy did not flow into the target manifest.'
+  }
+
+  $failedTarget = $manifest.targets | Where-Object { $_.targetId -eq 'target-fail' } | Select-Object -First 1
+  if ($null -eq $failedTarget -or $failedTarget.finalStatus -ne 'failed') {
     throw 'Failed target was not recorded.'
   }
 

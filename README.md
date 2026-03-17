@@ -48,7 +48,7 @@ Legacy direct invocation remains available for maintainers:
 
 ## Public platform boundary
 
-- Consumer repositories define what to inspect through a checked-in target catalog.
+- Consumer repositories define what to inspect and what automatic PR behavior is allowed through checked-in target catalogs and PR policy files.
 - `comparevi-history` defines how the public history surface resolves requests, runs the backend, and renders reviewer
   artifacts.
 - `compare-vi-cli-action` defines how the backend tooling executes and keeps `comparevi-tools/history-facade@v1`
@@ -203,16 +203,18 @@ wrapper should keep `platform_ref` aligned with the same release ref used in the
 Trusted consumer repositories can expose automatic PR diagnostics for changed VIs through the reusable workflow
 [`./.github/workflows/pull-request-diagnostics.yml`](.github/workflows/pull-request-diagnostics.yml) plus a thin
 consumer wrapper such as
-[`docs/examples/comparevi-history-pull-request-diagnostics.yml`](docs/examples/comparevi-history-pull-request-diagnostics.yml).
+[`docs/examples/comparevi-history-pull-request-diagnostics.yml`](docs/examples/comparevi-history-pull-request-diagnostics.yml)
+and a checked-in PR policy such as
+[`docs/examples/comparevi-history-pr-policy.json`](docs/examples/comparevi-history-pr-policy.json).
 
 The current first slice stays intentionally narrow:
 
 - the platform discovers changed `.vi` files from the live pull request context and writes `changed-vi-discovery.json`
-- the trusted target catalog stays on the pull request base checkout, not the candidate head checkout
+- the trusted target catalog and trusted PR policy stay on the pull request base checkout, not the candidate head checkout
 - the trusted consumer-local hosted NI Linux adapter stays on the pull request base checkout, not the candidate head
   checkout
 - the candidate head checkout supplies the repository root and file content for execution
-- only catalog-declared targets whose `path` matches a changed `.vi` path are executed
+- only PR-policy-eligible catalog targets whose `path` matches a changed `.vi` path are executed
 - same-repo pull requests can auto-run immediately
 - cross-repository and fork pull requests fail closed by producing a blocked discovery receipt instead of executing the
   backend
@@ -224,7 +226,8 @@ The current first slice stays intentionally narrow:
 
 This keeps consumer repositories thin while the automatic PR surface stabilizes:
 
-- target allowlists still live in `.github/comparevi-history-targets.json`
+- target ids still live in `.github/comparevi-history-targets.json`
+- PR path filters, allowlists, mode narrowing, branch-budget defaults, and reviewer-surface toggles live in `.github/comparevi-history-pr-policy.json`
 - execution remains bundle-backed and platform-owned
 - reviewer-facing consumers get stable receipt and markdown paths before comment publication policy is widened
 
@@ -327,6 +330,19 @@ Consumer repos should copy that pattern into `.github/comparevi-history-targets.
 - optional reviewer-surface hints
 
 Do not copy backend renderers or repo-local history execution logic into consumer repositories.
+
+## Pull request policy
+
+Automatic PR diagnostics consumers should also check in a PR policy using `comparevi-history/pr-policy@v1`. The example source of truth in this repository is [`docs/examples/comparevi-history-pr-policy.json`](docs/examples/comparevi-history-pr-policy.json). Consumer repos should copy that pattern into `.github/comparevi-history-pr-policy.json` and keep automatic PR policy there:
+
+- include/exclude path globs for changed VI discovery
+- allowed target ids for automatic PR execution
+- maximum changed-VI count per run
+- unmatched changed-VI fail-closed behavior
+- public mode narrowing for reviewer surfaces
+- branch-budget defaults and no-diff artifact policy
+- reviewer comment and step-summary emission toggles
+- trust defaults for fork PR blocking
 
 ## Trust boundaries
 

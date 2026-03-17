@@ -121,6 +121,99 @@ function Get-OptionalString {
   return $stringValue.Trim()
 }
 
+function Get-OptionalInt {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return $null
+  }
+
+  $stringValue = [string]$Value
+  if ([string]::IsNullOrWhiteSpace($stringValue)) {
+    return $null
+  }
+
+  return [int]$stringValue
+}
+
+function Get-NestedValue {
+  param(
+    [AllowNull()]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Path,
+    [AllowNull()]
+    $Default = $null
+  )
+
+  $current = $Object
+  foreach ($segment in $Path) {
+    if ($null -eq $current) {
+      return $Default
+    }
+
+    $property = $current.PSObject.Properties[$segment]
+    if ($null -eq $property) {
+      return $Default
+    }
+
+    $current = $property.Value
+  }
+
+  if ($null -eq $current) {
+    return $Default
+  }
+
+  return $current
+}
+
+function ConvertTo-ObjectArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [string] -or $Value -isnot [System.Collections.IEnumerable]) {
+    return @($Value)
+  }
+
+  $items = New-Object System.Collections.Generic.List[object]
+  foreach ($item in ([System.Collections.IEnumerable]$Value)) {
+    $items.Add($item) | Out-Null
+  }
+
+  return @($items | ForEach-Object { $_ })
+}
+
+function ConvertTo-StringArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  $items = New-Object System.Collections.Generic.List[string]
+  $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($entry in @(ConvertTo-ObjectArray -Value $Value)) {
+    $normalized = Get-OptionalString -Value $entry
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+      continue
+    }
+
+    if ($seen.Add($normalized)) {
+      $items.Add($normalized) | Out-Null
+    }
+  }
+
+  return @($items | ForEach-Object { $_ })
+}
+
 function Resolve-DefaultInvokeScriptPath {
   param(
     [Parameter(Mandatory = $true)]
@@ -275,6 +368,14 @@ foreach ($matchedTarget in @($discovery.matchedTargets)) {
   $requestError = $null
   $runError = $null
   $publicRunError = $null
+  $requestedModes = @(ConvertTo-StringArray -Value (Get-NestedValue -Object $matchedTarget -Path @('requestedModes')))
+  $requestedModeList = if ($requestedModes.Count -eq 0) { $null } else { $requestedModes -join ',' }
+  $effectiveSourceBranchRef = Get-OptionalString -Value (Get-NestedValue -Object $matchedTarget -Path @('history', 'branchBudget', 'sourceBranchRef'))
+  if ([string]::IsNullOrWhiteSpace($effectiveSourceBranchRef)) {
+    $effectiveSourceBranchRef = $HeadRef
+  }
+  $effectiveMaxBranchCommits = Get-OptionalInt -Value (Get-NestedValue -Object $matchedTarget -Path @('history', 'branchBudget', 'maxCommitCount'))
+  $keepArtifactsOnNoDiff = [bool](Get-NestedValue -Object $matchedTarget -Path @('keepArtifactsOnNoDiff') -Default $false)
 
   try {
     $requestArgs = @{
@@ -289,12 +390,23 @@ foreach ($matchedTarget in @($discovery.matchedTargets)) {
       Detailed = $true
       ConsumerRepository = $HeadRepository
       ConsumerRef = $HeadSha
-      SourceBranchRef = $HeadRef
       ReviewerSurface = 'manual'
       ReviewerPullRequestNumber = $PullRequestNumber
       ReviewerIsFork = $ReviewerIsFork
       ContainerImage = $ContainerImage
       GitHubOutputPath = $requestOutputPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($requestedModeList)) {
+      $requestArgs.Mode = $requestedModeList
+    }
+    if (-not [string]::IsNullOrWhiteSpace($effectiveSourceBranchRef)) {
+      $requestArgs.SourceBranchRef = $effectiveSourceBranchRef
+    }
+    if ($null -ne $effectiveMaxBranchCommits) {
+      $requestArgs.MaxBranchCommits = [int]$effectiveMaxBranchCommits
+    }
+    if ($keepArtifactsOnNoDiff) {
+      $requestArgs.KeepArtifactsOnNoDiff = $true
     }
     if ($null -ne $MaxPairs) {
       $requestArgs.MaxPairs = [int]$MaxPairs
@@ -437,6 +549,12 @@ foreach ($matchedTarget in @($discovery.matchedTargets)) {
   $targetRuns.Add([ordered]@{
       targetId = $targetId
       targetPath = $targetPath
+      publicModes = @(ConvertTo-StringArray -Value (Get-NestedValue -Object $matchedTarget -Path @('publicModes')))
+      requestedModes = @($requestedModes)
+      requestedModeSource = Get-OptionalString -Value (Get-NestedValue -Object $matchedTarget -Path @('requestedModeSource'))
+      sourceBranchRef = if ([string]::IsNullOrWhiteSpace($effectiveSourceBranchRef)) { $null } else { $effectiveSourceBranchRef }
+      maxBranchCommits = if ($null -eq $effectiveMaxBranchCommits) { $null } else { [int]$effectiveMaxBranchCommits }
+      keepArtifactsOnNoDiff = $keepArtifactsOnNoDiff
       matchKind = Get-OptionalString -Value $matchedTarget.matchKind
       currentPath = Get-OptionalString -Value $matchedTarget.currentPath
       previousPath = Get-OptionalString -Value $matchedTarget.previousPath
