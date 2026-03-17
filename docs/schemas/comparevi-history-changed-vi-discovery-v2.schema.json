@@ -342,6 +342,7 @@
           "type": "string",
           "enum": [
             "selected-targets",
+            "pr-policy-not-found",
             "pr-files-api-limit-exceeded",
             "max-changed-vi-count-exceeded",
             "no-vi-files-changed",

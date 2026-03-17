@@ -252,6 +252,33 @@ try {
   if ($forkReceipt.pullRequest.isFork -ne $true -or $forkReceipt.summary.executionStatus -ne 'ready') {
     throw 'Fork pull requests should stay eligible for hosted-auto execution in v2.'
   }
+
+  $missingPolicyOutputPath = Join-Path $tempRoot 'missing-policy-outputs.txt'
+  $missingPolicyJson = & $scriptPath `
+    -EventName 'pull_request' `
+    -EventPath $eventPath `
+    -PrPolicyPath (Join-Path $tempRoot 'missing-policy.json') `
+    -ResultsDir (Join-Path $tempRoot 'missing-policy-results') `
+    -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+    -GitHubOutputPath $missingPolicyOutputPath
+  $missingPolicyReceipt = $missingPolicyJson | ConvertFrom-Json -Depth 64
+  if ($missingPolicyReceipt.prPolicy.applied -ne $false) {
+    throw 'Missing trusted PR policy should mark the policy as not applied.'
+  }
+  if ($missingPolicyReceipt.summary.executionStatus -ne 'skipped' -or
+    $missingPolicyReceipt.summary.executionReason -ne 'pr-policy-not-found') {
+    throw 'Missing trusted PR policy should skip deterministically instead of throwing.'
+  }
+  $missingPolicyOutput = (Get-Content -LiteralPath $missingPolicyOutputPath -Raw) -replace '^\uFEFF', ''
+  foreach ($requiredKey in @(
+      'pr-policy-applied=false',
+      'execution-status=skipped',
+      'execution-reason=pr-policy-not-found'
+    )) {
+    if ($missingPolicyOutput -notmatch [regex]::Escape($requiredKey)) {
+      throw "Expected missing-policy GitHub output '$requiredKey'."
+    }
+  }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

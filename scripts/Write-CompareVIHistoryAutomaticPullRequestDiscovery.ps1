@@ -401,7 +401,34 @@ function Resolve-PrPolicy {
 
   $resolvedPath = Resolve-AbsolutePath -Path $Path -BasePath $BasePath
   if (-not (Test-Path -LiteralPath $resolvedPath -PathType Leaf)) {
-    throw "PR policy not found: $resolvedPath"
+    return [ordered]@{
+      schema = 'comparevi-history/pr-policy@v2'
+      path = $resolvedPath
+      applied = $false
+      discovery = [ordered]@{
+        selectionMode = 'dynamic-paths'
+        includePaths = @()
+        excludePaths = @()
+        maxChangedViCount = $null
+        overflowBehavior = 'block'
+      }
+      execution = [ordered]@{
+        publicModes = @('attributes', 'front-panel', 'block-diagram')
+        noisePolicy = 'include'
+        history = [ordered]@{
+          sourceBranchRefStrategy = 'pull-request-base'
+          keepArtifactsOnNoDiff = $true
+        }
+      }
+      reviewerSurface = [ordered]@{
+        emitCommentBody = $true
+        emitStepSummary = $true
+        fullSurface = 'artifact-index'
+      }
+      trust = [ordered]@{
+        forkBehavior = 'hosted-auto'
+      }
+    }
   }
 
   $rawPolicy = Read-JsonFile -Path $resolvedPath
@@ -544,7 +571,10 @@ $repositorySlug = if (-not [string]::IsNullOrWhiteSpace($Repository)) {
 
 $executionStatus = 'ready'
 $executionReason = 'selected-targets'
-if ($reportedChangedFileCount -gt 3000) {
+if (-not $prPolicy.applied) {
+  $executionStatus = 'skipped'
+  $executionReason = 'pr-policy-not-found'
+} elseif ($reportedChangedFileCount -gt 3000) {
   $executionStatus = 'blocked'
   $executionReason = 'pr-files-api-limit-exceeded'
 }
@@ -556,7 +586,7 @@ if (-not [string]::IsNullOrWhiteSpace($FilesPayloadPath)) {
     throw "Files payload override not found: $filesPayloadResolved"
   }
   $rawFiles = @(ConvertTo-ObjectArray -Value (Read-JsonFile -Path $filesPayloadResolved))
-} elseif ($executionStatus -ne 'blocked') {
+} elseif ($executionStatus -eq 'ready') {
   $rawFiles = @(Invoke-PullRequestFilesApi -RepositorySlug $repositorySlug -PullRequestNumber $pullRequestNumber -Token $GitHubToken)
 }
 
@@ -789,6 +819,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Head repository: `{0}`' -f $headRepository)
     ('- Head ref: `{0}`' -f $headRef)
     ('- Fork PR: `{0}`' -f $isFork.ToString().ToLowerInvariant())
+    ('- PR policy applied: `{0}`' -f $prPolicy.applied.ToString().ToLowerInvariant())
     ('- PR policy: `{0}`' -f [string]$prPolicy.path)
     ('- Selection mode: `{0}`' -f [string]$prPolicy.discovery.selectionMode)
     ('- Changed VI count: `{0}`' -f $changedViArray.Count)
