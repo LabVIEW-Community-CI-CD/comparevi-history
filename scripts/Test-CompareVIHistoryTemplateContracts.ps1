@@ -3,10 +3,12 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $manualTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-workflow-dispatch.yml'
+$pullRequestTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics.yml'
 $commentTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-comment-gated.yml'
 $manualExplorationTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-manual-vi-exploration.yml'
 $safeTemplatesPath = Join-Path $repoRoot 'docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md'
 $publishedValidationWorkflowPath = Join-Path $repoRoot '.github/workflows/published-consumer-validation.yml'
+$pullRequestWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics.yml'
 $manualExplorationWorkflowPath = Join-Path $repoRoot '.github/workflows/manual-vi-exploration.yml'
 $smokeWorkflowPath = Join-Path $repoRoot '.github/workflows/smoke.yml'
 $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
@@ -79,10 +81,12 @@ function Assert-MatchCount {
 }
 
 $manualTemplate = Get-Content -LiteralPath $manualTemplatePath -Raw
+$pullRequestTemplate = Get-Content -LiteralPath $pullRequestTemplatePath -Raw
 $commentTemplate = Get-Content -LiteralPath $commentTemplatePath -Raw
 $manualExplorationTemplate = Get-Content -LiteralPath $manualExplorationTemplatePath -Raw
 $safeTemplates = Get-Content -LiteralPath $safeTemplatesPath -Raw
 $publishedValidationWorkflow = Get-Content -LiteralPath $publishedValidationWorkflowPath -Raw
+$pullRequestWorkflow = Get-Content -LiteralPath $pullRequestWorkflowPath -Raw
 $manualExplorationWorkflow = Get-Content -LiteralPath $manualExplorationWorkflowPath -Raw
 $smokeWorkflow = Get-Content -LiteralPath $smokeWorkflowPath -Raw
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
@@ -100,6 +104,12 @@ Assert-Match -Content $manualTemplate -Pattern 'target_id:\s+\$\{\{ inputs\.targ
 Assert-Match -Content $manualTemplate -Pattern 'reviewer_surface:\s+manual' -Message 'Manual template must declare the manual reviewer surface.'
 Assert-Match -Content $manualTemplate -Pattern 'public-step-summary-path' -Message 'Manual template must consume the action-owned public step summary output.'
 Assert-NotMatch -Content $manualTemplate -Pattern '## comparevi-history manual PR diagnostics' -Message 'Manual template must not rebuild the diagnostics summary inline.'
+
+Assert-Match -Content $pullRequestTemplate -Pattern 'LabVIEW-Community-CI-CD/comparevi-history/\.github/workflows/pull-request-diagnostics\.yml@v1' -Message 'Pull request template must call the reusable workflow surface.'
+Assert-Match -Content $pullRequestTemplate -Pattern 'target_spec_path:\s+\.github/comparevi-history-targets\.json' -Message 'Pull request template must consume the checked-in target catalog.'
+Assert-Match -Content $pullRequestTemplate -Pattern 'results_dir:\s+tests/results/pr-diagnostics/history' -Message 'Pull request template must keep the standard PR diagnostics results root.'
+Assert-Match -Content $pullRequestTemplate -Pattern 'platform_ref:\s+v1' -Message 'Pull request template must keep platform_ref aligned with the workflow pin.'
+Assert-NotMatch -Content $pullRequestTemplate -Pattern 'invoke_script_path:' -Message 'Pull request template must not own the hosted invoke adapter path.'
 
 Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*vi_path:\s*$' -Message 'Manual exploration template must accept vi_path.'
 Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*default:\s+develop\s*$' -Message 'Manual exploration template must default the consumer ref to develop.'
@@ -142,6 +152,23 @@ Assert-Match -Content $manualExplorationWorkflow -Pattern "Split-Path -Parent '\
 Assert-Match -Content $manualExplorationWorkflow -Pattern "\$\{\{ steps\.results_root\.outputs\['results-root'\] \}\}" -Message 'Manual exploration workflow must route the resolved results root into later stages.'
 Assert-MatchCount -Content $manualExplorationWorkflow -Pattern "'tests/results/ref-compare/history-exploration'" -ExpectedCount 1 -Message 'Manual exploration workflow must only use the relative results directory during catalog generation.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern "steps\.exploration\.outputs\['exploration-status'\] != 'succeeded'" -Message 'Manual exploration workflow must fail closed when exploration output is degraded.'
+
+Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*workflow_call:\s*$' -Message 'Pull request workflow must be reusable.'
+Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*target_spec_path:\s*$' -Message 'Pull request workflow must accept target_spec_path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*default:\s+\.github/comparevi-history-targets\.json\s*$' -Message 'Pull request workflow must default to the checked-in target catalog path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern '(?m)^\s*COMPAREVI_NI_LINUX_IMAGE:\s+nationalinstruments/labview:2026q1-linux\s*$' -Message 'Pull request workflow must pin the NI Linux image.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'Write-CompareVIHistoryPullRequestDiscovery\.ps1' -Message 'Pull request workflow must discover changed VI targets.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'Checkout trusted consumer base repository' -Message 'Pull request workflow must keep a trusted base checkout.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'Checkout pull request head repository' -Message 'Pull request workflow must keep a candidate head checkout.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'Invoke-CompareVIHistoryPullRequestDiagnostics\.ps1' -Message 'Pull request workflow must orchestrate matched-target diagnostics.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'Write-CompareVIHistoryPullRequestRun\.ps1' -Message 'Pull request workflow must write the aggregate PR run receipt.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'changed-vi-discovery-path' -Message 'Pull request workflow must expose the discovery receipt path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'pr-run-path' -Message 'Pull request workflow must expose the aggregate PR run path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'public-comment-path' -Message 'Pull request workflow must expose the deterministic PR comment body path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'public-step-summary-path' -Message 'Pull request workflow must expose the deterministic step summary path.'
+Assert-Match -Content $pullRequestWorkflow -Pattern 'comparevi-history-pr-diagnostics-' -Message 'Pull request workflow must upload PR diagnostics artifacts.'
+Assert-Match -Content $pullRequestWorkflow -Pattern "steps\.aggregate\.outputs\['final-status'\] == 'failed'" -Message 'Pull request workflow must fail closed only on failed aggregate diagnostics.'
+Assert-NotMatch -Content $pullRequestWorkflow -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Pull request workflow must not request PR comment publication permissions in this slice.'
 
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
@@ -192,6 +219,8 @@ Assert-Match -Content $actionYaml -Pattern 'mode-summary-json-path' -Message 'Ac
 Assert-Match -Content $readme -Pattern 'comparevi-history/consumer-targets@v1' -Message 'README must document the target catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/public-run@v1' -Message 'README must document the public run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/shared-evidence@v1' -Message 'README must document the shared evidence contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/changed-vi-discovery@v1' -Message 'README must document the changed-VI discovery contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/pr-run@v1' -Message 'README must document the aggregate pull-request run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/revision-catalog@v1' -Message 'README must document the revision catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/exploration-run@v1' -Message 'README must document the exploration run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/evidence-graph@v1' -Message 'README must document the canonical evidence graph contract.'
@@ -219,9 +248,14 @@ Assert-Match -Content $readme -Pattern 'VIP_Post-Install Custom Action\.vi' -Mes
 Assert-Match -Content $readme -Pattern 'VIP_Pre-Install Custom Action\.vi' -Message 'README must identify the first corpus pilot targets.'
 Assert-Match -Content $readme -Pattern 'bounded teaser surface' -Message 'README must document that the step summary remains bounded.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-manual-vi-exploration\.yml' -Message 'README must point to the manual exploration wrapper example.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics\.yml' -Message 'README must point to the pull request diagnostics wrapper example.'
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'public-comment-path' -Message 'README must document the action-owned public comment output.'
 Assert-Match -Content $readme -Pattern 'shared-evidence\.json' -Message 'README must document the shared evidence output.'
+Assert-Match -Content $readme -Pattern 'changed-vi-discovery\.json' -Message 'README must document the changed-VI discovery output.'
+Assert-Match -Content $readme -Pattern 'pr-run\.json' -Message 'README must document the aggregate PR run output.'
+Assert-Match -Content $readme -Pattern 'same-repo pull requests can auto-run immediately' -Message 'README must document same-repo automatic PR execution.'
+Assert-Match -Content $readme -Pattern 'cross-repository and fork pull requests fail closed' -Message 'README must document blocked cross-repository PR execution.'
 Assert-Match -Content $readme -Pattern 'attributes`, `front-panel`, and `block-diagram' -Message 'README must document explicit public modes only.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/issues/24' -Message 'README must point at the comparevi-history platform-boundary epic.'
 Assert-Match -Content $readme -Pattern 'merge a\s+prep PR first' -Message 'README must explain the protected-main release prep requirement.'

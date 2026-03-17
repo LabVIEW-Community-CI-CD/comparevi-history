@@ -1,0 +1,22 @@
+name: CompareVI History Pull Request Diagnostics
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  comparevi-history-pr-diagnostics:
+    uses: LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics.yml@v1
+    with:
+      target_spec_path: .github/comparevi-history-targets.json
+      results_dir: tests/results/pr-diagnostics/history
+      max_pairs: '5'
+      max_signal_pairs: '5'
+      platform_ref: v1

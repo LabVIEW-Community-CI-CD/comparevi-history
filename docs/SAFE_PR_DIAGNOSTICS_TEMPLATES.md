@@ -8,6 +8,8 @@ of repo-local inline comment renderers.
 
 - Maintainer-dispatched template:
   [comparevi-history-workflow-dispatch.yml](examples/comparevi-history-workflow-dispatch.yml)
+- Automatic PR discovery template:
+  [comparevi-history-pull-request-diagnostics.yml](examples/comparevi-history-pull-request-diagnostics.yml)
 - Comment-gated template:
   [comparevi-history-comment-gated.yml](examples/comparevi-history-comment-gated.yml)
 - Example consumer target catalog source:
@@ -47,6 +49,9 @@ Consumer repositories should not contain:
 ## Use These Patterns
 
 - Use the maintainer-dispatched template when a maintainer wants to inspect a specific pull request on demand.
+- Use the automatic PR discovery template when you want same-repo pull requests to discover changed `.vi` files and run
+  `comparevi-history` automatically for catalog-matched targets without copying orchestration logic into the consumer
+  repository.
 - Use the comment-gated template when you want a slash command such as
   `/comparevi-history vip-post-install-custom-action --modes attributes,front-panel,block-diagram`
   to trigger diagnostics from a trusted maintainer comment.
@@ -69,6 +74,9 @@ Consumer repositories should not contain:
 
 - Do not run `comparevi-history` directly from `pull_request` on public fork PRs. The action intentionally fails closed
   there because the event does not prove a trusted runner or trusted refs.
+- Do not expect the automatic PR discovery template to execute on fork or other cross-repository PR heads. In this
+  slice it should produce a blocked discovery receipt and leave trusted execution to the maintainer-dispatched or
+  comment-gated paths.
 - Do not use `pull_request_target` to run the action automatically against fork content with write-scoped tokens or
   secrets. That crosses the trust boundary the guard is designed to enforce.
 - Do not pin consumer workflows to branch refs such as `@main`, `@develop`, or unpublished SHAs. Use released facade
@@ -81,9 +89,16 @@ Consumer repositories should not contain:
 
 - The maintainer-dispatched template uses `LabVIEW-Community-CI-CD/comparevi-history@v1`. That is the right default
   when you want compatible updates after each reviewed facade release.
+- The automatic PR discovery template uses the reusable workflow surface
+  `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics.yml@v1`. That keeps consumer
+  repositories thin and leaves changed-VI discovery, trusted base/head orchestration, and aggregate receipt generation
+  inside the platform layer.
 - The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.8`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
   immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
+- The automatic PR discovery template keeps the target catalog and hosted NI Linux adapter on the pull request base
+  checkout while executing against the candidate head checkout. That is the minimum safe split that keeps repo policy
+  trusted without inventing repo-local orchestration code.
 - Both templates resolve the PR head repository and head SHA from the GitHub API, then check out that exact SHA with
   `fetch-depth: 0` so the backend can traverse commit history deterministically.
 - Both templates keep maintainer-only override inputs unset. That aligns with the trust guard and keeps consumers on the
@@ -106,7 +121,9 @@ Consumer repositories should not contain:
 
 1. Check in `.github/comparevi-history-targets.json` first.
 2. Start with the maintainer-dispatched template when your project is new to VI History diagnostics.
-3. Keep the default explicit public mode bundle unless you have a documented reason to narrow it.
-4. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
+3. Add the automatic PR discovery template when you want same-repo pull requests to run automatically from the checked-
+   in target catalog.
+4. Keep the default explicit public mode bundle unless you have a documented reason to narrow it.
+5. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
-5. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
+6. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
