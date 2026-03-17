@@ -266,6 +266,7 @@ jobs:
           STOP_REASON: ${{ steps.history.outputs['stop-reason'] }}
           REQUEST_PATH: ${{ steps.history.outputs['request-path'] }}
           PUBLIC_RUN_PATH: ${{ steps.history.outputs['public-run-path'] }}
+          SHARED_EVIDENCE_PATH: ${{ steps.history.outputs['shared-evidence-path'] }}
           PUBLIC_COMMENT_PATH: ${{ steps.history.outputs['public-comment-path'] }}
           PUBLIC_STEP_SUMMARY_PATH: ${{ steps.history.outputs['public-step-summary-path'] }}
           FINAL_STATUS: ${{ steps.history.outputs['final-status'] }}
@@ -296,6 +297,7 @@ jobs:
             -StopReason $env:STOP_REASON `
             -RequestPath $env:REQUEST_PATH `
             -PublicRunPath $env:PUBLIC_RUN_PATH `
+            -SharedEvidencePath $env:SHARED_EVIDENCE_PATH `
             -PublicCommentPath $env:PUBLIC_COMMENT_PATH `
             -PublicStepSummaryPath $env:PUBLIC_STEP_SUMMARY_PATH `
             -FinalStatus $env:FINAL_STATUS `
@@ -423,6 +425,7 @@ jobs:
           STOP_REASON: ${{ steps.history.outputs['stop-reason'] }}
           REQUEST_PATH: ${{ steps.history.outputs['request-path'] }}
           PUBLIC_RUN_PATH: ${{ steps.history.outputs['public-run-path'] }}
+          SHARED_EVIDENCE_PATH: ${{ steps.history.outputs['shared-evidence-path'] }}
           PUBLIC_COMMENT_PATH: ${{ steps.history.outputs['public-comment-path'] }}
           PUBLIC_STEP_SUMMARY_PATH: ${{ steps.history.outputs['public-step-summary-path'] }}
           FINAL_STATUS: ${{ steps.history.outputs['final-status'] }}
@@ -453,6 +456,7 @@ jobs:
             -StopReason $env:STOP_REASON `
             -RequestPath $env:REQUEST_PATH `
             -PublicRunPath $env:PUBLIC_RUN_PATH `
+            -SharedEvidencePath $env:SHARED_EVIDENCE_PATH `
             -PublicCommentPath $env:PUBLIC_COMMENT_PATH `
             -PublicStepSummaryPath $env:PUBLIC_STEP_SUMMARY_PATH `
             -FinalStatus $env:FINAL_STATUS `

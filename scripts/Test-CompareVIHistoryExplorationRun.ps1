@@ -119,8 +119,17 @@ try {
   if (-not (Test-Path -LiteralPath $explorationRun.evidence.graphPath -PathType Leaf)) {
     throw 'Evidence graph file was not written.'
   }
+  if ($explorationRun.evidence.sharedSchema -ne 'comparevi-history/shared-evidence@v1') {
+    throw 'Exploration run shared evidence schema mismatch.'
+  }
+  if (-not (Test-Path -LiteralPath $explorationRun.evidence.sharedPath -PathType Leaf)) {
+    throw 'Shared evidence file was not written for the planned exploration run.'
+  }
   if ($explorationRun.outputs.evidenceGraphPath -ne $explorationRun.evidence.graphPath) {
     throw 'Exploration run evidence graph output mismatch.'
+  }
+  if ($explorationRun.outputs.sharedEvidencePath -ne $explorationRun.evidence.sharedPath) {
+    throw 'Exploration run shared evidence output mismatch.'
   }
 
   $plannedEvidenceGraph = Get-Content -LiteralPath $explorationRun.evidence.graphPath -Raw | ConvertFrom-Json -Depth 64
@@ -148,11 +157,19 @@ try {
   if (($plannedEvidenceGraph.continuity.segments[0].revisions | Select-Object -First 1).ordinal -ne 1) {
     throw 'Planned evidence graph revisions must stay deterministically ordered.'
   }
+  $plannedSharedEvidence = Get-Content -LiteralPath $explorationRun.evidence.sharedPath -Raw | ConvertFrom-Json -Depth 64
+  if ($plannedSharedEvidence.source.schema -ne 'comparevi-history/evidence-graph@v1') {
+    throw 'Planned shared evidence source schema mismatch.'
+  }
+  if ($plannedSharedEvidence.completeness.finalStatus -ne 'planned') {
+    throw 'Planned shared evidence completeness mismatch.'
+  }
 
   $githubOutputs = Get-Content -LiteralPath $githubOutputPath -Raw
   foreach ($requiredKey in @(
       'exploration-run-path=',
       'evidence-graph-path=',
+      'shared-evidence-path=',
       'exploration-status=planned',
       'exploration-reason=chunk-plan-ready',
       'index-md=',
@@ -432,6 +449,13 @@ try {
   }
   if (($executedEvidenceGraph.continuity.segments[0].chunkIds -join ',') -ne 'chunk-001,chunk-002') {
     throw 'Executed evidence graph must keep segment chunk ordering deterministic.'
+  }
+  $executedSharedEvidence = Get-Content -LiteralPath $executedRun.evidence.sharedPath -Raw | ConvertFrom-Json -Depth 64
+  if ($executedSharedEvidence.surfaces.previewImages.Count -ne 1 -or $executedSharedEvidence.surfaces.previewImages[0].scope -ne 'chunk') {
+    throw 'Executed shared evidence preview image normalization mismatch.'
+  }
+  if ($executedSharedEvidence.summary.totalProcessed -ne 2 -or $executedSharedEvidence.summary.totalDiffs -ne 1) {
+    throw 'Executed shared evidence summary aggregation mismatch.'
   }
 
   $timelineMarkdown = Get-Content -LiteralPath $executedRun.outputs.timelineMd -Raw

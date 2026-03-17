@@ -15,6 +15,8 @@ param(
   [string]$ResultsDir,
   [string]$HistoryReportMd,
   [string]$HistoryReportHtml,
+  [string]$ModeSummaryJsonPath,
+  [string]$ModeSummaryPath,
   [string]$RequestedModeList,
   [string]$ExecutedModeList,
   [string]$ModeSummaryMarkdown,
@@ -214,6 +216,8 @@ if ($null -eq $historySummaryResolved -and $null -ne $resultsDirResolved) {
 $manifestPathResolved = Resolve-ExistingPath -Path $ManifestPath -BasePath $repositoryRoot -PathType Leaf
 $historyReportMdResolved = Resolve-ExistingPath -Path $HistoryReportMd -BasePath $repositoryRoot -PathType Leaf
 $historyReportHtmlResolved = Resolve-ExistingPath -Path $HistoryReportHtml -BasePath $repositoryRoot -PathType Leaf
+$modeSummaryJsonResolved = Resolve-ExistingPath -Path $ModeSummaryJsonPath -BasePath $repositoryRoot -PathType Leaf
+$modeSummaryPathResolved = Resolve-ExistingPath -Path $ModeSummaryPath -BasePath $repositoryRoot -PathType Leaf
 
 $requestedModes = if (-not [string]::IsNullOrWhiteSpace($RequestedModeList)) {
   @(ConvertTo-NormalizedModeList -Value $RequestedModeList)
@@ -256,6 +260,9 @@ if ($finalStatus -eq 'succeeded' -and [bool]$request.history.renderReport) {
   if ($null -eq $historyReportHtmlResolved) {
     throw 'comparevi-history public run succeeded but did not emit history-report.html.'
   }
+}
+if ($null -eq $modeSummaryJsonResolved) {
+  throw 'comparevi-history public run requires mode-summary.json to emit shared evidence.'
 }
 
 $renderer = $null
@@ -339,6 +346,7 @@ $stepSummaryText | Set-Content -LiteralPath $publicStepSummaryPathResolved -Enco
 
 $replayStatus = if ($null -ne $historySummaryResolved) { 'ready' } else { 'not-available' }
 $replayReason = if ($null -ne $historySummaryResolved) { 'history-summary-present' } else { 'history-summary-missing' }
+$sharedEvidencePathResolved = Join-Path (Split-Path -Parent $publicRunPathResolved) 'shared-evidence.json'
 
 $publicRun = [ordered]@{
   schema = 'comparevi-history/public-run@v1'
@@ -360,6 +368,8 @@ $publicRun = [ordered]@{
     historySummaryJson = if ($null -eq $historySummaryResolved) { $null } else { $historySummaryResolved }
     historyReportMd = if ($null -eq $historyReportMdResolved) { $null } else { $historyReportMdResolved }
     historyReportHtml = if ($null -eq $historyReportHtmlResolved) { $null } else { $historyReportHtmlResolved }
+    modeSummaryPath = if ($null -eq $modeSummaryPathResolved) { $null } else { $modeSummaryPathResolved }
+    modeSummaryJsonPath = if ($null -eq $modeSummaryJsonResolved) { $null } else { $modeSummaryJsonResolved }
     publicCommentPath = if ($commentBody) { $publicCommentPathResolved } else { $null }
     publicStepSummaryPath = $publicStepSummaryPathResolved
   }
@@ -377,11 +387,22 @@ $publicRun = [ordered]@{
     status = $replayStatus
     reason = $replayReason
   }
+  evidence = [ordered]@{
+    schema = 'comparevi-history/shared-evidence@v1'
+    path = $sharedEvidencePathResolved
+  }
 }
 $publicRun | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $publicRunPathResolved -Encoding utf8
 
+& (Join-Path $PSScriptRoot 'Write-CompareVIHistorySharedEvidence.ps1') `
+  -PublicRunPath $publicRunPathResolved `
+  -ModeSummaryJsonPath $modeSummaryJsonResolved `
+  -ModeSummaryPath $modeSummaryPathResolved `
+  -OutputPath $sharedEvidencePathResolved | Out-Null
+
 Write-ActionOutput -Key 'history-summary-json' -Value $(if ($null -eq $historySummaryResolved) { '' } else { $historySummaryResolved })
 Write-ActionOutput -Key 'public-run-path' -Value $publicRunPathResolved
+Write-ActionOutput -Key 'shared-evidence-path' -Value $sharedEvidencePathResolved
 Write-ActionOutput -Key 'public-comment-path' -Value $(if ($commentBody) { $publicCommentPathResolved } else { '' })
 Write-ActionOutput -Key 'public-step-summary-path' -Value $publicStepSummaryPathResolved
 Write-ActionOutput -Key 'final-status' -Value $finalStatus
@@ -394,6 +415,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Final status: `{0}`' -f $finalStatus)
     ('- Final reason: `{0}`' -f $finalReason)
     ('- Public run receipt: `{0}`' -f $publicRunPathResolved)
+    ('- Shared evidence receipt: `{0}`' -f $sharedEvidencePathResolved)
     ('- Public step summary: `{0}`' -f $publicStepSummaryPathResolved)
     ('- Public comment body: `{0}`' -f $(if ($commentBody) { $publicCommentPathResolved } else { 'n/a' }))
   ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append

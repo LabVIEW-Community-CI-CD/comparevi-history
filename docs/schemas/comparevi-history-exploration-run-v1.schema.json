@@ -11,6 +11,7 @@
     "configuration",
     "surfaces",
     "discovery",
+    "evidence",
     "planning",
     "outputs",
     "summary",
@@ -269,13 +270,21 @@
       "type": "object",
       "required": [
         "schema",
-        "graphPath"
+        "graphPath",
+        "sharedSchema",
+        "sharedPath"
       ],
       "properties": {
         "schema": {
           "const": "comparevi-history/evidence-graph@v1"
         },
         "graphPath": {
+          "type": "string"
+        },
+        "sharedSchema": {
+          "const": "comparevi-history/shared-evidence@v1"
+        },
+        "sharedPath": {
           "type": "string"
         }
       },
@@ -381,6 +390,8 @@
         "chunkPlanPath",
         "chunkReceiptsRoot",
         "explorationRunPath",
+        "evidenceGraphPath",
+        "sharedEvidencePath",
         "indexMd",
         "indexHtml",
         "timelineMd",
@@ -404,6 +415,12 @@
           "type": "string"
         },
         "evidenceGraphPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sharedEvidencePath": {
           "type": [
             "string",
             "null"

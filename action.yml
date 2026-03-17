@@ -166,6 +166,9 @@ outputs:
   public-run-path:
     description: "comparevi-history public run receipt path."
     value: ${{ steps.public_run.outputs['public-run-path'] || steps.request.outputs['public-run-path'] }}
+  shared-evidence-path:
+    description: "Shared evidence receipt path emitted by the active comparevi-history entrypoint."
+    value: ${{ steps.public_run.outputs['shared-evidence-path'] }}
   public-comment-path:
     description: "Rendered public comment markdown path."
     value: ${{ steps.public_run.outputs['public-comment-path'] || steps.request.outputs['public-comment-path'] }}
@@ -220,6 +223,9 @@ outputs:
   mode-summary-markdown:
     description: "Reviewer-facing markdown summary of the requested and executed mode bundle."
     value: ${{ steps.mode_summary.outputs['mode-summary-markdown'] }}
+  mode-summary-json-path:
+    description: "Machine-readable mode summary JSON path."
+    value: ${{ steps.mode_summary.outputs['mode-summary-json-path'] }}
   flag-list:
     description: "Comma-separated list of compare flags."
     value: ${{ steps.run.outputs['flag-list'] }}
@@ -461,14 +467,24 @@ runs:
         Set-StrictMode -Version Latest
         $ErrorActionPreference = 'Stop'
 
-        & "${{ github.action_path }}/scripts/Format-CompareVIHistoryModeSummary.ps1" `
-          -RequestedModeList '${{ steps.run.outputs['requested-mode-list'] || steps.request.outputs['requested-mode-list'] }}' `
-          -ExecutedModeList '${{ steps.run.outputs['executed-mode-list'] }}' `
-          -ModeManifestsJson '${{ steps.run.outputs['mode-manifests-json'] }}' `
-          -TotalProcessed '${{ steps.run.outputs['total-processed'] }}' `
-          -TotalDiffs '${{ steps.run.outputs['total-diffs'] }}' `
-          -StopReason '${{ steps.run.outputs['stop-reason'] }}' `
-          -GitHubOutputPath $env:GITHUB_OUTPUT | Out-Null
+        $formatArgs = @{
+          RequestedModeList = '${{ steps.run.outputs['requested-mode-list'] || steps.request.outputs['requested-mode-list'] }}'
+          ExecutedModeList  = '${{ steps.run.outputs['executed-mode-list'] }}'
+          ModeManifestsJson = '${{ steps.run.outputs['mode-manifests-json'] }}'
+          TotalProcessed    = '${{ steps.run.outputs['total-processed'] }}'
+          TotalDiffs        = '${{ steps.run.outputs['total-diffs'] }}'
+          StopReason        = '${{ steps.run.outputs['stop-reason'] }}'
+          GitHubOutputPath  = $env:GITHUB_OUTPUT
+        }
+
+        $requestPath = '${{ steps.request.outputs['request-path'] }}'
+        if (-not [string]::IsNullOrWhiteSpace($requestPath)) {
+          $publicRoot = Split-Path -Parent $requestPath
+          $formatArgs.OutputPath = Join-Path $publicRoot 'mode-summary.md'
+          $formatArgs.JsonOutputPath = Join-Path $publicRoot 'mode-summary.json'
+        }
+
+        & "${{ github.action_path }}/scripts/Format-CompareVIHistoryModeSummary.ps1" @formatArgs | Out-Null
 
     - id: public_run
       name: Write comparevi-history public run receipt
@@ -482,6 +498,8 @@ runs:
         $ErrorActionPreference = 'Stop'
 
         $toolingPathInput = '${{ steps.tooling.outputs['tooling-path'] }}'
+        $publicRoot = Split-Path -Parent '${{ steps.request.outputs['request-path'] }}'
+        $modeSummaryPath = Join-Path $publicRoot 'mode-summary.md'
         $toolingRoot = if ([System.IO.Path]::IsPathRooted($toolingPathInput)) {
           [System.IO.Path]::GetFullPath($toolingPathInput)
         } else {
@@ -500,6 +518,8 @@ runs:
           -ResultsDir '${{ steps.run.outputs['results-dir'] || steps.request.outputs['results-dir'] }}' `
           -HistoryReportMd '${{ steps.run.outputs['history-report-md'] }}' `
           -HistoryReportHtml '${{ steps.run.outputs['history-report-html'] }}' `
+          -ModeSummaryJsonPath '${{ steps.mode_summary.outputs['mode-summary-json-path'] }}' `
+          -ModeSummaryPath $modeSummaryPath `
           -RequestedModeList '${{ steps.run.outputs['requested-mode-list'] || steps.request.outputs['requested-mode-list'] }}' `
           -ExecutedModeList '${{ steps.run.outputs['executed-mode-list'] }}' `
           -ModeSummaryMarkdown '${{ steps.mode_summary.outputs['mode-summary-markdown'] }}' `

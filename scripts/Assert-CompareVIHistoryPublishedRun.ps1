@@ -32,6 +32,7 @@ param(
   [string]$ExecutedModeList,
   [string]$RequestPath,
   [string]$PublicRunPath,
+  [string]$SharedEvidencePath,
   [string]$PublicCommentPath,
   [string]$PublicStepSummaryPath,
   [string]$FinalStatus,
@@ -75,6 +76,15 @@ function Assert-ExistingPath {
   if (-not (Test-Path -LiteralPath $Path -PathType $PathType)) {
     throw "$Label not found: $Path"
   }
+}
+
+function Normalize-ComparablePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  return [System.IO.Path]::GetFullPath($Path).Replace('\', '/')
 }
 
 function Get-EntryValue {
@@ -136,6 +146,9 @@ if (-not [string]::IsNullOrWhiteSpace($RequestPath)) {
 if (-not [string]::IsNullOrWhiteSpace($PublicRunPath)) {
   Assert-ExistingPath -Path $PublicRunPath -PathType Leaf -Label 'Public run receipt'
 }
+if (-not [string]::IsNullOrWhiteSpace($SharedEvidencePath)) {
+  Assert-ExistingPath -Path $SharedEvidencePath -PathType Leaf -Label 'Shared evidence receipt'
+}
 if (-not [string]::IsNullOrWhiteSpace($PublicCommentPath)) {
   Assert-ExistingPath -Path $PublicCommentPath -PathType Leaf -Label 'Public comment body'
 }
@@ -190,11 +203,35 @@ if (-not [string]::IsNullOrWhiteSpace($PublicRunPath)) {
   if ($publicRunSummary.backend.historyFacadeSchema -ne 'comparevi-tools/history-facade@v1') {
     throw "Public run backend facade schema mismatch. Actual: $($publicRunSummary.backend.historyFacadeSchema)"
   }
+  if (-not [string]::IsNullOrWhiteSpace($SharedEvidencePath)) {
+    $publicRunEvidence = Get-EntryValue -Entry $publicRunSummary -Name 'evidence' -DefaultValue $null
+    if ([string](Get-EntryValue -Entry $publicRunEvidence -Name 'schema' -DefaultValue '') -ne 'comparevi-history/shared-evidence@v1') {
+      throw 'Public run must reference comparevi-history/shared-evidence@v1.'
+    }
+    $actualSharedEvidencePath = [string](Get-EntryValue -Entry $publicRunEvidence -Name 'path' -DefaultValue '')
+    if ([string]::IsNullOrWhiteSpace($actualSharedEvidencePath)) {
+      throw 'Public run shared evidence path was empty.'
+    }
+    if ((Normalize-ComparablePath -Path $actualSharedEvidencePath) -ne (Normalize-ComparablePath -Path $SharedEvidencePath)) {
+      throw "Public run shared evidence path mismatch. Expected '$SharedEvidencePath'."
+    }
+  }
   if (-not [string]::IsNullOrWhiteSpace($FinalStatus) -and $publicRunSummary.summary.finalStatus -ne $FinalStatus) {
     throw "Public run final status mismatch. Expected '$FinalStatus', actual '$($publicRunSummary.summary.finalStatus)'."
   }
   if (-not [string]::IsNullOrWhiteSpace($FinalReason) -and $publicRunSummary.summary.finalReason -ne $FinalReason) {
     throw "Public run final reason mismatch. Expected '$FinalReason', actual '$($publicRunSummary.summary.finalReason)'."
+  }
+}
+
+$sharedEvidenceSummary = $null
+if (-not [string]::IsNullOrWhiteSpace($SharedEvidencePath)) {
+  $sharedEvidenceSummary = Get-Content -LiteralPath $SharedEvidencePath -Raw | ConvertFrom-Json -Depth 64
+  if ([string]$sharedEvidenceSummary.schema -ne 'comparevi-history/shared-evidence@v1') {
+    throw "Shared evidence schema mismatch. Actual: $($sharedEvidenceSummary.schema)"
+  }
+  if ($sharedEvidenceSummary.source.schema -ne 'comparevi-history/public-run@v1') {
+    throw "Shared evidence source schema mismatch. Actual: $($sharedEvidenceSummary.source.schema)"
   }
 }
 
@@ -219,6 +256,7 @@ $evidence = [ordered]@{
   historyReportHtml = $HistoryReportHtml
   requestPath       = $RequestPath
   publicRunPath     = $PublicRunPath
+  sharedEvidencePath = $SharedEvidencePath
   publicCommentPath = $PublicCommentPath
   publicStepSummaryPath = $PublicStepSummaryPath
   finalStatus       = $FinalStatus
@@ -227,6 +265,7 @@ $evidence = [ordered]@{
   artifactFileCount = $artifactFiles.Count
   modeSummaryMarkdown = $modeSummary
   publicRun         = if ($null -eq $publicRunSummary) { $null } else { $publicRunSummary }
+  sharedEvidence    = if ($null -eq $sharedEvidenceSummary) { $null } else { $sharedEvidenceSummary }
   modes             = @(
     foreach ($entry in $modeEntries) {
       [ordered]@{

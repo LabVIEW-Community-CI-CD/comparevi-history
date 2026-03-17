@@ -11,7 +11,8 @@
     "backend",
     "outputs",
     "summary",
-    "replay"
+    "replay",
+    "evidence"
   ],
   "properties": {
     "schema": {
@@ -75,6 +76,8 @@
         "historySummaryJson",
         "historyReportMd",
         "historyReportHtml",
+        "modeSummaryPath",
+        "modeSummaryJsonPath",
         "publicCommentPath",
         "publicStepSummaryPath"
       ],
@@ -104,6 +107,18 @@
           ]
         },
         "historyReportHtml": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modeSummaryPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modeSummaryJsonPath": {
           "type": [
             "string",
             "null"
@@ -189,6 +204,22 @@
           "type": "string"
         },
         "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "schema",
+        "path"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/shared-evidence@v1"
+        },
+        "path": {
           "type": "string"
         }
       },

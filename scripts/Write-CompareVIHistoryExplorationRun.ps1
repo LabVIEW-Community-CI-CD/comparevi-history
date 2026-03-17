@@ -2774,6 +2774,7 @@ $resultsDirResolved = if ([string]::IsNullOrWhiteSpace($ResultsDir)) {
 New-Item -ItemType Directory -Path $resultsDirResolved -Force | Out-Null
 $explorationRunPath = Join-Path $resultsDirResolved 'exploration-run.json'
 $evidenceGraphPath = Join-Path $resultsDirResolved 'evidence-graph.json'
+$sharedEvidencePath = Join-Path $resultsDirResolved 'shared-evidence.json'
 $chunkReceiptsRoot = if ($chunkPlan.summary.chunkCount -eq 0) {
   Join-Path $resultsDirResolved 'chunk-receipts'
 } else {
@@ -2941,6 +2942,8 @@ $explorationRun = [ordered]@{
   evidence = [ordered]@{
     schema = 'comparevi-history/evidence-graph@v1'
     graphPath = $evidenceGraphPath
+    sharedSchema = 'comparevi-history/shared-evidence@v1'
+    sharedPath = $sharedEvidencePath
   }
   planning = [ordered]@{
     chunkPlanPath = $chunkPlanPathResolved
@@ -2967,6 +2970,7 @@ $explorationRun = [ordered]@{
     chunkReceiptsRoot = $chunkReceiptsRoot
     explorationRunPath = $explorationRunPath
     evidenceGraphPath = $evidenceGraphPath
+    sharedEvidencePath = $sharedEvidencePath
     indexMd = $indexMdResolved
     indexHtml = $indexHtmlResolved
     timelineMd = $timelineMdResolved
@@ -3057,9 +3061,13 @@ $indexHtml = New-HtmlIndex `
 $indexMarkdown | Set-Content -LiteralPath $indexMdResolved -Encoding utf8
 $indexHtml | Set-Content -LiteralPath $indexHtmlResolved -Encoding utf8
 $evidenceGraph | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $evidenceGraphPath -Encoding utf8
+& (Join-Path $PSScriptRoot 'Write-CompareVIHistorySharedEvidence.ps1') `
+  -EvidenceGraphPath $evidenceGraphPath `
+  -OutputPath $sharedEvidencePath | Out-Null
 
 Write-ActionOutput -Key 'exploration-run-path' -Value $explorationRunPath
 Write-ActionOutput -Key 'evidence-graph-path' -Value $evidenceGraphPath
+Write-ActionOutput -Key 'shared-evidence-path' -Value $sharedEvidencePath
 Write-ActionOutput -Key 'exploration-status' -Value $finalStatus
 Write-ActionOutput -Key 'exploration-reason' -Value $finalReason
 Write-ActionOutput -Key 'index-md' -Value $indexMdResolved
@@ -3076,6 +3084,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ''
     ('- Exploration run: `{0}`' -f $explorationRunPath)
     ('- Evidence graph: `{0}`' -f $evidenceGraphPath)
+    ('- Shared evidence: `{0}`' -f $sharedEvidencePath)
     ('- Revision count: `{0}`' -f [int]$catalog.summary.revisionCount)
     ('- Pair count: `{0}`' -f $pairCount)
     ('- Total chunk count: `{0}`' -f $runStats.totalChunkCount)
