@@ -14,6 +14,8 @@ of repo-local inline comment renderers.
   [comparevi-history-comment-gated.yml](examples/comparevi-history-comment-gated.yml)
 - Example consumer target catalog source:
   [comparevi-history-consumer-targets.json](examples/comparevi-history-consumer-targets.json)
+- Example consumer PR policy source:
+  [comparevi-history-pr-policy.json](examples/comparevi-history-pr-policy.json)
 
 ## Public Mode Contract
 
@@ -36,6 +38,7 @@ Aggregate aliases such as `default`, `full`, and `all` are not part of the publi
 Consumer repositories should contain only:
 
 - `.github/comparevi-history-targets.json` (checked-in target catalog)
+- `.github/comparevi-history-pr-policy.json` (checked-in automatic PR policy)
 - workflow trigger wiring and permissions policy
 - small repo-local docs explaining what target ids exist and when the history surface should run
 
@@ -57,8 +60,7 @@ Consumer repositories should not contain:
   to trigger diagnostics from a trusted maintainer comment.
 - Run both patterns on trusted maintainer-controlled workflows that pre-pull the hosted NI Linux image serially and use
   a repo-local adapter such as `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1`.
-- Keep the target catalog checked in under `.github/comparevi-history-targets.json` so the consumer repo owns target
-  policy without owning execution logic.
+- Keep the target catalog checked in under `.github/comparevi-history-targets.json` and the automatic PR policy checked in under `.github/comparevi-history-pr-policy.json` so the consumer repo owns inspection policy without owning execution logic.
 
 ## Fork Adoption and Upstream Alignment
 
@@ -107,6 +109,7 @@ Consumer repositories should not contain:
   `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1` so consumers use the hosted NI Linux contract instead of a
   repo-specific self-hosted Windows assumption.
 - Both templates expect the consumer repo to define target ids in `.github/comparevi-history-targets.json`.
+- The automatic PR discovery template also expects `.github/comparevi-history-pr-policy.json` when a repo wants changed-VI filters, target allowlists, branch-budget defaults, or reviewer-surface toggles under source control.
 - The action owns reviewer-facing rendering. Consumers should publish PR comments from `public-comment-path` and append
   `public-step-summary-path` instead of rebuilding markdown inline.
 - The comment-gated template writes the action-owned step summary first, then attempts to publish the PR comment. If the
@@ -119,7 +122,7 @@ Consumer repositories should not contain:
 
 ## Recommended Adoption
 
-1. Check in `.github/comparevi-history-targets.json` first.
+1. Check in `.github/comparevi-history-targets.json` and `.github/comparevi-history-pr-policy.json` first.
 2. Start with the maintainer-dispatched template when your project is new to VI History diagnostics.
 3. Add the automatic PR discovery template when you want same-repo pull requests to run automatically from the checked-
    in target catalog.

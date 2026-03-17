@@ -1,0 +1,38 @@
+{
+  "schema": "comparevi-history/pr-policy@v1",
+  "discovery": {
+    "includePaths": [
+      "Tooling/deployment/**/*.vi"
+    ],
+    "excludePaths": [
+      "Tooling/deployment/archive/**/*.vi"
+    ],
+    "allowedTargetIds": [
+      "vip-post-install",
+      "vip-pre-install"
+    ],
+    "maxChangedViCount": 4,
+    "unmatchedChangedViBehavior": "block"
+  },
+  "execution": {
+    "publicModes": [
+      "attributes",
+      "front-panel",
+      "block-diagram"
+    ],
+    "history": {
+      "branchBudget": {
+        "sourceBranchRef": "develop",
+        "maxCommitCount": 50
+      },
+      "keepArtifactsOnNoDiff": true
+    }
+  },
+  "reviewerSurface": {
+    "emitCommentBody": true,
+    "emitStepSummary": true
+  },
+  "trust": {
+    "forkBehavior": "block"
+  }
+}

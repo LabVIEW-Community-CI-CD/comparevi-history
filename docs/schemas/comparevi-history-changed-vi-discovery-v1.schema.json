@@ -10,8 +10,10 @@
     "repository",
     "eventName",
     "targetCatalog",
+    "prPolicy",
     "pullRequest",
     "changedViFiles",
+    "excludedViFiles",
     "matchedTargets",
     "summary"
   ],
@@ -29,12 +31,18 @@
     },
     "eventName": {
       "type": "string",
-      "enum": ["pull_request", "pull_request_target"]
+      "enum": [
+        "pull_request",
+        "pull_request_target"
+      ]
     },
     "targetCatalog": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema", "path"],
+      "required": [
+        "schema",
+        "path"
+      ],
       "properties": {
         "schema": {
           "const": "comparevi-history/consumer-targets@v1"
@@ -42,6 +50,167 @@
         "path": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "prPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "applied",
+        "discovery",
+        "execution",
+        "reviewerSurface",
+        "trust"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/pr-policy@v1"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "discovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "includePaths",
+            "excludePaths",
+            "allowedTargetIds",
+            "unmatchedChangedViBehavior"
+          ],
+          "properties": {
+            "includePaths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "excludePaths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "allowedTargetIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "maxChangedViCount": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "unmatchedChangedViBehavior": {
+              "type": "string",
+              "enum": [
+                "ignore",
+                "block"
+              ]
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "publicModes",
+            "history"
+          ],
+          "properties": {
+            "publicModes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "attributes",
+                  "front-panel",
+                  "block-diagram"
+                ]
+              }
+            },
+            "history": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "branchBudget",
+                "keepArtifactsOnNoDiff"
+              ],
+              "properties": {
+                "branchBudget": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sourceBranchRef",
+                    "maxCommitCount"
+                  ],
+                  "properties": {
+                    "sourceBranchRef": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "maxCommitCount": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 1
+                    }
+                  }
+                },
+                "keepArtifactsOnNoDiff": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        "reviewerSurface": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "emitCommentBody",
+            "emitStepSummary"
+          ],
+          "properties": {
+            "emitCommentBody": {
+              "type": "boolean"
+            },
+            "emitStepSummary": {
+              "type": "boolean"
+            }
+          }
+        },
+        "trust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "forkBehavior"
+          ],
+          "properties": {
+            "forkBehavior": {
+              "type": "string",
+              "enum": [
+                "block"
+              ]
+            }
+          }
         }
       }
     },
@@ -65,7 +234,10 @@
           "minimum": 1
         },
         "htmlUrl": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "baseRepository": {
           "type": "string",
@@ -105,7 +277,10 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["status", "currentPath"],
+        "required": [
+          "status",
+          "currentPath"
+        ],
         "properties": {
           "status": {
             "type": "string",
@@ -116,7 +291,48 @@
             "minLength": 1
           },
           "previousPath": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "excludedViFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "currentPath",
+          "exclusionReason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exclusionReason": {
+            "type": "string",
+            "enum": [
+              "not-included-by-pr-policy",
+              "excluded-by-pr-policy",
+              "no-target-catalog-match",
+              "target-id-not-allowed",
+              "no-policy-allowed-public-modes"
+            ]
           }
         }
       }
@@ -126,7 +342,17 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["targetId", "targetPath", "matchKind", "changeStatus"],
+        "required": [
+          "targetId",
+          "targetPath",
+          "publicModes",
+          "requestedModes",
+          "requestedModeSource",
+          "history",
+          "keepArtifactsOnNoDiff",
+          "matchKind",
+          "changeStatus"
+        ],
         "properties": {
           "targetId": {
             "type": "string",
@@ -140,19 +366,92 @@
             "type": "array",
             "items": {
               "type": "string",
-              "minLength": 1
+              "enum": [
+                "attributes",
+                "front-panel",
+                "block-diagram"
+              ]
             }
+          },
+          "requestedModes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "attributes",
+                "front-panel",
+                "block-diagram"
+              ]
+            }
+          },
+          "requestedModeSource": {
+            "type": "string",
+            "enum": [
+              "target-public-modes",
+              "pr-policy"
+            ]
+          },
+          "history": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "branchBudget"
+            ],
+            "properties": {
+              "branchBudget": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourceBranchRef",
+                  "maxCommitCount",
+                  "source"
+                ],
+                "properties": {
+                  "sourceBranchRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "maxCommitCount": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "target-catalog",
+                      "pr-policy"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "keepArtifactsOnNoDiff": {
+            "type": "boolean"
           },
           "matchKind": {
             "type": "string",
-            "enum": ["current-path", "previous-path"]
+            "enum": [
+              "current-path",
+              "previous-path"
+            ]
           },
           "currentPath": {
             "type": "string",
             "minLength": 1
           },
           "previousPath": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "changeStatus": {
             "type": "string",
@@ -164,17 +463,50 @@
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["executionStatus", "executionReason", "changedViCount", "matchedTargetCount"],
+      "required": [
+        "executionStatus",
+        "executionReason",
+        "changedViCount",
+        "eligibleChangedViCount",
+        "excludedViCount",
+        "unmatchedViCount",
+        "matchedTargetCount"
+      ],
       "properties": {
         "executionStatus": {
           "type": "string",
-          "enum": ["ready", "skipped", "blocked"]
+          "enum": [
+            "ready",
+            "skipped",
+            "blocked"
+          ]
         },
         "executionReason": {
           "type": "string",
-          "minLength": 1
+          "enum": [
+            "matched-targets",
+            "untrusted-cross-repository-pull-request",
+            "pr-files-api-limit-exceeded",
+            "max-changed-vi-count-exceeded",
+            "unmatched-changed-vi-detected",
+            "no-vi-files-changed",
+            "no-policy-eligible-vi-files",
+            "no-target-catalog-matches"
+          ]
         },
         "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "eligibleChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excludedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmatchedViCount": {
           "type": "integer",
           "minimum": 0
         },

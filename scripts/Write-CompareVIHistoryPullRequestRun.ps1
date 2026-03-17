@@ -74,6 +74,59 @@ function Get-OptionalString {
   return $stringValue.Trim()
 }
 
+function Get-NestedValue {
+  param(
+    [AllowNull()]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Path,
+    [AllowNull()]
+    $Default = $null
+  )
+
+  $current = $Object
+  foreach ($segment in $Path) {
+    if ($null -eq $current) {
+      return $Default
+    }
+
+    $property = $current.PSObject.Properties[$segment]
+    if ($null -eq $property) {
+      return $Default
+    }
+
+    $current = $property.Value
+  }
+
+  if ($null -eq $current) {
+    return $Default
+  }
+
+  return $current
+}
+
+function ConvertTo-ObjectArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [string] -or $Value -isnot [System.Collections.IEnumerable]) {
+    return @($Value)
+  }
+
+  $items = New-Object System.Collections.Generic.List[object]
+  foreach ($item in ([System.Collections.IEnumerable]$Value)) {
+    $items.Add($item) | Out-Null
+  }
+
+  return @($items | ForEach-Object { $_ })
+}
+
 $basePath = (Get-Location).Path
 $discoveryPathResolved = Resolve-AbsolutePath -Path $DiscoveryPath -BasePath $basePath
 $resultsDirResolved = Resolve-AbsolutePath -Path $ResultsDir -BasePath $basePath
@@ -98,10 +151,20 @@ if ($null -ne $targetRunsManifestPathResolved -and (Test-Path -LiteralPath $targ
   $targetManifest = Read-JsonFile -Path $targetRunsManifestPathResolved
 }
 
+$policy = Get-NestedValue -Object $discovery -Path @('prPolicy')
+$emitCommentBody = [bool](Get-NestedValue -Object $policy -Path @('reviewerSurface', 'emitCommentBody') -Default $true)
+$emitStepSummary = [bool](Get-NestedValue -Object $policy -Path @('reviewerSurface', 'emitStepSummary') -Default $true)
+$policyPath = Get-OptionalString -Value (Get-NestedValue -Object $policy -Path @('path'))
+$policyApplied = [bool](Get-NestedValue -Object $policy -Path @('applied') -Default $false)
+
 $discoveryStatus = [string]$discovery.summary.executionStatus
 $discoveryReason = [string]$discovery.summary.executionReason
 $changedViCount = [int]$discovery.summary.changedViCount
+$eligibleChangedViCount = if ($null -eq $discovery.summary.eligibleChangedViCount) { $changedViCount } else { [int]$discovery.summary.eligibleChangedViCount }
+$excludedViCount = if ($null -eq $discovery.summary.excludedViCount) { 0 } else { [int]$discovery.summary.excludedViCount }
+$unmatchedViCount = if ($null -eq $discovery.summary.unmatchedViCount) { 0 } else { [int]$discovery.summary.unmatchedViCount }
 $matchedTargetCount = [int]$discovery.summary.matchedTargetCount
+$excludedViFiles = @($discovery.excludedViFiles | ForEach-Object { $_ })
 
 $targets = @()
 $executedTargetCount = 0
@@ -147,7 +210,12 @@ $commentLines.Add('## comparevi-history PR diagnostics') | Out-Null
 $commentLines.Add('') | Out-Null
 $commentLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
 $commentLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
+$commentLines.Add(('- PR policy: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($policyPath)) { 'platform defaults' } else { $policyPath }))) | Out-Null
+$commentLines.Add(('- PR policy applied: `{0}`' -f $policyApplied.ToString().ToLowerInvariant())) | Out-Null
 $commentLines.Add(('- Changed VIs: `{0}`' -f $changedViCount)) | Out-Null
+$commentLines.Add(('- Policy-eligible changed VIs: `{0}`' -f $eligibleChangedViCount)) | Out-Null
+$commentLines.Add(('- Excluded changed VIs: `{0}`' -f $excludedViCount)) | Out-Null
+$commentLines.Add(('- Unmatched changed VIs: `{0}`' -f $unmatchedViCount)) | Out-Null
 $commentLines.Add(('- Matched catalog targets: `{0}`' -f $matchedTargetCount)) | Out-Null
 $commentLines.Add(('- Executed targets: `{0}`' -f $executedTargetCount)) | Out-Null
 $commentLines.Add(('- Failed targets: `{0}`' -f $failedTargetCount)) | Out-Null
@@ -163,13 +231,27 @@ if (@($discovery.changedViFiles).Count -gt 0) {
   $commentLines.Add('') | Out-Null
 }
 
+if (@($excludedViFiles).Count -gt 0) {
+  $commentLines.Add('### Excluded VI files') | Out-Null
+  foreach ($excluded in @($excludedViFiles)) {
+    $commentLines.Add(('- `{0}` ({1}) reason=`{2}`' -f [string]$excluded.currentPath, [string]$excluded.status, [string]$excluded.exclusionReason)) | Out-Null
+  }
+  $commentLines.Add('') | Out-Null
+}
+
 if (@($targets).Count -gt 0) {
   $commentLines.Add('### Target results') | Out-Null
   $commentLines.Add('') | Out-Null
-  $commentLines.Add('| Target | Status | Reason |') | Out-Null
-  $commentLines.Add('| --- | --- | --- |') | Out-Null
+  $commentLines.Add('| Target | Requested modes | Status | Reason |') | Out-Null
+  $commentLines.Add('| --- | --- | --- | --- |') | Out-Null
   foreach ($target in @($targets)) {
-    $commentLines.Add(('| `{0}` | `{1}` | `{2}` |' -f [string]$target.targetPath, [string]$target.finalStatus, [string]$target.finalReason)) | Out-Null
+    $requestedModes = @(
+      @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $target -Path @('requestedModes'))) |
+        ForEach-Object { Get-OptionalString -Value $_ } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $requestedModeLabel = if ($requestedModes.Count -eq 0) { 'n/a' } else { $requestedModes -join ', ' }
+    $commentLines.Add(('| `{0}` | `{1}` | `{2}` | `{3}` |' -f [string]$target.targetPath, $requestedModeLabel, [string]$target.finalStatus, [string]$target.finalReason)) | Out-Null
   }
   $commentLines.Add('') | Out-Null
 } else {
@@ -180,7 +262,9 @@ if (@($targets).Count -gt 0) {
 
 $commentLines.Add('Artifacts in this run contain the discovery receipt, per-target public run receipts, shared evidence receipts, and reviewer-facing markdown/html surfaces.') | Out-Null
 $commentBody = $commentLines -join "`n"
-$commentBody | Set-Content -LiteralPath $publicCommentPath -Encoding utf8
+if ($emitCommentBody) {
+  $commentBody | Set-Content -LiteralPath $publicCommentPath -Encoding utf8
+}
 
 $stepSummaryLines = New-Object System.Collections.Generic.List[string]
 $stepSummaryLines.Add('## comparevi-history pull request run') | Out-Null
@@ -189,21 +273,34 @@ $stepSummaryLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
 $stepSummaryLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
 $stepSummaryLines.Add(('- Discovery receipt: `{0}`' -f $discoveryPathResolved)) | Out-Null
 $stepSummaryLines.Add(('- Aggregate receipt: `{0}`' -f $prRunPath)) | Out-Null
-$stepSummaryLines.Add(('- Public comment body: `{0}`' -f $publicCommentPath)) | Out-Null
-$stepSummaryLines.Add(('- Public step summary: `{0}`' -f $publicStepSummaryPath)) | Out-Null
+$stepSummaryLines.Add(('- Public comment body enabled: `{0}`' -f $emitCommentBody.ToString().ToLowerInvariant())) | Out-Null
+$stepSummaryLines.Add(('- Public step summary enabled: `{0}`' -f $emitStepSummary.ToString().ToLowerInvariant())) | Out-Null
+$stepSummaryLines.Add(('- Public comment body: `{0}`' -f $(if ($emitCommentBody) { $publicCommentPath } else { 'disabled-by-pr-policy' }))) | Out-Null
+$stepSummaryLines.Add(('- Public step summary: `{0}`' -f $(if ($emitStepSummary) { $publicStepSummaryPath } else { 'disabled-by-pr-policy' }))) | Out-Null
 if ($null -ne $targetManifest) {
   $stepSummaryLines.Add(('- Target runs manifest: `{0}`' -f $targetRunsManifestPathResolved)) | Out-Null
 }
 $stepSummaryLines.Add('') | Out-Null
 $stepSummaryLines.Add($commentBody) | Out-Null
 $stepSummaryContent = $stepSummaryLines -join "`n"
-$stepSummaryContent | Set-Content -LiteralPath $publicStepSummaryPath -Encoding utf8
+if ($emitStepSummary) {
+  $stepSummaryContent | Set-Content -LiteralPath $publicStepSummaryPath -Encoding utf8
+}
 
 $receiptTargets = New-Object System.Collections.Generic.List[object]
 foreach ($target in @($targets)) {
   $receiptTargets.Add([ordered]@{
       targetId = [string]$target.targetId
       targetPath = [string]$target.targetPath
+      requestedModes = @(
+        @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $target -Path @('requestedModes'))) |
+          ForEach-Object { Get-OptionalString -Value $_ } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+      )
+      requestedModeSource = Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('requestedModeSource'))
+      sourceBranchRef = Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('sourceBranchRef'))
+      maxBranchCommits = if ($null -eq (Get-NestedValue -Object $target -Path @('maxBranchCommits'))) { $null } else { [int](Get-NestedValue -Object $target -Path @('maxBranchCommits')) }
+      keepArtifactsOnNoDiff = [bool](Get-NestedValue -Object $target -Path @('keepArtifactsOnNoDiff') -Default $false)
       matchKind = Get-OptionalString -Value $target.matchKind
       finalStatus = [string]$target.finalStatus
       finalReason = [string]$target.finalReason
@@ -228,44 +325,52 @@ $receipt = [ordered]@{
     headSha = [string]$discovery.pullRequest.headSha
     isFork = [bool]$discovery.pullRequest.isFork
   }
+  prPolicy = $policy
   discovery = [ordered]@{
     schema = 'comparevi-history/changed-vi-discovery@v1'
     path = $discoveryPathResolved
     status = $discoveryStatus
     reason = $discoveryReason
     changedViCount = $changedViCount
+    eligibleChangedViCount = $eligibleChangedViCount
+    excludedViCount = $excludedViCount
+    unmatchedViCount = $unmatchedViCount
     matchedTargetCount = $matchedTargetCount
   }
   outputs = [ordered]@{
     resultsDir = $resultsDirResolved
     prRunPath = $prRunPath
-    publicCommentPath = $publicCommentPath
-    publicStepSummaryPath = $publicStepSummaryPath
+    publicCommentPath = if ($emitCommentBody) { $publicCommentPath } else { $null }
+    publicStepSummaryPath = if ($emitStepSummary) { $publicStepSummaryPath } else { $null }
     targetRunsManifestPath = if ($null -eq $targetManifest) { $null } else { $targetRunsManifestPathResolved }
   }
   summary = [ordered]@{
     finalStatus = $finalStatus
     finalReason = $finalReason
     changedViCount = $changedViCount
+    eligibleChangedViCount = $eligibleChangedViCount
+    excludedViCount = $excludedViCount
+    unmatchedViCount = $unmatchedViCount
     matchedTargetCount = $matchedTargetCount
     executedTargetCount = $executedTargetCount
     failedTargetCount = $failedTargetCount
     totalProcessed = $totalProcessed
     totalDiffs = $totalDiffs
   }
+  excludedViFiles = @($excludedViFiles | ForEach-Object { $_ })
   targets = @($receiptTargets | ForEach-Object { $_ })
 }
 
 $receipt | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $prRunPath -Encoding utf8
 
 Write-ActionOutput -Key 'pr-run-path' -Value $prRunPath
-Write-ActionOutput -Key 'public-comment-path' -Value $publicCommentPath
-Write-ActionOutput -Key 'public-step-summary-path' -Value $publicStepSummaryPath
+Write-ActionOutput -Key 'public-comment-path' -Value $(if ($emitCommentBody) { $publicCommentPath } else { '' })
+Write-ActionOutput -Key 'public-step-summary-path' -Value $(if ($emitStepSummary) { $publicStepSummaryPath } else { '' })
 Write-ActionOutput -Key 'results-dir' -Value $resultsDirResolved
 Write-ActionOutput -Key 'final-status' -Value $finalStatus
 Write-ActionOutput -Key 'final-reason' -Value $finalReason
 
-if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
+if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath) -and $emitStepSummary) {
   $stepSummaryContent | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
 }
 

@@ -12,6 +12,11 @@ on:
         required: false
         default: .github/comparevi-history-targets.json
         type: string
+      pr_policy_path:
+        description: Optional trusted PR policy path resolved from the pull request base checkout.
+        required: false
+        default: ''
+        type: string
       results_dir:
         description: Workflow-owned results root for aggregate PR diagnostics receipts and per-target runs.
         required: false
@@ -135,6 +140,7 @@ jobs:
             -EventPath $env:GITHUB_EVENT_PATH `
             -Repository '${{ steps.defaults.outputs.consumer_repository }}' `
             -TargetSpecPath (Join-Path $env:GITHUB_WORKSPACE 'trusted-consumer' '${{ inputs.target_spec_path }}') `
+            -PrPolicyPath $(if ([string]::IsNullOrWhiteSpace('${{ inputs.pr_policy_path }}')) { '' } else { (Join-Path $env:GITHUB_WORKSPACE 'trusted-consumer' '${{ inputs.pr_policy_path }}') }) `
             -ResultsDir '${{ steps.results_root.outputs['results-root'] }}' `
             -GitHubToken $env:GITHUB_TOKEN `
             -GitHubOutputPath $env:GITHUB_OUTPUT `

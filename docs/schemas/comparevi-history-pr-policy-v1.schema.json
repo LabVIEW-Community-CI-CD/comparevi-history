@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-pr-policy-v1.schema.json",
+  "title": "comparevi-history pull request policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/pr-policy@v1"
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "includePaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "excludePaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "allowedTargetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "maxChangedViCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unmatchedChangedViBehavior": {
+          "type": "string",
+          "enum": [
+            "ignore",
+            "block"
+          ]
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publicModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "attributes",
+              "front-panel",
+              "block-diagram"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "history": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "branchBudget": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sourceBranchRef": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "maxCommitCount": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "keepArtifactsOnNoDiff": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "reviewerSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "emitCommentBody": {
+          "type": "boolean"
+        },
+        "emitStepSummary": {
+          "type": "boolean"
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "forkBehavior": {
+          "type": "string",
+          "enum": [
+            "block"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -7,14 +7,20 @@ New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
 try {
   $targetSpecPath = Join-Path $tempRoot 'comparevi-history-targets.json'
-  @'
+  @"
 {
   "schema": "comparevi-history/consumer-targets@v1",
   "targets": [
     {
       "id": "vip-post-install",
       "path": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
-      "publicModes": ["attributes", "front-panel", "block-diagram"]
+      "publicModes": ["attributes", "front-panel", "block-diagram"],
+      "history": {
+        "branchBudget": {
+          "sourceBranchRef": "release/2026-q1",
+          "maxCommitCount": 15
+        }
+      }
     },
     {
       "id": "vip-pre-install",
@@ -23,15 +29,55 @@ try {
     }
   ]
 }
-'@ | Set-Content -LiteralPath $targetSpecPath -Encoding utf8
+"@ | Set-Content -LiteralPath $targetSpecPath -Encoding utf8
+
+  $prPolicyPath = Join-Path $tempRoot 'comparevi-history-pr-policy.json'
+  @"
+{
+  "schema": "comparevi-history/pr-policy@v1",
+  "discovery": {
+    "includePaths": [
+      "Tooling/deployment/**/*.vi"
+    ],
+    "excludePaths": [
+      "Tooling/deployment/archive/**/*.vi"
+    ],
+    "allowedTargetIds": [
+      "vip-post-install"
+    ],
+    "maxChangedViCount": 2,
+    "unmatchedChangedViBehavior": "ignore"
+  },
+  "execution": {
+    "publicModes": [
+      "attributes",
+      "front-panel"
+    ],
+    "history": {
+      "branchBudget": {
+        "sourceBranchRef": "develop",
+        "maxCommitCount": 50
+      },
+      "keepArtifactsOnNoDiff": true
+    }
+  },
+  "reviewerSurface": {
+    "emitCommentBody": false,
+    "emitStepSummary": true
+  },
+  "trust": {
+    "forkBehavior": "block"
+  }
+}
+"@ | Set-Content -LiteralPath $prPolicyPath -Encoding utf8
 
   $eventPath = Join-Path $tempRoot 'event.json'
-  @'
+  @"
 {
   "pull_request": {
     "number": 42,
     "html_url": "https://github.com/example/repo/pull/42",
-    "changed_files": 3,
+    "changed_files": 4,
     "base": {
       "ref": "develop",
       "sha": "base-sha",
@@ -49,10 +95,10 @@ try {
     }
   }
 }
-'@ | Set-Content -LiteralPath $eventPath -Encoding utf8
+"@ | Set-Content -LiteralPath $eventPath -Encoding utf8
 
   $filesPayloadPath = Join-Path $tempRoot 'files.json'
-  @'
+  @"
 [
   {
     "filename": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
@@ -60,15 +106,18 @@ try {
   },
   {
     "filename": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
-    "previous_filename": "Tooling/deployment/VIP_Pre-Install Legacy.vi",
-    "status": "renamed"
+    "status": "modified"
+  },
+  {
+    "filename": "Tooling/deployment/archive/Legacy.vi",
+    "status": "modified"
   },
   {
     "filename": "README.md",
     "status": "modified"
   }
 ]
-'@ | Set-Content -LiteralPath $filesPayloadPath -Encoding utf8
+"@ | Set-Content -LiteralPath $filesPayloadPath -Encoding utf8
 
   $outputPath = Join-Path $tempRoot 'discovery.out'
   $resultsDir = Join-Path $tempRoot 'results'
@@ -76,37 +125,101 @@ try {
     -EventName 'pull_request' `
     -EventPath $eventPath `
     -TargetSpecPath $targetSpecPath `
+    -PrPolicyPath $prPolicyPath `
     -ResultsDir $resultsDir `
     -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
     -FilesPayloadPath $filesPayloadPath `
     -GitHubOutputPath $outputPath
 
-  $receipt = $receiptJson | ConvertFrom-Json -Depth 50
+  $receipt = $receiptJson | ConvertFrom-Json -Depth 64
   if ($receipt.schema -ne 'comparevi-history/changed-vi-discovery@v1') {
     throw 'Discovery schema mismatch.'
   }
-  if ($receipt.summary.executionStatus -ne 'ready') {
-    throw 'Discovery should be ready for same-repo VI changes.'
+  if (-not $receipt.prPolicy.applied) {
+    throw 'Discovery should record the applied PR policy.'
   }
-  if ($receipt.summary.changedViCount -ne 2) {
+  if ($receipt.summary.executionStatus -ne 'ready') {
+    throw 'Discovery should stay ready for same-repo VI changes within policy limits.'
+  }
+  if ($receipt.summary.changedViCount -ne 3) {
     throw 'Changed VI count mismatch.'
   }
-  if ($receipt.summary.matchedTargetCount -ne 2) {
+  if ($receipt.summary.eligibleChangedViCount -ne 2) {
+    throw 'Policy-eligible changed VI count mismatch.'
+  }
+  if ($receipt.summary.excludedViCount -ne 2) {
+    throw 'Excluded VI count mismatch.'
+  }
+  if ($receipt.summary.unmatchedViCount -ne 1) {
+    throw 'Unmatched VI count mismatch.'
+  }
+  if ($receipt.summary.matchedTargetCount -ne 1) {
     throw 'Matched target count mismatch.'
   }
-  if ($receipt.matchedTargets[1].matchKind -ne 'current-path') {
-    throw 'Expected current-path match for renamed current target path.'
+  if ($receipt.matchedTargets[0].requestedModes.Count -ne 2) {
+    throw 'Discovery should narrow requested modes through PR policy.'
+  }
+  if ($receipt.matchedTargets[0].requestedModes[0] -ne 'attributes' -or $receipt.matchedTargets[0].requestedModes[1] -ne 'front-panel') {
+    throw 'Requested modes order mismatch.'
+  }
+  if ($receipt.matchedTargets[0].history.branchBudget.source -ne 'pr-policy') {
+    throw 'Branch budget source mismatch.'
+  }
+  if ($receipt.matchedTargets[0].history.branchBudget.sourceBranchRef -ne 'develop') {
+    throw 'Policy branch-budget source branch mismatch.'
+  }
+  if ($receipt.matchedTargets[0].keepArtifactsOnNoDiff -ne $true) {
+    throw 'PR policy keepArtifactsOnNoDiff was not surfaced.'
+  }
+  if (-not ($receipt.excludedViFiles | Where-Object { $_.currentPath -eq 'Tooling/deployment/VIP_Pre-Install Custom Action.vi' -and $_.exclusionReason -eq 'target-id-not-allowed' })) {
+    throw 'Expected target-id exclusion for the pre-install VI.'
+  }
+  if (-not ($receipt.excludedViFiles | Where-Object { $_.currentPath -eq 'Tooling/deployment/archive/Legacy.vi' -and $_.exclusionReason -eq 'excluded-by-pr-policy' })) {
+    throw 'Expected archive exclusion from the PR policy.'
   }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw
-  foreach ($requiredKey in @('changed-vi-discovery-path=', 'execution-status=ready', 'matched-target-count=2', 'pull-request-number=42')) {
+  foreach ($requiredKey in @('pr-policy-applied=true', 'eligible-changed-vi-count=2', 'excluded-vi-count=2', 'matched-target-count=1', 'pull-request-number=42')) {
     if ($outputText -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."
     }
   }
 
+  $strictPolicyPath = Join-Path $tempRoot 'strict-pr-policy.json'
+  @"
+{
+  "schema": "comparevi-history/pr-policy@v1",
+  "discovery": {
+    "includePaths": [
+      "Tooling/deployment/**/*.vi"
+    ],
+    "maxChangedViCount": 1,
+    "unmatchedChangedViBehavior": "block"
+  },
+  "trust": {
+    "forkBehavior": "block"
+  }
+}
+"@ | Set-Content -LiteralPath $strictPolicyPath -Encoding utf8
+
+  $strictReceiptJson = & $scriptPath `
+    -EventName 'pull_request' `
+    -EventPath $eventPath `
+    -TargetSpecPath $targetSpecPath `
+    -PrPolicyPath $strictPolicyPath `
+    -ResultsDir (Join-Path $tempRoot 'strict-results') `
+    -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+    -FilesPayloadPath $filesPayloadPath
+  $strictReceipt = $strictReceiptJson | ConvertFrom-Json -Depth 64
+  if ($strictReceipt.summary.executionStatus -ne 'blocked') {
+    throw 'Strict PR policy should block oversized changed-VI sets.'
+  }
+  if ($strictReceipt.summary.executionReason -ne 'max-changed-vi-count-exceeded') {
+    throw 'Strict PR policy block reason mismatch.'
+  }
+
   $forkEventPath = Join-Path $tempRoot 'fork-event.json'
-  @'
+  @"
 {
   "pull_request": {
     "number": 7,
@@ -128,16 +241,17 @@ try {
     }
   }
 }
-'@ | Set-Content -LiteralPath $forkEventPath -Encoding utf8
+"@ | Set-Content -LiteralPath $forkEventPath -Encoding utf8
 
   $forkReceiptJson = & $scriptPath `
     -EventName 'pull_request' `
     -EventPath $forkEventPath `
     -TargetSpecPath $targetSpecPath `
+    -PrPolicyPath $prPolicyPath `
     -ResultsDir (Join-Path $tempRoot 'fork-results') `
     -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
     -FilesPayloadPath $filesPayloadPath
-  $forkReceipt = $forkReceiptJson | ConvertFrom-Json -Depth 50
+  $forkReceipt = $forkReceiptJson | ConvertFrom-Json -Depth 64
   if ($forkReceipt.summary.executionStatus -ne 'blocked') {
     throw 'Fork pull request must be blocked.'
   }
