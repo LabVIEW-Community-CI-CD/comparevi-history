@@ -96,7 +96,8 @@
         "chunkCountWithMetadata",
         "categoryCounts",
         "comparisonPairs",
-        "bucketCounts"
+        "bucketCounts",
+        "previewImages"
       ],
       "properties": {
         "suppressionProfile": {
@@ -166,6 +167,66 @@
           "additionalProperties": {
             "type": "integer",
             "minimum": 0
+          }
+        },
+        "previewImages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "chunkId",
+              "mode",
+              "category",
+              "comparisonPair",
+              "mimeType",
+              "byteLength",
+              "relativePath",
+              "sortKey"
+            ],
+            "properties": {
+              "chunkId": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "comparisonPair": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "firstPath",
+                  "secondPath"
+                ],
+                "properties": {
+                  "firstPath": {
+                    "type": "string"
+                  },
+                  "secondPath": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "byteLength": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "relativePath": {
+                "type": "string"
+              },
+              "sortKey": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
           }
         }
       },
@@ -366,7 +427,15 @@
         "finalReason",
         "suppressionProfile",
         "captureCount",
-        "imageArtifactCount"
+        "imageArtifactCount",
+        "previewImageCount",
+        "previewGalleryCap",
+        "previewGalleryCount",
+        "previewGalleryOmittedCount",
+        "stepSummaryPreviewCap",
+        "stepSummaryPreviewCount",
+        "stepSummaryPreviewOmittedCount",
+        "stepSummaryPreviewByteBudget"
       ],
       "properties": {
         "revisionCount": {
@@ -407,6 +476,38 @@
           "minimum": 0
         },
         "imageArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewImageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewGalleryCap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewGalleryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previewGalleryOmittedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewCap": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewOmittedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stepSummaryPreviewByteBudget": {
           "type": "integer",
           "minimum": 0
         }

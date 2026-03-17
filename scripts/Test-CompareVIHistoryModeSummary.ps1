@@ -122,6 +122,9 @@ try {
   if ($summary -notmatch 'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`') {
     throw 'Summary did not surface the aggregate capture metadata.'
   }
+  if ($summary -notmatch 'Preview images: `1`') {
+    throw 'Summary did not surface the preview image count.'
+  }
   if ($summary -notmatch 'Category counts: `Block Diagram Cosmetic \(1\), Block Diagram objects \(2\)`') {
     throw 'Summary did not surface normalized category counts.'
   }
@@ -137,7 +140,7 @@ try {
   if ($summary -notmatch '\| full \| unsuppressed \| none \| 2 \| 1 \| 1 \| in-band \| captures=1; images=1 \| ok \|') {
     throw 'Summary did not include the raw full-mode row.'
   }
-  if ($summary -notmatch '- full: `categories=Block Diagram Cosmetic \(1\), Block Diagram objects \(2\); comparison-pairs=/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\); buckets=metadata-rich \(1\); metadata=captures:1, images:1, artifact-dirs:1, mime-types:image/png`') {
+  if ($summary -notmatch '- full: `categories=Block Diagram Cosmetic \(1\), Block Diagram objects \(2\); comparison-pairs=/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\); buckets=metadata-rich \(1\); metadata=captures:1, images:1, artifact-dirs:1, mime-types:image/png; preview-images=1`') {
     throw 'Summary did not include the per-mode metadata detail line.'
   }
   if (-not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
@@ -171,6 +174,18 @@ try {
   }
   if (($modeSummaryJson.metadata.imageMimeTypes -join ',') -ne 'image/png') {
     throw 'Mode summary JSON mime-type aggregation mismatch.'
+  }
+  if ($modeSummaryJson.previewImages.Count -ne 1) {
+    throw 'Mode summary JSON preview image count mismatch.'
+  }
+  if ($modeSummaryJson.previewImages[0].artifactRelativePath -ne 'cli-images/cli-image-00.png') {
+    throw 'Mode summary JSON preview image artifact-relative path mismatch.'
+  }
+  if ($modeSummaryJson.previewImages[0].byteLength -ne 4) {
+    throw 'Mode summary JSON preview image byte-length mismatch.'
+  }
+  if ($modeSummaryJson.previewImages[0].comparisonPair.firstPath -ne '/compare/m0/Base.vi' -or $modeSummaryJson.previewImages[0].comparisonPair.secondPath -ne '/compare/m0/Head.vi') {
+    throw 'Mode summary JSON preview image comparison pair mismatch.'
   }
 
   $githubOutput = Get-Content -LiteralPath $githubOutputPath -Raw
