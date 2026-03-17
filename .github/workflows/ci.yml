@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
           ./actionlint -color
           ./actionlint -color \
+            docs/examples/comparevi-history-manual-vi-exploration.yml \
             docs/examples/comparevi-history-workflow-dispatch.yml \
             docs/examples/comparevi-history-comment-gated.yml
 
@@ -103,6 +104,7 @@ jobs:
             'scripts/Resolve-CompareVIHistoryPublishedRefs.ps1',
             'scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Resolve-CompareVIHistoryRequest.ps1',
+            'scripts/Write-CompareVIHistoryRevisionCatalog.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
             'scripts/Format-CompareVIHistoryModeSummary.ps1',
             'scripts/Write-CompareVIHistoryPublicRun.ps1',
@@ -110,6 +112,7 @@ jobs:
             'scripts/Sync-CompareVIHistoryPublishedTemplates.ps1',
             'scripts/Write-CompareVIHistorySmokeStub.ps1',
             'scripts/Test-CompareVIHistoryBranchProtection.ps1',
+            'scripts/Test-CompareVIHistoryRevisionCatalog.ps1',
             'scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Test-CompareVIHistoryTemplateContracts.ps1'
           )) {
@@ -161,6 +164,7 @@ jobs:
           & "$PWD/scripts/Test-CompareVIHistoryPublishedRefs.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryRequest.ps1"
+          & "$PWD/scripts/Test-CompareVIHistoryRevisionCatalog.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryModeSummary.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryPublicRun.ps1"
           & "$PWD/scripts/Test-CompareVIHistoryPublishedRun.ps1"

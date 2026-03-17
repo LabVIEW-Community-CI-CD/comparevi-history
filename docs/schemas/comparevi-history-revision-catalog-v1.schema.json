@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-revision-catalog-v1.schema.json",
+  "title": "comparevi-history revision catalog v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "consumer",
+    "target",
+    "discovery",
+    "summary",
+    "revisions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/revision-catalog@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumer": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "selectedRef",
+        "extension"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "selectedRef": {
+          "type": "string"
+        },
+        "extension": {
+          "type": "string",
+          "const": ".vi"
+        }
+      },
+      "additionalProperties": false
+    },
+    "discovery": {
+      "type": "object",
+      "required": [
+        "includeMergeParents",
+        "historyMode",
+        "followRenames",
+        "complete",
+        "completenessReason"
+      ],
+      "properties": {
+        "includeMergeParents": {
+          "type": "boolean"
+        },
+        "historyMode": {
+          "type": "string",
+          "enum": [
+            "first-parent",
+            "ancestry"
+          ]
+        },
+        "followRenames": {
+          "type": "boolean"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "completenessReason": {
+          "type": "string"
+        },
+        "continuityStatus": {
+          "type": "string",
+          "enum": [
+            "continuous",
+            "break-detected"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "revisionCount",
+        "renameCount",
+        "deleteCount",
+        "continuityStatus"
+      ],
+      "properties": {
+        "revisionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "renameCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deleteCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "continuityStatus": {
+          "type": "string",
+          "enum": [
+            "continuous",
+            "break-detected"
+          ]
+        },
+        "firstCommit": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "sha",
+            "committedAtUtc"
+          ],
+          "properties": {
+            "sha": {
+              "type": "string"
+            },
+            "committedAtUtc": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "additionalProperties": false
+        },
+        "lastCommit": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "sha",
+            "committedAtUtc"
+          ],
+          "properties": {
+            "sha": {
+              "type": "string"
+            },
+            "committedAtUtc": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "revisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "commit",
+          "parents",
+          "committedAtUtc",
+          "subject",
+          "changeKind",
+          "statusToken",
+          "path"
+        ],
+        "properties": {
+          "ordinal": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "commit": {
+            "type": "string"
+          },
+          "parents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "committedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "changeKind": {
+            "type": "string",
+            "enum": [
+              "added",
+              "modified",
+              "deleted",
+              "renamed",
+              "copied",
+              "type-changed",
+              "unknown"
+            ]
+          },
+          "statusToken": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "previousPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

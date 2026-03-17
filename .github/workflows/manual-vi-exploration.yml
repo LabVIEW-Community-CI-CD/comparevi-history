@@ -1,0 +1,190 @@
+name: manual-vi-exploration
+
+on:
+  workflow_call:
+    inputs:
+      consumer_repository:
+        description: Consumer repository that owns the selected VI.
+        required: false
+        type: string
+      consumer_ref:
+        description: Consumer ref to inspect.
+        required: false
+        type: string
+      vi_path:
+        description: Repository-relative `.vi` path to explore.
+        required: true
+        type: string
+      modes:
+        description: Reserved explicit compare mode bundle for later execution phases.
+        required: false
+        default: attributes,front-panel,block-diagram
+        type: string
+      include_merge_parents:
+        description: Walk merge parents alongside the mainline when building the revision catalog.
+        required: false
+        default: false
+        type: boolean
+      noise_policy:
+        description: Reserved noise policy for later execution phases.
+        required: false
+        default: collapse
+        type: string
+      platform_ref:
+        description: comparevi-history ref to checkout for the platform scripts. Keep aligned with the workflow ref.
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      consumer_repository:
+        description: Consumer repository that owns the selected VI.
+        required: false
+        default: ''
+        type: string
+      consumer_ref:
+        description: Consumer ref to inspect.
+        required: false
+        default: develop
+        type: string
+      vi_path:
+        description: Repository-relative `.vi` path to explore.
+        required: true
+        type: string
+      modes:
+        description: Reserved explicit compare mode bundle for later execution phases.
+        required: false
+        default: attributes,front-panel,block-diagram
+        type: string
+      include_merge_parents:
+        description: Walk merge parents alongside the mainline when building the revision catalog.
+        required: false
+        default: false
+        type: boolean
+      noise_policy:
+        description: Reserved noise policy for later execution phases.
+        required: false
+        default: collapse
+        type: string
+      platform_ref:
+        description: comparevi-history ref to checkout for the platform scripts. Leave blank for same-repo dispatch.
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-vi-exploration-${{ github.event_name }}-${{ github.ref_name || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  manual-vi-exploration:
+    runs-on: ubuntu-latest
+    outputs:
+      consumer-repository: ${{ steps.defaults.outputs.consumer_repository }}
+      consumer-ref: ${{ steps.defaults.outputs.consumer_ref }}
+      revision-catalog-path: ${{ steps.catalog.outputs['revision-catalog-path'] }}
+      normalized-target-path: ${{ steps.catalog.outputs['normalized-target-path'] }}
+      revision-count: ${{ steps.catalog.outputs['revision-count'] }}
+      catalog-complete: ${{ steps.catalog.outputs['catalog-complete'] }}
+      catalog-completeness-reason: ${{ steps.catalog.outputs['catalog-completeness-reason'] }}
+    steps:
+      - name: Resolve workflow defaults
+        id: defaults
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $consumerRepository = '${{ inputs.consumer_repository }}'
+          if ([string]::IsNullOrWhiteSpace($consumerRepository)) {
+            $consumerRepository = $env:GITHUB_REPOSITORY
+          }
+
+          $consumerRef = '${{ inputs.consumer_ref }}'
+          if ([string]::IsNullOrWhiteSpace($consumerRef)) {
+            $consumerRef = if ([string]::IsNullOrWhiteSpace($env:GITHUB_REF_NAME)) { 'develop' } else { $env:GITHUB_REF_NAME }
+          }
+
+          $platformRef = '${{ inputs.platform_ref }}'
+          if ([string]::IsNullOrWhiteSpace($platformRef)) {
+            if ($env:GITHUB_REPOSITORY -eq 'LabVIEW-Community-CI-CD/comparevi-history') {
+              $platformRef = $env:GITHUB_SHA
+            } else {
+              $platformRef = 'v1'
+            }
+          }
+
+          @(
+            "consumer_repository=$consumerRepository"
+            "consumer_ref=$consumerRef"
+            "platform_ref=$platformRef"
+          ) | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Checkout consumer repository
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ steps.defaults.outputs.consumer_repository }}
+          ref: ${{ steps.defaults.outputs.consumer_ref }}
+          path: consumer
+          fetch-depth: 0
+
+      - name: Checkout comparevi-history platform repo
+        uses: actions/checkout@v5
+        with:
+          repository: LabVIEW-Community-CI-CD/comparevi-history
+          ref: ${{ steps.defaults.outputs.platform_ref }}
+          path: platform
+          fetch-depth: 1
+
+      - name: Resolve checked-out consumer SHA
+        id: consumer_sha
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $sha = (& git -C $consumerRoot rev-parse HEAD).Trim()
+          "consumer_sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Write revision catalog
+        id: catalog
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $includeMergeParents = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Write-CompareVIHistoryRevisionCatalog.ps1" `
+            -RepositoryRoot $consumerRoot `
+            -TargetPath '${{ inputs.vi_path }}' `
+            -SelectedRef '${{ steps.consumer_sha.outputs.consumer_sha }}' `
+            -ConsumerRepository '${{ steps.defaults.outputs.consumer_repository }}' `
+            -ConsumerRef '${{ steps.defaults.outputs.consumer_ref }}' `
+            -ResultsDir 'tests/results/ref-compare/history-exploration' `
+            -IncludeMergeParents:$includeMergeParents `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+      - name: Append manual exploration request context
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          @(
+            ''
+            '### Exploration request'
+            ('- Requested modes: `{0}`' -f '${{ inputs.modes }}')
+            ('- Noise policy: `{0}`' -f '${{ inputs.noise_policy }}')
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload revision catalog artifact
+        if: ${{ always() && steps.catalog.outputs['revision-catalog-path'] != '' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-manual-vi-exploration-${{ github.run_id }}
+          path: ${{ steps.catalog.outputs['revision-catalog-path'] }}
+          if-no-files-found: error
