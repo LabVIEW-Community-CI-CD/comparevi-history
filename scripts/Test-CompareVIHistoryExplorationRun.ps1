@@ -50,10 +50,11 @@ try {
     -ConsumerRef 'develop' `
     -ResultsDir $resultsDir | Out-Null
 
-  & $chunkPlanScriptPath `
+  $chunkPlanJson = & $chunkPlanScriptPath `
     -RevisionCatalogPath (Join-Path $resultsDir 'revision-catalog.json') `
     -ChunkPairLimit 2 `
-    -ResultsDir $resultsDir | Out-Null
+    -ResultsDir $resultsDir
+  $chunkPlan = $chunkPlanJson | ConvertFrom-Json -Depth 64
 
   $githubOutputPath = Join-Path $tempRoot 'exploration-run-output.txt'
   $summaryPath = Join-Path $tempRoot 'exploration-run-summary.md'
@@ -87,6 +88,12 @@ try {
   if ($explorationRun.replay.status -ne 'ready-for-chunk-execution') {
     throw 'Exploration run replay status mismatch.'
   }
+  if (-not (Test-Path -LiteralPath $explorationRun.outputs.timelineMd -PathType Leaf)) {
+    throw 'Timeline markdown was not written for the planned exploration run.'
+  }
+  if (-not (Test-Path -LiteralPath $explorationRun.outputs.timelineHtml -PathType Leaf)) {
+    throw 'Timeline HTML was not written for the planned exploration run.'
+  }
   if (-not (Test-Path -LiteralPath (Join-Path $resultsDir 'exploration-run.json') -PathType Leaf)) {
     throw 'Exploration run file was not written.'
   }
@@ -95,7 +102,9 @@ try {
   foreach ($requiredKey in @(
       'exploration-run-path=',
       'exploration-status=planned',
-      'exploration-reason=chunk-plan-ready'
+      'exploration-reason=chunk-plan-ready',
+      'timeline-md=',
+      'timeline-html='
     )) {
     if ($githubOutputs -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."
@@ -105,6 +114,131 @@ try {
   $summary = Get-Content -LiteralPath $summaryPath -Raw
   if ($summary -notmatch 'comparevi-history exploration run') {
     throw 'Exploration run summary was not written.'
+  }
+
+  $firstReceiptPath = [string]$chunkPlan.chunks[0].outputs.receiptPath
+  $secondReceiptPath = [string]$chunkPlan.chunks[1].outputs.receiptPath
+  $firstHistoryDir = Join-Path $tempRoot 'chunk-1-history'
+  $secondHistoryDir = Join-Path $tempRoot 'chunk-2-history'
+  New-Item -ItemType Directory -Path $firstHistoryDir -Force | Out-Null
+  New-Item -ItemType Directory -Path $secondHistoryDir -Force | Out-Null
+  $firstReportMd = Join-Path $firstHistoryDir 'history-report.md'
+  $firstReportHtml = Join-Path $firstHistoryDir 'history-report.html'
+  '# chunk 1 report' | Set-Content -LiteralPath $firstReportMd -Encoding utf8
+  '<html><body>chunk 1 report</body></html>' | Set-Content -LiteralPath $firstReportHtml -Encoding utf8
+
+  $firstReceipt = [ordered]@{
+    schema = 'comparevi-history/chunk-receipt@v1'
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    chunkId = [string]$chunkPlan.chunks[0].chunkId
+    chunkOrdinal = [int]$chunkPlan.chunks[0].chunkOrdinal
+    segmentOrdinal = [int]$chunkPlan.chunks[0].segmentOrdinal
+    status = 'succeeded'
+    pairCount = [int]$chunkPlan.chunks[0].pairCount
+    pairOrdinalStart = [int]$chunkPlan.chunks[0].pairOrdinalStart
+    pairOrdinalEnd = [int]$chunkPlan.chunks[0].pairOrdinalEnd
+    revisionOrdinalStart = [int]$chunkPlan.chunks[0].revisionOrdinalStart
+    revisionOrdinalEnd = [int]$chunkPlan.chunks[0].revisionOrdinalEnd
+    execution = [ordered]@{
+      startRef = [string]$chunkPlan.chunks[0].execution.startRef
+      endRef = [string]$chunkPlan.chunks[0].execution.endRef
+      maxPairs = [int]$chunkPlan.chunks[0].execution.maxPairs
+    }
+    outputs = [ordered]@{
+      chunkRoot = [string]$chunkPlan.chunks[0].outputs.chunkRoot
+      receiptPath = $firstReceiptPath
+      manifestPath = [string]$chunkPlan.chunks[0].outputs.manifestPath
+      historyResultsDir = $firstHistoryDir
+      historyReportMd = $firstReportMd
+      historyReportHtml = $firstReportHtml
+      modeSummaryPath = $null
+    }
+    summary = [ordered]@{
+      requestedModes = @('attributes', 'front-panel', 'block-diagram')
+      executedModes = @('attributes', 'front-panel', 'block-diagram')
+      modeCount = 3
+      totalProcessed = 2
+      totalDiffs = 1
+      stopReason = 'completed'
+      finalStatus = 'succeeded'
+      finalReason = 'completed'
+    }
+    failure = $null
+  }
+  $firstReceipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $firstReceiptPath -Encoding utf8
+
+  $secondReceipt = [ordered]@{
+    schema = 'comparevi-history/chunk-receipt@v1'
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    chunkId = [string]$chunkPlan.chunks[1].chunkId
+    chunkOrdinal = [int]$chunkPlan.chunks[1].chunkOrdinal
+    segmentOrdinal = [int]$chunkPlan.chunks[1].segmentOrdinal
+    status = 'failed'
+    pairCount = [int]$chunkPlan.chunks[1].pairCount
+    pairOrdinalStart = [int]$chunkPlan.chunks[1].pairOrdinalStart
+    pairOrdinalEnd = [int]$chunkPlan.chunks[1].pairOrdinalEnd
+    revisionOrdinalStart = [int]$chunkPlan.chunks[1].revisionOrdinalStart
+    revisionOrdinalEnd = [int]$chunkPlan.chunks[1].revisionOrdinalEnd
+    execution = [ordered]@{
+      startRef = [string]$chunkPlan.chunks[1].execution.startRef
+      endRef = [string]$chunkPlan.chunks[1].execution.endRef
+      maxPairs = [int]$chunkPlan.chunks[1].execution.maxPairs
+    }
+    outputs = [ordered]@{
+      chunkRoot = [string]$chunkPlan.chunks[1].outputs.chunkRoot
+      receiptPath = $secondReceiptPath
+      manifestPath = [string]$chunkPlan.chunks[1].outputs.manifestPath
+      historyResultsDir = $secondHistoryDir
+      historyReportMd = $null
+      historyReportHtml = $null
+      modeSummaryPath = $null
+    }
+    summary = [ordered]@{
+      requestedModes = @('attributes', 'front-panel', 'block-diagram')
+      executedModes = @()
+      modeCount = 0
+      totalProcessed = 0
+      totalDiffs = 0
+      stopReason = 'facade-step-failed'
+      finalStatus = 'failed'
+      finalReason = 'facade-step-failed'
+    }
+    failure = [ordered]@{
+      message = 'Forced compare failure.'
+    }
+  }
+  $secondReceipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $secondReceiptPath -Encoding utf8
+
+  $executedOutputPath = Join-Path $tempRoot 'exploration-run-executed-output.txt'
+  $executedSummaryPath = Join-Path $tempRoot 'exploration-run-executed-summary.md'
+  $executedRunJson = & $explorationRunScriptPath `
+    -RevisionCatalogPath (Join-Path $resultsDir 'revision-catalog.json') `
+    -ChunkPlanPath (Join-Path $resultsDir 'chunk-plan.json') `
+    -Modes 'attributes,front-panel,block-diagram' `
+    -NoisePolicy 'collapse' `
+    -GitHubOutputPath $executedOutputPath `
+    -StepSummaryPath $executedSummaryPath
+
+  $executedRun = $executedRunJson | ConvertFrom-Json -Depth 64
+  if ($executedRun.planning.status -ne 'partial') {
+    throw 'Executed exploration run planning status mismatch.'
+  }
+  if ($executedRun.summary.finalStatus -ne 'partial') {
+    throw 'Executed exploration run final status mismatch.'
+  }
+  if ($executedRun.summary.finalReason -ne 'one-or-more-chunks-failed') {
+    throw 'Executed exploration run final reason mismatch.'
+  }
+  if ($executedRun.replay.status -ne 'degraded') {
+    throw 'Executed exploration run replay status mismatch.'
+  }
+
+  $timelineMarkdown = Get-Content -LiteralPath $executedRun.outputs.timelineMd -Raw
+  if ($timelineMarkdown -notmatch [regex]::Escape([string]$chunkPlan.chunks[0].chunkId)) {
+    throw 'Timeline markdown must include the executed chunk id.'
+  }
+  if ($timelineMarkdown -notmatch 'Failure: `Forced compare failure\.?`') {
+    throw 'Timeline markdown must include the failed chunk message.'
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

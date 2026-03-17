@@ -93,9 +93,19 @@ jobs:
       chunk-receipts-root: ${{ steps.plan.outputs['chunk-receipts-root'] }}
       chunk-count: ${{ steps.plan.outputs['chunk-count'] }}
       executable-pair-count: ${{ steps.plan.outputs['executable-pair-count'] }}
+      tooling-path: ${{ steps.execute.outputs['tooling-path'] }}
+      tooling-source: ${{ steps.execute.outputs['tooling-source'] }}
+      comparevi-ref: ${{ steps.execute.outputs['comparevi-ref'] }}
+      executed-chunk-count: ${{ steps.execute.outputs['executed-chunk-count'] }}
+      failed-chunk-count: ${{ steps.execute.outputs['failed-chunk-count'] }}
+      skipped-chunk-count: ${{ steps.execute.outputs['skipped-chunk-count'] }}
+      execution-status: ${{ steps.execute.outputs['execution-status'] }}
+      execution-reason: ${{ steps.execute.outputs['execution-reason'] }}
       exploration-run-path: ${{ steps.exploration.outputs['exploration-run-path'] }}
       exploration-status: ${{ steps.exploration.outputs['exploration-status'] }}
       exploration-reason: ${{ steps.exploration.outputs['exploration-reason'] }}
+      timeline-md: ${{ steps.exploration.outputs['timeline-md'] }}
+      timeline-html: ${{ steps.exploration.outputs['timeline-html'] }}
     steps:
       - name: Resolve workflow defaults
         id: defaults
@@ -188,6 +198,27 @@ jobs:
             -GitHubOutputPath $env:GITHUB_OUTPUT `
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
+      - name: Execute planned exploration chunks
+        id: execute
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $includeMergeParents = [System.Convert]::ToBoolean('${{ inputs.include_merge_parents }}')
+          & "$env:GITHUB_WORKSPACE/platform/scripts/Invoke-CompareVIHistoryChunkExecution.ps1" `
+            -ConsumerRepositoryRoot $consumerRoot `
+            -ChunkPlanPath '${{ steps.plan.outputs['chunk-plan-path'] }}' `
+            -ResultsDir 'tests/results/ref-compare/history-exploration' `
+            -Mode '${{ inputs.modes }}' `
+            -NoisePolicy '${{ inputs.noise_policy }}' `
+            -IncludeMergeParents:$includeMergeParents `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
       - name: Write exploration run receipt
         id: exploration
         shell: pwsh
@@ -217,11 +248,13 @@ jobs:
             '### Exploration request'
             ('- Requested modes: `{0}`' -f '${{ inputs.modes }}')
             ('- Noise policy: `{0}`' -f '${{ inputs.noise_policy }}')
+            ('- Execution status: `{0}`' -f '${{ steps.execute.outputs['execution-status'] }}')
+            ('- Execution reason: `{0}`' -f '${{ steps.execute.outputs['execution-reason'] }}')
             ('- Exploration status: `{0}`' -f '${{ steps.exploration.outputs['exploration-status'] }}')
             ('- Exploration reason: `{0}`' -f '${{ steps.exploration.outputs['exploration-reason'] }}')
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
-      - name: Upload exploration planning artifacts
+      - name: Upload exploration artifacts
         if: ${{ always() && steps.catalog.outputs['revision-catalog-path'] != '' }}
         uses: actions/upload-artifact@v5
         with:
@@ -231,4 +264,6 @@ jobs:
             ${{ steps.plan.outputs['chunk-plan-path'] }}
             ${{ steps.plan.outputs['chunk-receipts-root'] }}
             ${{ steps.exploration.outputs['exploration-run-path'] }}
+            ${{ steps.exploration.outputs['timeline-md'] }}
+            ${{ steps.exploration.outputs['timeline-html'] }}
           if-no-files-found: error
