@@ -86,10 +86,22 @@ try {
       finalStatus = 'succeeded'
       finalReason = 'completed'
     }) -Force
+  $receipt | Add-Member -NotePropertyName surfaces -NotePropertyValue ([ordered]@{
+      suppressionProfile = 'unsuppressed'
+      comparisonArtifactCount = 1
+      captureCount = 1
+      imageArtifactCount = 1
+      imageMimeTypes = @('image/png')
+      chunkCountWithMetadata = 1
+      categoryCounts = [ordered]@{ attributes = 1 }
+      bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
+    }) -Force
   $receipt.outputs | Add-Member -NotePropertyName historyResultsDir -NotePropertyValue $historyDir -Force
   $receipt.outputs | Add-Member -NotePropertyName historyReportMd -NotePropertyValue (Join-Path $historyDir 'history-report.md') -Force
   $receipt.outputs | Add-Member -NotePropertyName historyReportHtml -NotePropertyValue (Join-Path $historyDir 'history-report.html') -Force
   $receipt.outputs | Add-Member -NotePropertyName modeSummaryPath -NotePropertyValue (Join-Path $chunkRoot 'mode-summary.md') -Force
+  '{}' | Set-Content -LiteralPath (Join-Path $chunkRoot 'mode-summary.json') -Encoding utf8
+  $receipt.outputs | Add-Member -NotePropertyName modeSummaryJsonPath -NotePropertyValue (Join-Path $chunkRoot 'mode-summary.json') -Force
   $receipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $receiptPath -Encoding utf8
 
   $explorationRunJson = & $explorationRunScriptPath `
@@ -125,6 +137,8 @@ try {
       'Continuity status: `break-detected`',
       'Continuity break count: `1`',
       'Segment count: `2`',
+      'Suppression profile: `unsuppressed`',
+      'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
       'Segment `1`: revisions `1` -> `3`, pairs `2`, start `selected-ref-lineage-start`; break after revision `3` \(delete-observed\)',
       'Segment `2`: revisions `4` -> `4`, pairs `0`, start `reintroduced-after-delete`'
     )) {
@@ -146,6 +160,8 @@ try {
   foreach ($requiredFragment in @(
       'Continuity status</strong><span>break-detected</span>',
       'Continuity break count</strong><span>1</span>',
+      'Suppression profile</strong><span>unsuppressed</span>',
+      'Metadata surfaces</strong><span>captures=1, images=1, artifact-dirs=1</span>',
       'Remaining planned chunks</strong><span>0</span>',
       'reintroduced-after-delete',
       'delete-observed'

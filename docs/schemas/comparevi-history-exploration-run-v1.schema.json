@@ -9,6 +9,7 @@
     "consumer",
     "target",
     "configuration",
+    "surfaces",
     "discovery",
     "planning",
     "outputs",
@@ -80,6 +81,67 @@
         },
         "includeMergeParents": {
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "surfaces": {
+      "type": "object",
+      "required": [
+        "suppressionProfile",
+        "comparisonArtifactCount",
+        "captureCount",
+        "imageArtifactCount",
+        "imageMimeTypes",
+        "chunkCountWithMetadata",
+        "categoryCounts",
+        "bucketCounts"
+      ],
+      "properties": {
+        "suppressionProfile": {
+          "type": "string",
+          "enum": [
+            "unsuppressed",
+            "suppressed",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "comparisonArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageArtifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageMimeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chunkCountWithMetadata": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categoryCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "bucketCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "additionalProperties": false
@@ -276,7 +338,10 @@
         "failedChunkCount",
         "skippedChunkCount",
         "finalStatus",
-        "finalReason"
+        "finalReason",
+        "suppressionProfile",
+        "captureCount",
+        "imageArtifactCount"
       ],
       "properties": {
         "revisionCount": {
@@ -308,6 +373,17 @@
         },
         "finalReason": {
           "type": "string"
+        },
+        "suppressionProfile": {
+          "type": "string"
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "imageArtifactCount": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "additionalProperties": false

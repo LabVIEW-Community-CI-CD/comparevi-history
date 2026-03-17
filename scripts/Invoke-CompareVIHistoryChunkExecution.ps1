@@ -4,9 +4,9 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ChunkPlanPath,
   [string]$ResultsDir,
-  [string]$Mode = 'attributes,front-panel,block-diagram',
+  [string]$Mode = 'full',
   [ValidateSet('include', 'collapse', 'skip')]
-  [string]$NoisePolicy = 'collapse',
+  [string]$NoisePolicy = 'include',
   [switch]$IncludeMergeParents,
   [Nullable[int]]$MaxSignalPairs,
   [Nullable[int]]$CompareTimeoutSeconds,
@@ -222,6 +222,7 @@ foreach ($plannedChunk in $chunks) {
   $chunkResultsDir = Join-Path $chunkRoot 'history'
   $chunkRunOutputPath = Join-Path $chunkRoot 'run.out'
   $chunkModeSummaryPath = Join-Path $chunkRoot 'mode-summary.md'
+  $chunkModeSummaryJsonPath = Join-Path $chunkRoot 'mode-summary.json'
   $chunkStatus = 'succeeded'
   $chunkFailureMessage = $null
   $runValues = @{}
@@ -267,7 +268,14 @@ foreach ($plannedChunk in $chunks) {
     -TotalProcessed $(if ($runValues.ContainsKey('total-processed')) { [string]$runValues['total-processed'] } else { '' }) `
     -TotalDiffs $(if ($runValues.ContainsKey('total-diffs')) { [string]$runValues['total-diffs'] } else { '' }) `
     -StopReason $(if ($runValues.ContainsKey('stop-reason')) { [string]$runValues['stop-reason'] } else { '' }) `
+    -NoisePolicy $NoisePolicy `
+    -JsonOutputPath $chunkModeSummaryJsonPath `
     -OutputPath $chunkModeSummaryPath | Out-Null
+
+  $modeSummary = $null
+  if (Test-Path -LiteralPath $chunkModeSummaryJsonPath -PathType Leaf) {
+    $modeSummary = Get-Content -LiteralPath $chunkModeSummaryJsonPath -Raw | ConvertFrom-Json -Depth 64
+  }
 
   $chunkFinalReason = if ($chunkStatus -eq 'failed') {
     if ($runValues.ContainsKey('stop-reason') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['stop-reason'])) {
@@ -315,6 +323,7 @@ foreach ($plannedChunk in $chunks) {
       historyReportMd = $(if ($runValues.ContainsKey('history-report-md')) { [string]$runValues['history-report-md'] } else { $null })
       historyReportHtml = $(if ($runValues.ContainsKey('history-report-html')) { [string]$runValues['history-report-html'] } else { $null })
       modeSummaryPath = $(if (Test-Path -LiteralPath $chunkModeSummaryPath -PathType Leaf) { $chunkModeSummaryPath } else { $null })
+      modeSummaryJsonPath = $(if (Test-Path -LiteralPath $chunkModeSummaryJsonPath -PathType Leaf) { $chunkModeSummaryJsonPath } else { $null })
     }
     summary = [ordered]@{
       requestedModes = @($requestedModes)
@@ -326,6 +335,7 @@ foreach ($plannedChunk in $chunks) {
       finalStatus = $(if ($chunkStatus -eq 'failed') { 'failed' } else { 'succeeded' })
       finalReason = $chunkFinalReason
     }
+    surfaces = $modeSummary
     failure = $(if ([string]::IsNullOrWhiteSpace($chunkFailureMessage)) { $null } else { [ordered]@{ message = $chunkFailureMessage } })
     replay = [ordered]@{
       status = $(if ($chunkStatus -eq 'failed') { 'degraded' } else { 'ready' })

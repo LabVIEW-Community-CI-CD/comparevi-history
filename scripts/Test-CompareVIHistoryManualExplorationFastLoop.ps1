@@ -82,7 +82,45 @@ foreach ($entry in $modes) {
   $modeDir = Join-Path $ResultsDir $slug
   New-Item -ItemType Directory -Path $modeDir -Force | Out-Null
   $modeManifestPath = Join-Path $modeDir 'manifest.json'
-  '{}' | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
+  $artifactDir = Join-Path $modeDir 'pair-001-artifacts'
+  $imagesDir = Join-Path $artifactDir 'cli-images'
+  New-Item -ItemType Directory -Path $imagesDir -Force | Out-Null
+  [System.IO.File]::WriteAllBytes((Join-Path $imagesDir 'cli-image-00.png'), @(0xCA,0xFE,0xBA,0xBE))
+  @(
+    '{'
+    '  "schema": "lvcompare-capture-v1",'
+    '  "environment": {'
+    '    "cli": {'
+    '      "artifacts": {'
+    '        "images": ['
+    '          {'
+    '            "index": 0,'
+    '            "mimeType": "image/png",'
+    '            "byteLength": 4,'
+    ('            "savedPath": "{0}"' -f ((Join-Path $imagesDir 'cli-image-00.png') -replace '\\','\\\\'))
+    '          }'
+    '        ]'
+    '      }'
+    '    }'
+    '  }'
+    '}'
+  ) | Set-Content -LiteralPath (Join-Path $artifactDir 'lvcompare-capture.json') -Encoding utf8
+  @(
+    '{'
+    '  "schema": "vi-compare/history@v1",'
+    '  "comparisons": ['
+    '    {'
+    '      "result": {'
+    ('        "artifactDir": "{0}"' -f ($artifactDir -replace '\\','\\\\'))
+    '      }'
+    '    }'
+    '  ],'
+    '  "stats": {'
+    '    "categoryCounts": { "attributes": 1 },'
+    '    "bucketCounts": { "metadata-rich": 1 }'
+    '  }'
+    '}'
+  ) | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
   [void]$modeEntries.Add([ordered]@{
       mode = $entry
       slug = $slug
@@ -95,6 +133,9 @@ foreach ($entry in $modes) {
       errors = 0
       status = 'ok'
       stopReason = 'completed'
+      flags = @()
+      categoryCounts = [ordered]@{ attributes = 1 }
+      bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
     })
 }
 
@@ -173,11 +214,27 @@ $outputs | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
   if (-not (Test-Path -LiteralPath $receipt.outputs.localSummaryPath -PathType Leaf)) {
     throw 'Local summary markdown was not written.'
   }
+  if (-not (Test-Path -LiteralPath $receipt.outputs.modeSummaryJsonPath -PathType Leaf)) {
+    throw 'Mode summary JSON was not written.'
+  }
 
   $historySummary = Get-Content -LiteralPath $receipt.outputs.historySummaryJson -Raw | ConvertFrom-Json -Depth 8
   $normalizedInvokeScriptPath = ([string]$historySummary.invokeScriptPath) -replace '\\', '/'
   if (-not $normalizedInvokeScriptPath.EndsWith('Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1')) {
     throw 'Default consumer adapter path was not forwarded to the backend.'
+  }
+
+  $request = Get-Content -LiteralPath $receipt.outputs.requestPath -Raw | ConvertFrom-Json -Depth 20
+  if (($request.target.requestedModes -join ',') -ne 'full') {
+    throw 'Local fast loop must default to the unsuppressed full mode.'
+  }
+  if ($request.history.noisePolicy -ne 'include') {
+    throw 'Local fast loop must default to in-band noise handling.'
+  }
+
+  $modeSummary = Get-Content -LiteralPath $receipt.outputs.modeSummaryJsonPath -Raw | ConvertFrom-Json -Depth 64
+  if ($modeSummary.metadata.captureCount -ne 1 -or $modeSummary.metadata.imageArtifactCount -ne 1) {
+    throw 'Local fast loop must surface capture/image metadata.'
   }
 
   $failedMissingAdapter = $false

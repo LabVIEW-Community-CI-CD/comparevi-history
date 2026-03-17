@@ -91,6 +91,9 @@ try {
   if ($explorationRun.replay.status -ne 'ready-for-chunk-execution') {
     throw 'Exploration run replay status mismatch.'
   }
+  if ($explorationRun.surfaces.suppressionProfile -ne 'unknown') {
+    throw 'Planned exploration run suppression profile mismatch.'
+  }
   if (-not (Test-Path -LiteralPath $explorationRun.outputs.timelineMd -PathType Leaf)) {
     throw 'Timeline markdown was not written for the planned exploration run.'
   }
@@ -148,8 +151,21 @@ try {
   New-Item -ItemType Directory -Path $secondHistoryDir -Force | Out-Null
   $firstReportMd = Join-Path $firstHistoryDir 'history-report.md'
   $firstReportHtml = Join-Path $firstHistoryDir 'history-report.html'
+  $firstModeSummaryJson = Join-Path ([string]$chunkPlan.chunks[0].outputs.chunkRoot) 'mode-summary.json'
   '# chunk 1 report' | Set-Content -LiteralPath $firstReportMd -Encoding utf8
   '<html><body>chunk 1 report</body></html>' | Set-Content -LiteralPath $firstReportHtml -Encoding utf8
+  @'
+{
+  "schema": "comparevi-history/mode-summary@v1",
+  "suppressionProfile": "unsuppressed",
+  "metadata": {
+    "comparisonArtifactCount": 1,
+    "captureCount": 1,
+    "imageArtifactCount": 1,
+    "imageMimeTypes": ["image/png"]
+  }
+}
+'@ | Set-Content -LiteralPath $firstModeSummaryJson -Encoding utf8
 
   $firstReceipt = [ordered]@{
     schema = 'comparevi-history/chunk-receipt@v1'
@@ -176,6 +192,7 @@ try {
       historyReportMd = $firstReportMd
       historyReportHtml = $firstReportHtml
       modeSummaryPath = $null
+      modeSummaryJsonPath = $firstModeSummaryJson
     }
     summary = [ordered]@{
       requestedModes = @('attributes', 'front-panel', 'block-diagram')
@@ -186,6 +203,16 @@ try {
       stopReason = 'completed'
       finalStatus = 'succeeded'
       finalReason = 'completed'
+    }
+    surfaces = [ordered]@{
+      suppressionProfile = 'unsuppressed'
+      comparisonArtifactCount = 1
+      captureCount = 1
+      imageArtifactCount = 1
+      imageMimeTypes = @('image/png')
+      chunkCountWithMetadata = 1
+      categoryCounts = [ordered]@{ attributes = 1 }
+      bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
     }
     failure = $null
   }
@@ -216,6 +243,7 @@ try {
       historyReportMd = $null
       historyReportHtml = $null
       modeSummaryPath = $null
+      modeSummaryJsonPath = $null
     }
     summary = [ordered]@{
       requestedModes = @('attributes', 'front-panel', 'block-diagram')
@@ -226,6 +254,16 @@ try {
       stopReason = 'facade-step-failed'
       finalStatus = 'failed'
       finalReason = 'facade-step-failed'
+    }
+    surfaces = [ordered]@{
+      suppressionProfile = 'unknown'
+      comparisonArtifactCount = 0
+      captureCount = 0
+      imageArtifactCount = 0
+      imageMimeTypes = @()
+      chunkCountWithMetadata = 0
+      categoryCounts = [ordered]@{}
+      bucketCounts = [ordered]@{}
     }
     failure = [ordered]@{
       message = 'Forced compare failure.'
@@ -256,6 +294,15 @@ try {
   if ($executedRun.replay.status -ne 'degraded') {
     throw 'Executed exploration run replay status mismatch.'
   }
+  if ($executedRun.surfaces.suppressionProfile -ne 'unsuppressed') {
+    throw 'Executed exploration run suppression profile mismatch.'
+  }
+  if ($executedRun.surfaces.captureCount -ne 1 -or $executedRun.surfaces.imageArtifactCount -ne 1) {
+    throw 'Executed exploration run metadata counts mismatch.'
+  }
+  if (($executedRun.surfaces.imageMimeTypes -join ',') -ne 'image/png') {
+    throw 'Executed exploration run mime-type aggregation mismatch.'
+  }
 
   $timelineMarkdown = Get-Content -LiteralPath $executedRun.outputs.timelineMd -Raw
   if ($timelineMarkdown -notmatch [regex]::Escape([string]$chunkPlan.chunks[0].chunkId)) {
@@ -266,6 +313,8 @@ try {
   }
   foreach ($requiredFragment in @(
       'Failed chunk count: `1`',
+      'Suppression profile: `unsuppressed`',
+      'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
       'Remaining planned chunk count: `0`',
       'Replay status: `degraded` \(partial-chunk-execution\)'
     )) {
@@ -282,6 +331,8 @@ try {
   }
   foreach ($requiredFragment in @(
       'Failed chunk count: `1`',
+      'Suppression profile: `unsuppressed`',
+      'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
       'Replay status: `degraded` \(partial-chunk-execution\)',
       'Bundle status: `not-required`'
     )) {
