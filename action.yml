@@ -472,7 +472,7 @@ runs:
 
     - id: public_run
       name: Write comparevi-history public run receipt
-      if: ${{ always() }}
+      if: ${{ always() && steps.request.outcome == 'success' && steps.request.outputs['request-path'] != '' }}
       shell: pwsh
       env:
         ACTION_REF: ${{ github.action_repository }}@${{ github.action_ref }}
