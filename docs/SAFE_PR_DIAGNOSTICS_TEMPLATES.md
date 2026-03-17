@@ -78,7 +78,9 @@ Consumer repositories should not contain:
   there because the event does not prove a trusted runner or trusted refs.
 - Do not expect the automatic PR discovery template to execute on fork or other cross-repository PR heads. In this
   slice it should produce a blocked discovery receipt and leave trusted execution to the maintainer-dispatched or
-  comment-gated paths.
+  comment-gated paths. The reusable workflow only permits that fallback when the checked-in PR policy allows
+  `trust.forkBehavior = maintainer-dispatch` and the trusted caller explicitly passes `allow_trusted_fork_execution:
+  true`.
 - Do not use `pull_request_target` to run the action automatically against fork content with write-scoped tokens or
   secrets. That crosses the trust boundary the guard is designed to enforce.
 - Do not pin consumer workflows to branch refs such as `@main`, `@develop`, or unpublished SHAs. Use released facade

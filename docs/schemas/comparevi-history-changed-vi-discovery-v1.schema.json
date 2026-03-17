@@ -11,6 +11,7 @@
     "eventName",
     "targetCatalog",
     "prPolicy",
+    "executionContext",
     "pullRequest",
     "changedViFiles",
     "excludedViFiles",
@@ -207,10 +208,31 @@
             "forkBehavior": {
               "type": "string",
               "enum": [
-                "block"
+                "block",
+                "maintainer-dispatch"
               ]
             }
           }
+        }
+      }
+    },
+    "executionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trustedForkExecutionRequested",
+        "trustedForkExecutionEligible",
+        "trustedForkExecutionApplied"
+      ],
+      "properties": {
+        "trustedForkExecutionRequested": {
+          "type": "boolean"
+        },
+        "trustedForkExecutionEligible": {
+          "type": "boolean"
+        },
+        "trustedForkExecutionApplied": {
+          "type": "boolean"
         }
       }
     },

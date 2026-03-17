@@ -6,6 +6,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$TargetSpecPath,
   [string]$PrPolicyPath,
+  [bool]$AllowTrustedForkExecution = $false,
   [Parameter(Mandatory = $true)]
   [string]$ResultsDir,
   [string]$Repository,
@@ -415,6 +416,14 @@ function Resolve-PrPolicy {
   $branchBudget = Get-NestedValue -Object $history -Path @('branchBudget')
   $reviewerSurface = Get-NestedValue -Object $rawPolicy -Path @('reviewerSurface')
   $trust = Get-NestedValue -Object $rawPolicy -Path @('trust')
+  $forkBehavior = if ([string]::IsNullOrWhiteSpace([string](Get-NestedValue -Object $trust -Path @('forkBehavior')))) {
+    'block'
+  } else {
+    [string](Get-NestedValue -Object $trust -Path @('forkBehavior'))
+  }
+  if ($forkBehavior -notin @('block', 'maintainer-dispatch')) {
+    throw "PR policy trust.forkBehavior must be 'block' or 'maintainer-dispatch'. Actual: $forkBehavior"
+  }
 
   return [ordered]@{
     schema = 'comparevi-history/pr-policy@v1'
@@ -450,11 +459,7 @@ function Resolve-PrPolicy {
       emitStepSummary = [bool](Get-NestedValue -Object $reviewerSurface -Path @('emitStepSummary') -Default $true)
     }
     trust = [ordered]@{
-      forkBehavior = if ([string]::IsNullOrWhiteSpace([string](Get-NestedValue -Object $trust -Path @('forkBehavior')))) {
-        'block'
-      } else {
-        [string](Get-NestedValue -Object $trust -Path @('forkBehavior'))
-      }
+      forkBehavior = $forkBehavior
     }
   }
 }
@@ -546,9 +551,19 @@ $repositorySlug = if (-not [string]::IsNullOrWhiteSpace($Repository)) {
 
 $executionStatus = 'ready'
 $executionReason = 'matched-targets'
-if ($isFork -and $prPolicy.trust.forkBehavior -eq 'block') {
-  $executionStatus = 'blocked'
-  $executionReason = 'untrusted-cross-repository-pull-request'
+$trustedForkExecutionEligible = $isFork -and $prPolicy.trust.forkBehavior -eq 'maintainer-dispatch'
+$trustedForkExecutionApplied = $trustedForkExecutionEligible -and $AllowTrustedForkExecution
+if ($isFork) {
+  if ($trustedForkExecutionApplied) {
+    $executionStatus = 'ready'
+    $executionReason = 'matched-targets'
+  } elseif ($trustedForkExecutionEligible) {
+    $executionStatus = 'blocked'
+    $executionReason = 'trusted-fork-fallback-required'
+  } else {
+    $executionStatus = 'blocked'
+    $executionReason = 'untrusted-cross-repository-pull-request'
+  }
 } elseif ($reportedChangedFileCount -gt 3000) {
   $executionStatus = 'blocked'
   $executionReason = 'pr-files-api-limit-exceeded'
@@ -790,6 +805,11 @@ $receipt = [ordered]@{
     path = $targetSpecPathResolved
   }
   prPolicy = $prPolicy
+  executionContext = [ordered]@{
+    trustedForkExecutionRequested = [bool]$AllowTrustedForkExecution
+    trustedForkExecutionEligible = [bool]$trustedForkExecutionEligible
+    trustedForkExecutionApplied = [bool]$trustedForkExecutionApplied
+  }
   pullRequest = [ordered]@{
     number = $pullRequestNumber
     htmlUrl = $pullRequestUrl
@@ -821,6 +841,9 @@ $receipt | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $receiptPath -Enc
 Write-ActionOutput -Key 'changed-vi-discovery-path' -Value $receiptPath
 Write-ActionOutput -Key 'pr-policy-path' -Value $(if ([string]::IsNullOrWhiteSpace([string]$prPolicy.path)) { '' } else { [string]$prPolicy.path })
 Write-ActionOutput -Key 'pr-policy-applied' -Value ($prPolicy.applied.ToString().ToLowerInvariant())
+Write-ActionOutput -Key 'trusted-fork-execution-requested' -Value ($AllowTrustedForkExecution.ToString().ToLowerInvariant())
+Write-ActionOutput -Key 'trusted-fork-execution-eligible' -Value ($trustedForkExecutionEligible.ToString().ToLowerInvariant())
+Write-ActionOutput -Key 'trusted-fork-execution-applied' -Value ($trustedForkExecutionApplied.ToString().ToLowerInvariant())
 Write-ActionOutput -Key 'changed-vi-count' -Value ([string]$changedViArray.Count)
 Write-ActionOutput -Key 'eligible-changed-vi-count' -Value ([string]$policyEligibleChangedViCount)
 Write-ActionOutput -Key 'excluded-vi-count' -Value ([string]$excludedViArray.Count)
@@ -848,6 +871,9 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- PR policy: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$prPolicy.path)) { 'platform defaults' } else { [string]$prPolicy.path }))
     ('- PR policy applied: `{0}`' -f $prPolicy.applied.ToString().ToLowerInvariant())
     ('- Fork PR: `{0}`' -f $isFork.ToString().ToLowerInvariant())
+    ('- Trusted fork execution requested: `{0}`' -f $AllowTrustedForkExecution.ToString().ToLowerInvariant())
+    ('- Trusted fork execution eligible: `{0}`' -f $trustedForkExecutionEligible.ToString().ToLowerInvariant())
+    ('- Trusted fork execution applied: `{0}`' -f $trustedForkExecutionApplied.ToString().ToLowerInvariant())
     ('- Changed VI count: `{0}`' -f $changedViArray.Count)
     ('- Policy-eligible changed VI count: `{0}`' -f $policyEligibleChangedViCount)
     ('- Excluded VI count: `{0}`' -f $excludedViArray.Count)
