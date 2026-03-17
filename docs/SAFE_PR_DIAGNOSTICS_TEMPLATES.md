@@ -118,7 +118,7 @@ Consumer repositories should not contain:
   `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-publish.yml@v1`. It exists so
   `workflow_run` can publish the sticky comment with `actions: read`, `contents: read`, and `pull-requests: write`
   without widening the execution workflow token.
-- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.8`. That is the right default when
+- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.9`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
   immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
 - The automatic changed-VI execution template keeps the checked-in PR policy and hosted NI Linux adapter on the pull
