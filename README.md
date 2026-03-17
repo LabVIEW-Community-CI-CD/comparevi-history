@@ -146,6 +146,43 @@ Phase 1 is discovery-first:
 Because reusable workflows do not automatically expose the called workflow repository as a local checkout, the consumer
 wrapper should keep `platform_ref` aligned with the same release ref used in the `uses:` pin.
 
+## Local manual exploration fast loop
+
+For report iteration on a trusted maintainer machine, use
+[`scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1`](scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1).
+It reuses the released backend pin, the existing request/public-run receipts, and the consumer's trusted
+`Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1` adapter instead of inventing a separate local artifact shape.
+
+The default results root is:
+
+- `tests/results/ref-compare/history-exploration/local-fast-loop`
+
+The local fast loop writes:
+
+- `revision-catalog.json`
+- `history/public/request.json`
+- `history/public/public-run.json`
+- `history-summary.json`
+- `history-report.md`
+- `history-report.html`
+- `local-fast-loop.json`
+- `local-fast-loop-summary.md`
+
+Example against the first proving consumer:
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1 `
+  -ConsumerRepositoryRoot C:\dev\labview-icon-editor `
+  -ConsumerRef develop `
+  -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi'
+```
+
+The script resolves the released backend bundle by default. For unreleased backend iteration, pass `-ToolingRoot`
+explicitly instead of relying on maintainer-only source-checkout fallback behavior.
+
+For faster local iteration, maintainers can still pass existing backend bounds such as `-MaxPairs`, but the local loop
+keeps the hosted artifact contract and does not replace the hosted workflow as the source of truth.
+
 ## Consumer target catalog
 
 Public consumers should check in a target catalog using `comparevi-history/consumer-targets@v1`. The example source of

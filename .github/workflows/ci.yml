@@ -105,6 +105,7 @@ jobs:
             'scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Resolve-CompareVIHistoryRequest.ps1',
             'scripts/Write-CompareVIHistoryRevisionCatalog.ps1',
+            'scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1',
             'scripts/Invoke-CompareVIHistoryFacade.ps1',
             'scripts/Format-CompareVIHistoryModeSummary.ps1',
             'scripts/Write-CompareVIHistoryPublicRun.ps1',
@@ -113,6 +114,7 @@ jobs:
             'scripts/Write-CompareVIHistorySmokeStub.ps1',
             'scripts/Test-CompareVIHistoryBranchProtection.ps1',
             'scripts/Test-CompareVIHistoryRevisionCatalog.ps1',
+            'scripts/Test-CompareVIHistoryManualExplorationFastLoop.ps1',
             'scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Test-CompareVIHistoryTemplateContracts.ps1'
           )) {
@@ -166,6 +168,7 @@ jobs:
             'scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Test-CompareVIHistoryRequest.ps1',
             'scripts/Test-CompareVIHistoryRevisionCatalog.ps1',
+            'scripts/Test-CompareVIHistoryManualExplorationFastLoop.ps1',
             'scripts/Test-CompareVIHistoryModeSummary.ps1',
             'scripts/Test-CompareVIHistoryPublicRun.ps1',
             'scripts/Test-CompareVIHistoryPublishedRun.ps1',
