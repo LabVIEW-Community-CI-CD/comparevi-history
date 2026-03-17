@@ -389,3 +389,5 @@ gh api repos/LabVIEW-Community-CI-CD/comparevi-history/branches/main/protection 
   intentionally explicit and source-coupled.
 - Tracking epic: https://github.com/LabVIEW-Community-CI-CD/comparevi-history/issues/24
 - Platform RFC: [`docs/VI_HISTORY_EXPLORATION_PLATFORM_RFC.md`](docs/VI_HISTORY_EXPLORATION_PLATFORM_RFC.md)
+- PR integration RFC:
+  [`docs/COMPAREVI_HISTORY_PR_INTEGRATION_SURFACE_RFC.md`](docs/COMPAREVI_HISTORY_PR_INTEGRATION_SURFACE_RFC.md)
