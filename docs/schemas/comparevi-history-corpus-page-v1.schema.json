@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-corpus-page-v1.schema.json",
+  "title": "comparevi-history corpus page v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "corpus",
+    "page",
+    "targets",
+    "completeness"
+  ],
+  "properties": {
+    "schema": { "const": "comparevi-history/corpus-page@v1" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "corpus": {
+      "type": "object",
+      "required": ["repository", "ref", "indexPath"],
+      "properties": {
+        "repository": { "type": "string" },
+        "ref": { "type": "string" },
+        "indexPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "page": {
+      "type": "object",
+      "required": ["pageOrdinal", "pageSize", "targetCount", "targetOrdinalStart", "targetOrdinalEnd"],
+      "properties": {
+        "pageOrdinal": { "type": "integer", "minimum": 1 },
+        "pageSize": { "type": "integer", "minimum": 1 },
+        "targetCount": { "type": "integer", "minimum": 0 },
+        "targetOrdinalStart": { "type": "integer", "minimum": 1 },
+        "targetOrdinalEnd": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["targetOrdinal", "targetKey", "entrypoint", "target", "sources", "summary", "completeness", "surfaces"],
+        "properties": {
+          "targetOrdinal": { "type": "integer", "minimum": 1 },
+          "targetKey": { "type": "string" },
+          "entrypoint": {
+            "type": "string",
+            "enum": ["manual-exploration", "curated-public-run", "unknown"]
+          },
+          "target": {
+            "type": "object",
+            "required": ["path", "selectedRef", "extension", "targetId"],
+            "properties": {
+              "path": { "type": "string" },
+              "selectedRef": { "type": "string" },
+              "extension": { "type": "string" },
+              "targetId": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          },
+          "sources": {
+            "type": "object",
+            "required": ["sharedEvidenceSchema", "sharedEvidencePath", "sourceSchema", "sourcePath", "evidenceGraphSchema", "evidenceGraphPath"],
+            "properties": {
+              "sharedEvidenceSchema": { "type": "string" },
+              "sharedEvidencePath": { "type": "string" },
+              "sourceSchema": { "type": "string" },
+              "sourcePath": { "type": "string" },
+              "evidenceGraphSchema": { "type": ["string", "null"] },
+              "evidenceGraphPath": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          },
+          "summary": {
+            "type": "object",
+            "required": ["modeCount", "totalProcessed", "totalDiffs", "stopReason", "suppressionProfile", "comparisonArtifactCount", "captureCount", "imageArtifactCount", "previewImageCount", "comparisonPairCount"],
+            "properties": {
+              "modeCount": { "type": ["integer", "null"], "minimum": 0 },
+              "totalProcessed": { "type": ["integer", "null"], "minimum": 0 },
+              "totalDiffs": { "type": ["integer", "null"], "minimum": 0 },
+              "stopReason": { "type": ["string", "null"] },
+              "suppressionProfile": { "type": "string" },
+              "comparisonArtifactCount": { "type": "integer", "minimum": 0 },
+              "captureCount": { "type": "integer", "minimum": 0 },
+              "imageArtifactCount": { "type": "integer", "minimum": 0 },
+              "previewImageCount": { "type": "integer", "minimum": 0 },
+              "comparisonPairCount": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          },
+          "completeness": {
+            "type": "object",
+            "required": ["finalStatus", "finalReason", "replayStatus", "replayReason", "graphStatus", "graphReason", "catalogComplete", "catalogCompletenessReason", "continuityStatus", "continuityBreakCount", "segmentCount"],
+            "properties": {
+              "finalStatus": { "type": "string" },
+              "finalReason": { "type": "string" },
+              "replayStatus": { "type": "string" },
+              "replayReason": { "type": "string" },
+              "graphStatus": { "type": ["string", "null"] },
+              "graphReason": { "type": ["string", "null"] },
+              "catalogComplete": { "type": ["boolean", "null"] },
+              "catalogCompletenessReason": { "type": ["string", "null"] },
+              "continuityStatus": { "type": ["string", "null"] },
+              "continuityBreakCount": { "type": ["integer", "null"], "minimum": 0 },
+              "segmentCount": { "type": ["integer", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+          },
+          "surfaces": {
+            "type": "object",
+            "required": ["categoryCounts", "bucketCounts", "renderSurfacesCount", "artifactSurfacesCount"],
+            "properties": {
+              "categoryCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+              "bucketCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+              "renderSurfacesCount": { "type": "integer", "minimum": 0 },
+              "artifactSurfacesCount": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "required": ["isComplete", "reason"],
+      "properties": {
+        "isComplete": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
