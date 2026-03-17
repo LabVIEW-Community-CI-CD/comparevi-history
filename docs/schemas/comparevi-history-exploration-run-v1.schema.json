@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-exploration-run-v1.schema.json",
+  "title": "comparevi-history exploration run v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "consumer",
+    "target",
+    "configuration",
+    "discovery",
+    "planning",
+    "outputs",
+    "summary",
+    "replay"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/exploration-run@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consumer": {
+      "type": "object",
+      "required": [
+        "repository",
+        "ref"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "path",
+        "selectedRef",
+        "extension"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "selectedRef": {
+          "type": "string"
+        },
+        "extension": {
+          "type": "string",
+          "const": ".vi"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "object",
+      "required": [
+        "requestedModes",
+        "noisePolicy",
+        "includeMergeParents"
+      ],
+      "properties": {
+        "requestedModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "noisePolicy": {
+          "type": "string"
+        },
+        "includeMergeParents": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "discovery": {
+      "type": "object",
+      "required": [
+        "revisionCatalogPath",
+        "revisionCount",
+        "catalogComplete",
+        "catalogCompletenessReason",
+        "continuityStatus"
+      ],
+      "properties": {
+        "revisionCatalogPath": {
+          "type": "string"
+        },
+        "revisionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "catalogComplete": {
+          "type": "boolean"
+        },
+        "catalogCompletenessReason": {
+          "type": "string"
+        },
+        "continuityStatus": {
+          "type": "string",
+          "enum": [
+            "continuous",
+            "break-detected"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "planning": {
+      "type": "object",
+      "required": [
+        "chunkPlanPath",
+        "chunkReceiptsRoot",
+        "chunkPairLimit",
+        "segmentCount",
+        "pairCount",
+        "chunkCount",
+        "plannedChunkCount",
+        "completedChunkCount",
+        "failedChunkCount",
+        "skippedChunkCount",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "chunkPlanPath": {
+          "type": "string"
+        },
+        "chunkReceiptsRoot": {
+          "type": "string"
+        },
+        "chunkPairLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "segmentCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "chunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plannedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "not-required",
+            "partial",
+            "complete",
+            "failed"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": [
+        "resultsRoot",
+        "revisionCatalogPath",
+        "chunkPlanPath",
+        "chunkReceiptsRoot",
+        "explorationRunPath",
+        "timelineMd",
+        "timelineHtml",
+        "bundlePath"
+      ],
+      "properties": {
+        "resultsRoot": {
+          "type": "string"
+        },
+        "revisionCatalogPath": {
+          "type": "string"
+        },
+        "chunkPlanPath": {
+          "type": "string"
+        },
+        "chunkReceiptsRoot": {
+          "type": "string"
+        },
+        "explorationRunPath": {
+          "type": "string"
+        },
+        "timelineMd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timelineHtml": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bundlePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "revisionCount",
+        "pairCount",
+        "plannedChunkCount",
+        "completedChunkCount",
+        "failedChunkCount",
+        "skippedChunkCount",
+        "finalStatus",
+        "finalReason"
+      ],
+      "properties": {
+        "revisionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plannedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedChunkCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finalStatus": {
+          "type": "string"
+        },
+        "finalReason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "replay": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
