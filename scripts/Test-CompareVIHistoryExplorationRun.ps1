@@ -127,6 +127,18 @@ try {
   if ($summary -notmatch 'comparevi-history exploration run') {
     throw 'Exploration run summary was not written.'
   }
+  foreach ($requiredFragment in @(
+      'Total chunk count: `2`',
+      'Remaining planned chunk count: `2`',
+      'Continuity status: `continuous`',
+      'Continuity break count: `0`',
+      'Segment count: `1`',
+      'Replay status: `ready-for-chunk-execution` \(chunk-plan-present\)'
+    )) {
+    if ($summary -notmatch $requiredFragment) {
+      throw "Planned exploration summary must include '$requiredFragment'."
+    }
+  }
 
   $firstReceiptPath = [string]$chunkPlan.chunks[0].outputs.receiptPath
   $secondReceiptPath = [string]$chunkPlan.chunks[1].outputs.receiptPath
@@ -252,12 +264,42 @@ try {
   if ($timelineMarkdown -notmatch 'Failure: `Forced compare failure\.?`') {
     throw 'Timeline markdown must include the failed chunk message.'
   }
+  foreach ($requiredFragment in @(
+      'Failed chunk count: `1`',
+      'Remaining planned chunk count: `0`',
+      'Replay status: `degraded` \(partial-chunk-execution\)'
+    )) {
+    if ($timelineMarkdown -notmatch $requiredFragment) {
+      throw "Executed timeline markdown must include '$requiredFragment'."
+    }
+  }
   $indexMarkdown = Get-Content -LiteralPath $executedRun.outputs.indexMd -Raw
   if ($indexMarkdown -notmatch 'comparevi-history manual exploration index') {
     throw 'Index markdown must include the index heading.'
   }
   if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
     throw 'Index markdown must surface chunk history report navigation.'
+  }
+  foreach ($requiredFragment in @(
+      'Failed chunk count: `1`',
+      'Replay status: `degraded` \(partial-chunk-execution\)',
+      'Bundle status: `not-required`'
+    )) {
+    if ($indexMarkdown -notmatch $requiredFragment) {
+      throw "Executed index markdown must include '$requiredFragment'."
+    }
+  }
+  $executedSummary = Get-Content -LiteralPath $executedSummaryPath -Raw
+  foreach ($requiredFragment in @(
+      'Total chunk count: `2`',
+      'Failed chunk count: `1`',
+      'Remaining planned chunk count: `0`',
+      'Continuity break count: `0`',
+      'Replay status: `degraded` \(partial-chunk-execution\)'
+    )) {
+    if ($executedSummary -notmatch $requiredFragment) {
+      throw "Executed step summary must include '$requiredFragment'."
+    }
   }
 
   $secondReceipt.status = 'succeeded'

@@ -190,6 +190,98 @@ function Format-HtmlLink {
   return ('<a href="{0}">{1}</a>' -f $Href, $Label)
 }
 
+function New-ExplorationSurfaceStats {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Catalog,
+    [Parameter(Mandatory = $true)]
+    $ChunkPlan,
+    [Parameter(Mandatory = $true)]
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$FinalStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$FinalReason,
+    [Parameter(Mandatory = $true)]
+    [string]$ReplayStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$ReplayReason,
+    [Parameter(Mandatory = $true)]
+    [string]$BundleStatus,
+    [Parameter(Mandatory = $true)]
+    [string]$BundleReason
+  )
+
+  $segmentArray = ConvertTo-ObjectArray -InputObject $ChunkPlan.segments
+  $segmentCount = $segmentArray.Count
+  $continuityBreakCount = @(
+    $segmentArray |
+      Where-Object { $null -ne $_.continuityBreakAfterRevisionOrdinal }
+  ).Count
+  $chunkReceiptArray = ConvertTo-ObjectArray -InputObject $ChunkReceipts
+  $completedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'succeeded' }).Count
+  $failedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'failed' }).Count
+  $skippedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'skipped' }).Count
+  $remainingPlannedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'planned' }).Count
+
+  return [pscustomobject]@{
+    revisionCount             = [int]$Catalog.summary.revisionCount
+    pairCount                 = [int]$ChunkPlan.summary.pairCount
+    segmentCount              = $segmentCount
+    continuityStatus          = [string]$Catalog.summary.continuityStatus
+    continuityBreakCount      = $continuityBreakCount
+    catalogComplete           = [bool]$Catalog.discovery.complete
+    catalogCompletenessReason = [string]$Catalog.discovery.completenessReason
+    totalChunkCount           = $chunkReceiptArray.Count
+    completedChunkCount       = $completedChunkCount
+    failedChunkCount          = $failedChunkCount
+    skippedChunkCount         = $skippedChunkCount
+    remainingPlannedChunkCount = $remainingPlannedChunkCount
+    finalStatus               = $FinalStatus
+    finalReason               = $FinalReason
+    replayStatus              = $ReplayStatus
+    replayReason              = $ReplayReason
+    bundleStatus              = $BundleStatus
+    bundleReason              = $BundleReason
+  }
+}
+
+function Get-HtmlStatusClass {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Status
+  )
+
+  switch ($Status) {
+    { $_ -in @('succeeded', 'ready', 'complete') } { return 'status-good' }
+    { $_ -in @('partial', 'degraded', 'planned', 'not-required') } { return 'status-warn' }
+    { $_ -eq 'failed' } { return 'status-bad' }
+    default { return 'status-neutral' }
+  }
+}
+
+function ConvertTo-ObjectArray {
+  param(
+    [AllowNull()]
+    $InputObject
+  )
+
+  if ($null -eq $InputObject) {
+    return @()
+  }
+
+  if ($InputObject -is [string] -or $InputObject -isnot [System.Collections.IEnumerable]) {
+    return @($InputObject)
+  }
+
+  $items = New-Object System.Collections.Generic.List[object]
+  foreach ($item in ([System.Collections.IEnumerable]$InputObject)) {
+    $items.Add($item) | Out-Null
+  }
+
+  return @($items.ToArray())
+}
+
 function New-MarkdownTimeline {
   param(
     [Parameter(Mandatory = $true)]
@@ -198,6 +290,8 @@ function New-MarkdownTimeline {
     $ChunkPlan,
     [Parameter(Mandatory = $true)]
     $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    $RunStats,
     [Parameter(Mandatory = $true)]
     [string]$FinalStatus,
     [Parameter(Mandatory = $true)]
@@ -213,6 +307,31 @@ function New-MarkdownTimeline {
   $lines.Add(('- Pair count: `{0}`' -f [int]$ChunkPlan.summary.pairCount)) | Out-Null
   $lines.Add(('- Final status: `{0}`' -f $FinalStatus)) | Out-Null
   $lines.Add(('- Final reason: `{0}`' -f $FinalReason)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('## Run summary') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Catalog completeness: `{0}` ({1})' -f $RunStats.catalogComplete.ToString().ToLowerInvariant(), [string]$RunStats.catalogCompletenessReason)) | Out-Null
+  $lines.Add(('- Continuity status: `{0}`' -f [string]$RunStats.continuityStatus)) | Out-Null
+  $lines.Add(('- Continuity break count: `{0}`' -f [int]$RunStats.continuityBreakCount)) | Out-Null
+  $lines.Add(('- Segment count: `{0}`' -f [int]$RunStats.segmentCount)) | Out-Null
+  $lines.Add(('- Total chunk count: `{0}`' -f [int]$RunStats.totalChunkCount)) | Out-Null
+  $lines.Add(('- Completed chunk count: `{0}`' -f [int]$RunStats.completedChunkCount)) | Out-Null
+  $lines.Add(('- Failed chunk count: `{0}`' -f [int]$RunStats.failedChunkCount)) | Out-Null
+  $lines.Add(('- Skipped chunk count: `{0}`' -f [int]$RunStats.skippedChunkCount)) | Out-Null
+  $lines.Add(('- Remaining planned chunk count: `{0}`' -f [int]$RunStats.remainingPlannedChunkCount)) | Out-Null
+  $lines.Add(('- Replay status: `{0}` ({1})' -f [string]$RunStats.replayStatus, [string]$RunStats.replayReason)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('## Continuity overview') | Out-Null
+  $lines.Add('') | Out-Null
+
+  foreach ($segment in @($ChunkPlan.segments)) {
+    $continuityNote = if ($null -ne $segment.continuityBreakAfterRevisionOrdinal) {
+      ('; break after revision `{0}` ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
+    } else {
+      ''
+    }
+    $lines.Add(('- Segment `{0}`: revisions `{1}` -> `{2}`, pairs `{3}`, start `{4}`{5}' -f [int]$segment.segmentOrdinal, [int]$segment.startRevisionOrdinal, [int]$segment.endRevisionOrdinal, [int]$segment.pairCount, [string]$segment.continuityStartReason, $continuityNote)) | Out-Null
+  }
   $lines.Add('') | Out-Null
 
   foreach ($segment in @($ChunkPlan.segments)) {
@@ -267,6 +386,8 @@ function New-MarkdownIndex {
     [Parameter(Mandatory = $true)]
     $ChunkReceipts,
     [Parameter(Mandatory = $true)]
+    $RunStats,
+    [Parameter(Mandatory = $true)]
     [string]$FinalStatus,
     [Parameter(Mandatory = $true)]
     [string]$FinalReason,
@@ -291,16 +412,37 @@ function New-MarkdownIndex {
   $lines = New-Object System.Collections.Generic.List[string]
   $lines.Add('# comparevi-history manual exploration index') | Out-Null
   $lines.Add('') | Out-Null
+  $lines.Add('## Run summary') | Out-Null
+  $lines.Add('') | Out-Null
   $lines.Add(('- Target path: `{0}`' -f [string]$Catalog.target.path)) | Out-Null
   $lines.Add(('- Selected ref: `{0}`' -f [string]$Catalog.target.selectedRef)) | Out-Null
-  $lines.Add(('- Revision count: `{0}`' -f [int]$Catalog.summary.revisionCount)) | Out-Null
-  $lines.Add(('- Pair count: `{0}`' -f [int]$ChunkPlan.summary.pairCount)) | Out-Null
+  $lines.Add(('- Revision count: `{0}`' -f [int]$RunStats.revisionCount)) | Out-Null
+  $lines.Add(('- Pair count: `{0}`' -f [int]$RunStats.pairCount)) | Out-Null
   $lines.Add(('- Final status: `{0}`' -f $FinalStatus)) | Out-Null
   $lines.Add(('- Final reason: `{0}`' -f $FinalReason)) | Out-Null
-  $lines.Add(('- Catalog complete: `{0}` ({1})' -f [bool]$Catalog.discovery.complete, [string]$Catalog.discovery.completenessReason)) | Out-Null
-  $lines.Add(('- Continuity status: `{0}`' -f [string]$Catalog.summary.continuityStatus)) | Out-Null
+  $lines.Add(('- Catalog complete: `{0}` ({1})' -f $RunStats.catalogComplete.ToString().ToLowerInvariant(), [string]$RunStats.catalogCompletenessReason)) | Out-Null
+  $lines.Add(('- Continuity status: `{0}`' -f [string]$RunStats.continuityStatus)) | Out-Null
+  $lines.Add(('- Continuity break count: `{0}`' -f [int]$RunStats.continuityBreakCount)) | Out-Null
+  $lines.Add(('- Segment count: `{0}`' -f [int]$RunStats.segmentCount)) | Out-Null
+  $lines.Add(('- Total chunk count: `{0}`' -f [int]$RunStats.totalChunkCount)) | Out-Null
+  $lines.Add(('- Completed chunk count: `{0}`' -f [int]$RunStats.completedChunkCount)) | Out-Null
+  $lines.Add(('- Failed chunk count: `{0}`' -f [int]$RunStats.failedChunkCount)) | Out-Null
+  $lines.Add(('- Skipped chunk count: `{0}`' -f [int]$RunStats.skippedChunkCount)) | Out-Null
+  $lines.Add(('- Remaining planned chunk count: `{0}`' -f [int]$RunStats.remainingPlannedChunkCount)) | Out-Null
+  $lines.Add(('- Replay status: `{0}` ({1})' -f [string]$RunStats.replayStatus, [string]$RunStats.replayReason)) | Out-Null
   $lines.Add(('- Bundle status: `{0}`' -f $BundleStatus)) | Out-Null
   $lines.Add(('- Bundle reason: `{0}`' -f $BundleReason)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('## Continuity overview') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($segment in @($ChunkPlan.segments)) {
+    $continuityNote = if ($null -ne $segment.continuityBreakAfterRevisionOrdinal) {
+      ('; break after revision `{0}` ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
+    } else {
+      ''
+    }
+    $lines.Add(('- Segment `{0}`: revisions `{1}` -> `{2}`, pairs `{3}`, start `{4}`{5}' -f [int]$segment.segmentOrdinal, [int]$segment.startRevisionOrdinal, [int]$segment.endRevisionOrdinal, [int]$segment.pairCount, [string]$segment.continuityStartReason, $continuityNote)) | Out-Null
+  }
   $lines.Add('') | Out-Null
   $lines.Add('## Top-level surfaces') | Out-Null
   $lines.Add('') | Out-Null
@@ -354,18 +496,24 @@ function New-HtmlTimeline {
     [Parameter(Mandatory = $true)]
     $Catalog,
     [Parameter(Mandatory = $true)]
+    $ChunkPlan,
+    [Parameter(Mandatory = $true)]
     $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    $RunStats,
     [Parameter(Mandatory = $true)]
     [string]$FinalStatus,
     [Parameter(Mandatory = $true)]
     [string]$FinalReason
   )
 
+  $summaryClass = Get-HtmlStatusClass -Status $FinalStatus
   $rows = New-Object System.Collections.Generic.List[string]
   foreach ($chunk in $ChunkReceipts) {
     $chunkSummary = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'summary'
+    $chunkClass = Get-HtmlStatusClass -Status ([string]$chunk.status)
     $rows.Add(@"
-<tr>
+<tr class="$chunkClass">
   <td>$([int]$chunk.segmentOrdinal)</td>
   <td>$([string]$chunk.chunkId)</td>
   <td>$([string]$chunk.status)</td>
@@ -373,6 +521,24 @@ function New-HtmlTimeline {
   <td>$([int]$chunk.pairCount)</td>
   <td>$([int](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'totalDiffs' -Default 0))</td>
   <td>$([string](Get-OptionalPropertyValue -InputObject $chunkSummary -PropertyName 'finalReason' -Default 'planned'))</td>
+</tr>
+"@) | Out-Null
+  }
+
+  $continuityRows = New-Object System.Collections.Generic.List[string]
+  foreach ($segment in @($ChunkPlan.segments)) {
+    $breakCell = if ($null -ne $segment.continuityBreakAfterRevisionOrdinal) {
+      ('{0} ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
+    } else {
+      'none'
+    }
+    $continuityRows.Add(@"
+<tr>
+  <td>$([int]$segment.segmentOrdinal)</td>
+  <td>$([int]$segment.startRevisionOrdinal)-$([int]$segment.endRevisionOrdinal)</td>
+  <td>$([int]$segment.pairCount)</td>
+  <td>$([string]$segment.continuityStartReason)</td>
+  <td>$breakCell</td>
 </tr>
 "@) | Out-Null
   }
@@ -385,6 +551,12 @@ function New-HtmlTimeline {
   <title>comparevi-history manual exploration timeline</title>
   <style>
     body { font-family: Segoe UI, Arial, sans-serif; margin: 2rem; }
+    .summary { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; margin-bottom: 1.5rem; }
+    .banner { padding: 0.75rem 1rem; margin-bottom: 1rem; border-left: 0.4rem solid #666; background: #f3f3f3; }
+    .status-good { background: #eef8ef; border-left-color: #2e7d32; }
+    .status-warn { background: #fff7e8; border-left-color: #b26a00; }
+    .status-bad { background: #fdecea; border-left-color: #b42318; }
+    .status-neutral { background: #f3f3f3; border-left-color: #666; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
     th { background: #f3f3f3; }
@@ -392,11 +564,42 @@ function New-HtmlTimeline {
 </head>
 <body>
   <h1>comparevi-history manual exploration timeline</h1>
-  <p><strong>Target path:</strong> $([string]$Catalog.target.path)</p>
-  <p><strong>Selected ref:</strong> $([string]$Catalog.target.selectedRef)</p>
-  <p><strong>Revision count:</strong> $([int]$Catalog.summary.revisionCount)</p>
-  <p><strong>Final status:</strong> $FinalStatus</p>
-  <p><strong>Final reason:</strong> $FinalReason</p>
+  <div class="banner $summaryClass">
+    <strong>Final status:</strong> $FinalStatus
+    <span> | <strong>Final reason:</strong> $FinalReason</span>
+    <span> | <strong>Continuity:</strong> $([string]$RunStats.continuityStatus)</span>
+  </div>
+  <div class="summary">
+    <strong>Target path</strong><span>$([string]$Catalog.target.path)</span>
+    <strong>Selected ref</strong><span>$([string]$Catalog.target.selectedRef)</span>
+    <strong>Revision count</strong><span>$([int]$RunStats.revisionCount)</span>
+    <strong>Pair count</strong><span>$([int]$RunStats.pairCount)</span>
+    <strong>Catalog completeness</strong><span>$($RunStats.catalogComplete.ToString().ToLowerInvariant()) ($([string]$RunStats.catalogCompletenessReason))</span>
+    <strong>Segment count</strong><span>$([int]$RunStats.segmentCount)</span>
+    <strong>Continuity break count</strong><span>$([int]$RunStats.continuityBreakCount)</span>
+    <strong>Total chunk count</strong><span>$([int]$RunStats.totalChunkCount)</span>
+    <strong>Completed chunks</strong><span>$([int]$RunStats.completedChunkCount)</span>
+    <strong>Failed chunks</strong><span>$([int]$RunStats.failedChunkCount)</span>
+    <strong>Skipped chunks</strong><span>$([int]$RunStats.skippedChunkCount)</span>
+    <strong>Remaining planned chunks</strong><span>$([int]$RunStats.remainingPlannedChunkCount)</span>
+    <strong>Replay status</strong><span>$([string]$RunStats.replayStatus) ($([string]$RunStats.replayReason))</span>
+  </div>
+  <h2>Continuity overview</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Segment</th>
+        <th>Revision ordinals</th>
+        <th>Pairs</th>
+        <th>Start reason</th>
+        <th>Break</th>
+      </tr>
+    </thead>
+    <tbody>
+$($continuityRows -join [Environment]::NewLine)
+    </tbody>
+  </table>
+  <h2>Chunk timeline</h2>
   <table>
     <thead>
       <tr>
@@ -423,7 +626,11 @@ function New-HtmlIndex {
     [Parameter(Mandatory = $true)]
     $Catalog,
     [Parameter(Mandatory = $true)]
+    $ChunkPlan,
+    [Parameter(Mandatory = $true)]
     $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    $RunStats,
     [Parameter(Mandatory = $true)]
     [string]$FinalStatus,
     [Parameter(Mandatory = $true)]
@@ -445,6 +652,7 @@ function New-HtmlIndex {
   $timelineMdReference = ConvertTo-ArtifactReference -Path $TimelineMdPath -ResultsRoot $ResultsRoot
   $timelineHtmlReference = ConvertTo-ArtifactReference -Path $TimelineHtmlPath -ResultsRoot $ResultsRoot
   $bundleReference = ConvertTo-ArtifactReference -Path $BundlePath -ResultsRoot $ResultsRoot -OnlyIfExists
+  $summaryClass = Get-HtmlStatusClass -Status $FinalStatus
   $rows = New-Object System.Collections.Generic.List[string]
   foreach ($chunk in $ChunkReceipts) {
     $chunkOutputs = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'outputs'
@@ -457,8 +665,9 @@ function New-HtmlIndex {
     $historyReportMdLink = Format-HtmlLink -Label 'history-report.md' -Href $historyReportMdReference
     $historyReportHtmlLink = Format-HtmlLink -Label 'history-report.html' -Href $historyReportHtmlReference
     $modeSummaryLink = Format-HtmlLink -Label 'mode-summary.md' -Href $modeSummaryReference
+    $chunkClass = Get-HtmlStatusClass -Status ([string]$chunk.status)
     $rows.Add(@"
-<tr>
+<tr class="$chunkClass">
   <td>$([string]$chunk.chunkId)</td>
   <td>$([string]$chunk.status)</td>
   <td>$([int]$chunk.segmentOrdinal)</td>
@@ -469,6 +678,24 @@ function New-HtmlIndex {
   <td>$historyReportMdLink</td>
   <td>$historyReportHtmlLink</td>
   <td>$modeSummaryLink</td>
+</tr>
+"@) | Out-Null
+  }
+
+  $continuityRows = New-Object System.Collections.Generic.List[string]
+  foreach ($segment in @($ChunkPlan.segments)) {
+    $breakCell = if ($null -ne $segment.continuityBreakAfterRevisionOrdinal) {
+      ('{0} ({1})' -f [int]$segment.continuityBreakAfterRevisionOrdinal, [string]$segment.continuityBreakReason)
+    } else {
+      'none'
+    }
+    $continuityRows.Add(@"
+<tr>
+  <td>$([int]$segment.segmentOrdinal)</td>
+  <td>$([int]$segment.startRevisionOrdinal)-$([int]$segment.endRevisionOrdinal)</td>
+  <td>$([int]$segment.pairCount)</td>
+  <td>$([string]$segment.continuityStartReason)</td>
+  <td>$breakCell</td>
 </tr>
 "@) | Out-Null
   }
@@ -496,19 +723,55 @@ function New-HtmlIndex {
     th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; vertical-align: top; }
     th { background: #f3f3f3; }
     .meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; margin-bottom: 1.5rem; }
+    .banner { padding: 0.75rem 1rem; margin-bottom: 1rem; border-left: 0.4rem solid #666; background: #f3f3f3; }
+    .status-good { background: #eef8ef; border-left-color: #2e7d32; }
+    .status-warn { background: #fff7e8; border-left-color: #b26a00; }
+    .status-bad { background: #fdecea; border-left-color: #b42318; }
+    .status-neutral { background: #f3f3f3; border-left-color: #666; }
   </style>
 </head>
 <body>
   <h1>comparevi-history manual exploration index</h1>
+  <div class="banner $summaryClass">
+    <strong>Final status:</strong> $FinalStatus
+    <span> | <strong>Final reason:</strong> $FinalReason</span>
+    <span> | <strong>Continuity:</strong> $([string]$RunStats.continuityStatus)</span>
+  </div>
   <div class="meta">
     <strong>Target path</strong><span>$([string]$Catalog.target.path)</span>
     <strong>Selected ref</strong><span>$([string]$Catalog.target.selectedRef)</span>
-    <strong>Revision count</strong><span>$([int]$Catalog.summary.revisionCount)</span>
+    <strong>Revision count</strong><span>$([int]$RunStats.revisionCount)</span>
+    <strong>Pair count</strong><span>$([int]$RunStats.pairCount)</span>
     <strong>Final status</strong><span>$FinalStatus</span>
     <strong>Final reason</strong><span>$FinalReason</span>
+    <strong>Catalog completeness</strong><span>$($RunStats.catalogComplete.ToString().ToLowerInvariant()) ($([string]$RunStats.catalogCompletenessReason))</span>
+    <strong>Continuity status</strong><span>$([string]$RunStats.continuityStatus)</span>
+    <strong>Continuity break count</strong><span>$([int]$RunStats.continuityBreakCount)</span>
+    <strong>Segment count</strong><span>$([int]$RunStats.segmentCount)</span>
+    <strong>Total chunk count</strong><span>$([int]$RunStats.totalChunkCount)</span>
+    <strong>Completed chunks</strong><span>$([int]$RunStats.completedChunkCount)</span>
+    <strong>Failed chunks</strong><span>$([int]$RunStats.failedChunkCount)</span>
+    <strong>Skipped chunks</strong><span>$([int]$RunStats.skippedChunkCount)</span>
+    <strong>Remaining planned chunks</strong><span>$([int]$RunStats.remainingPlannedChunkCount)</span>
+    <strong>Replay status</strong><span>$([string]$RunStats.replayStatus) ($([string]$RunStats.replayReason))</span>
     <strong>Bundle status</strong><span>$BundleStatus</span>
     <strong>Bundle reason</strong><span>$BundleReason</span>
   </div>
+  <h2>Continuity overview</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Segment</th>
+        <th>Revision ordinals</th>
+        <th>Pairs</th>
+        <th>Start reason</th>
+        <th>Break</th>
+      </tr>
+    </thead>
+    <tbody>
+$($continuityRows -join [Environment]::NewLine)
+    </tbody>
+  </table>
   <h2>Top-level surfaces</h2>
   <ul>
 $($topLevelLinks -join [Environment]::NewLine)
@@ -659,13 +922,25 @@ if ($planningStatus -eq 'complete' -and $effectiveBundleStatus -eq 'failed') {
   $replayReason = 'bundle-packaging-failed'
 }
 
+$runStats = New-ExplorationSurfaceStats `
+  -Catalog $catalog `
+  -ChunkPlan $chunkPlan `
+  -ChunkReceipts $chunkReceipts `
+  -FinalStatus $finalStatus `
+  -FinalReason $finalReason `
+  -ReplayStatus $replayStatus `
+  -ReplayReason $replayReason `
+  -BundleStatus $effectiveBundleStatus `
+  -BundleReason $effectiveBundleReason
+
 $chunkReceiptArray = $chunkReceipts.ToArray()
-$timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -FinalStatus $finalStatus -FinalReason $finalReason
-$timelineHtml = New-HtmlTimeline -Catalog $catalog -ChunkReceipts $chunkReceiptArray -FinalStatus $finalStatus -FinalReason $finalReason
+$timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
+$timelineHtml = New-HtmlTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
 $indexMarkdown = New-MarkdownIndex `
   -Catalog $catalog `
   -ChunkPlan $chunkPlan `
   -ChunkReceipts $chunkReceiptArray `
+  -RunStats $runStats `
   -FinalStatus $finalStatus `
   -FinalReason $finalReason `
   -BundleStatus $effectiveBundleStatus `
@@ -676,7 +951,9 @@ $indexMarkdown = New-MarkdownIndex `
   -BundlePath $bundlePathResolved
 $indexHtml = New-HtmlIndex `
   -Catalog $catalog `
+  -ChunkPlan $chunkPlan `
   -ChunkReceipts $chunkReceiptArray `
+  -RunStats $runStats `
   -FinalStatus $finalStatus `
   -FinalReason $finalReason `
   -BundleStatus $effectiveBundleStatus `
@@ -778,11 +1055,18 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Exploration run: `{0}`' -f $explorationRunPath)
     ('- Revision count: `{0}`' -f [int]$catalog.summary.revisionCount)
     ('- Pair count: `{0}`' -f $pairCount)
-    ('- Planned chunk count: `{0}`' -f $chunkCount)
+    ('- Total chunk count: `{0}`' -f $runStats.totalChunkCount)
     ('- Completed chunk count: `{0}`' -f $completedChunkCount)
     ('- Failed chunk count: `{0}`' -f $failedChunkCount)
+    ('- Skipped chunk count: `{0}`' -f $skippedChunkCount)
+    ('- Remaining planned chunk count: `{0}`' -f $runStats.remainingPlannedChunkCount)
+    ('- Catalog completeness: `{0}` ({1})' -f $runStats.catalogComplete.ToString().ToLowerInvariant(), [string]$runStats.catalogCompletenessReason)
+    ('- Continuity status: `{0}`' -f [string]$runStats.continuityStatus)
+    ('- Continuity break count: `{0}`' -f [int]$runStats.continuityBreakCount)
+    ('- Segment count: `{0}`' -f [int]$runStats.segmentCount)
     ('- Final status: `{0}`' -f $finalStatus)
     ('- Final reason: `{0}`' -f $finalReason)
+    ('- Replay status: `{0}` ({1})' -f [string]$runStats.replayStatus, [string]$runStats.replayReason)
     ('- Index (md): `{0}`' -f $indexMdResolved)
     ('- Index (html): `{0}`' -f $indexHtmlResolved)
     ('- Bundle status: `{0}`' -f $effectiveBundleStatus)
