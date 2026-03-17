@@ -60,6 +60,24 @@ function Assert-Equal {
   }
 }
 
+function Assert-MatchCount {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Content,
+    [Parameter(Mandatory = $true)]
+    [string]$Pattern,
+    [Parameter(Mandatory = $true)]
+    [int]$ExpectedCount,
+    [Parameter(Mandatory = $true)]
+    [string]$Message
+  )
+
+  $actualCount = [regex]::Matches($Content, $Pattern).Count
+  if ($actualCount -ne $ExpectedCount) {
+    throw "$Message Expected '$ExpectedCount', actual '$actualCount'."
+  }
+}
+
 $manualTemplate = Get-Content -LiteralPath $manualTemplatePath -Raw
 $commentTemplate = Get-Content -LiteralPath $commentTemplatePath -Raw
 $manualExplorationTemplate = Get-Content -LiteralPath $manualExplorationTemplatePath -Raw
@@ -100,6 +118,7 @@ Assert-Match -Content $manualExplorationWorkflow -Pattern 'Invoke-CompareVIHisto
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryExplorationBundle\.ps1' -Message 'Manual exploration workflow must write the exploration bundle.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'Write-CompareVIHistoryExplorationRun\.ps1' -Message 'Manual exploration workflow must write the exploration run receipt.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'revision-catalog-path' -Message 'Manual exploration workflow must expose the revision catalog output.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern 'results-root' -Message 'Manual exploration workflow must expose the resolved exploration results root.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'chunk-plan-path' -Message 'Manual exploration workflow must expose the chunk plan output.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'execution-status' -Message 'Manual exploration workflow must expose the chunk execution status.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'bundle-status' -Message 'Manual exploration workflow must expose the bundle status.'
@@ -110,6 +129,9 @@ Assert-Match -Content $manualExplorationWorkflow -Pattern 'index-html' -Message 
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'timeline-md' -Message 'Manual exploration workflow must expose the timeline markdown output.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'timeline-html' -Message 'Manual exploration workflow must expose the timeline HTML output.'
 Assert-Match -Content $manualExplorationWorkflow -Pattern 'platform_ref' -Message 'Manual exploration workflow must expose the platform_ref seam explicitly.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern "Split-Path -Parent '\$\{\{ steps\.catalog\.outputs\['revision-catalog-path'\] \}\}'" -Message 'Manual exploration workflow must derive the resolved results root from the revision catalog output.'
+Assert-Match -Content $manualExplorationWorkflow -Pattern "\$\{\{ steps\.results_root\.outputs\['results-root'\] \}\}" -Message 'Manual exploration workflow must route the resolved results root into later stages.'
+Assert-MatchCount -Content $manualExplorationWorkflow -Pattern "'tests/results/ref-compare/history-exploration'" -ExpectedCount 1 -Message 'Manual exploration workflow must only use the relative results directory during catalog generation.'
 
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
