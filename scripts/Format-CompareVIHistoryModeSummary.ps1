@@ -184,6 +184,32 @@ function Format-CountMap {
   return (($normalized.Keys | ForEach-Object { '{0} ({1})' -f $_, [int]$normalized[$_] }) -join ', ')
 }
 
+function Get-ModeSummaryTotal {
+  param(
+    [AllowNull()]
+    $ModeSummaries,
+    [Parameter(Mandatory = $true)]
+    [string]$PropertyName
+  )
+
+  $total = 0
+  foreach ($modeSummary in @(ConvertTo-ObjectArray -Value $ModeSummaries)) {
+    $value = Get-EntryValue -Entry $modeSummary -Name $PropertyName -DefaultValue 0
+    if ($null -eq $value) {
+      continue
+    }
+
+    $renderedValue = [string]$value
+    if ([string]::IsNullOrWhiteSpace($renderedValue)) {
+      continue
+    }
+
+    $total += [int]$value
+  }
+
+  return $total
+}
+
 function Get-SuppressionProfile {
   param(
     [AllowNull()]
@@ -407,12 +433,12 @@ $suppressionProfile = if ($aggregateProfiles.Count -eq 0) {
 }
 
 $effectiveTotalProcessed = if ([string]::IsNullOrWhiteSpace($TotalProcessed)) {
-  [string](($modeSummaries | Measure-Object -Property processed -Sum).Sum)
+  [string](Get-ModeSummaryTotal -ModeSummaries $modeSummaries -PropertyName 'processed')
 } else {
   $TotalProcessed
 }
 $effectiveTotalDiffs = if ([string]::IsNullOrWhiteSpace($TotalDiffs)) {
-  [string](($modeSummaries | Measure-Object -Property diffs -Sum).Sum)
+  [string](Get-ModeSummaryTotal -ModeSummaries $modeSummaries -PropertyName 'diffs')
 } else {
   $TotalDiffs
 }
