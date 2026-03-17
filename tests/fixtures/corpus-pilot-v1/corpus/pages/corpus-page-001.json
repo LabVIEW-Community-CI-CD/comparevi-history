@@ -1,0 +1,137 @@
+{
+  "schema": "comparevi-history/corpus-page@v1",
+  "generatedAtUtc": "2026-03-17T17:07:24.4984632Z",
+  "corpus": {
+    "repository": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+    "ref": "develop",
+    "indexPath": "../corpus-index.json"
+  },
+  "page": {
+    "pageOrdinal": 1,
+    "pageSize": 2,
+    "targetCount": 2,
+    "targetOrdinalStart": 1,
+    "targetOrdinalEnd": 2
+  },
+  "targets": [
+    {
+      "targetOrdinal": 1,
+      "targetKey": "LabVIEW-Community-CI-CD/labview-icon-editor-demo|develop|fcb897ba4b9758c8532fdda38e57805e4a785e49|Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "entrypoint": "manual-exploration",
+      "target": {
+        "path": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+        "selectedRef": "fcb897ba4b9758c8532fdda38e57805e4a785e49",
+        "extension": ".vi",
+        "targetId": null
+      },
+      "sources": {
+        "sharedEvidenceSchema": "comparevi-history/shared-evidence@v1",
+        "sharedEvidencePath": "../../vip-post-install-custom-action/shared-evidence.json",
+        "sourceSchema": "comparevi-history/evidence-graph@v1",
+        "sourcePath": "/home/runner/work/labview-icon-editor-demo/labview-icon-editor-demo/consumer/tests/results/ref-compare/history-exploration/corpus-pilot/vip-post-install-custom-action/evidence-graph.json",
+        "evidenceGraphSchema": "comparevi-history/evidence-graph@v1",
+        "evidenceGraphPath": "../../vip-post-install-custom-action/evidence-graph.json"
+      },
+      "summary": {
+        "modeCount": 1,
+        "totalProcessed": 2,
+        "totalDiffs": 2,
+        "stopReason": "complete",
+        "suppressionProfile": "unsuppressed",
+        "comparisonArtifactCount": 2,
+        "captureCount": 2,
+        "imageArtifactCount": 0,
+        "previewImageCount": 0,
+        "comparisonPairCount": 1
+      },
+      "completeness": {
+        "finalStatus": "succeeded",
+        "finalReason": "all-chunks-succeeded",
+        "replayStatus": "ready",
+        "replayReason": "all-chunks-executed",
+        "graphStatus": null,
+        "graphReason": null,
+        "catalogComplete": true,
+        "catalogCompletenessReason": "selected-ref-lineage",
+        "continuityStatus": "continuous",
+        "continuityBreakCount": 0,
+        "segmentCount": 1
+      },
+      "surfaces": {
+        "categoryCounts": {
+          "Block Diagram Cosmetic": 1,
+          "Block Diagram objects": 2
+        },
+        "bucketCounts": {
+          "functional-behavior": 2,
+          "ui-visual": 1,
+          "uncategorized": 2
+        },
+        "renderSurfacesCount": 7,
+        "artifactSurfacesCount": 13
+      }
+    },
+    {
+      "targetOrdinal": 2,
+      "targetKey": "LabVIEW-Community-CI-CD/labview-icon-editor-demo|develop|fcb897ba4b9758c8532fdda38e57805e4a785e49|Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+      "entrypoint": "manual-exploration",
+      "target": {
+        "path": "Tooling/deployment/VIP_Pre-Install Custom Action.vi",
+        "selectedRef": "fcb897ba4b9758c8532fdda38e57805e4a785e49",
+        "extension": ".vi",
+        "targetId": null
+      },
+      "sources": {
+        "sharedEvidenceSchema": "comparevi-history/shared-evidence@v1",
+        "sharedEvidencePath": "../../vip-pre-install-custom-action/shared-evidence.json",
+        "sourceSchema": "comparevi-history/evidence-graph@v1",
+        "sourcePath": "/home/runner/work/labview-icon-editor-demo/labview-icon-editor-demo/consumer/tests/results/ref-compare/history-exploration/corpus-pilot/vip-pre-install-custom-action/evidence-graph.json",
+        "evidenceGraphSchema": "comparevi-history/evidence-graph@v1",
+        "evidenceGraphPath": "../../vip-pre-install-custom-action/evidence-graph.json"
+      },
+      "summary": {
+        "modeCount": 1,
+        "totalProcessed": 2,
+        "totalDiffs": 2,
+        "stopReason": "complete",
+        "suppressionProfile": "unsuppressed",
+        "comparisonArtifactCount": 2,
+        "captureCount": 2,
+        "imageArtifactCount": 0,
+        "previewImageCount": 0,
+        "comparisonPairCount": 1
+      },
+      "completeness": {
+        "finalStatus": "succeeded",
+        "finalReason": "all-chunks-succeeded",
+        "replayStatus": "ready",
+        "replayReason": "all-chunks-executed",
+        "graphStatus": null,
+        "graphReason": null,
+        "catalogComplete": true,
+        "catalogCompletenessReason": "selected-ref-lineage",
+        "continuityStatus": "continuous",
+        "continuityBreakCount": 0,
+        "segmentCount": 1
+      },
+      "surfaces": {
+        "categoryCounts": {
+          "Block Diagram Cosmetic": 2,
+          "Block Diagram objects": 2,
+          "Front Panel": 1
+        },
+        "bucketCounts": {
+          "functional-behavior": 2,
+          "ui-visual": 2,
+          "uncategorized": 2
+        },
+        "renderSurfacesCount": 7,
+        "artifactSurfacesCount": 13
+      }
+    }
+  ],
+  "completeness": {
+    "isComplete": true,
+    "reason": "all-targets-complete"
+  }
+}

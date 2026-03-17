@@ -1,0 +1,53 @@
+{
+  "schema": "comparevi-history/downstream-processing-manifest@v1",
+  "generatedAtUtc": "2026-03-17T17:07:24.5119230Z",
+  "corpus": {
+    "repository": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+    "ref": "develop",
+    "corpusIndexPath": "corpus-index.json"
+  },
+  "acceptedSchemas": {
+    "sharedEvidence": "comparevi-history/shared-evidence@v1",
+    "evidenceGraph": "comparevi-history/evidence-graph@v1",
+    "corpusPage": "comparevi-history/corpus-page@v1"
+  },
+  "processingModel": {
+    "unitKind": "corpus-page",
+    "ordering": "target-path-asc",
+    "continuationMode": "page-ordinal",
+    "pageSize": 2,
+    "pageCount": 1,
+    "targetCount": 2
+  },
+  "units": [
+    {
+      "unitId": "page-001",
+      "pageOrdinal": 1,
+      "pagePath": "pages/corpus-page-001.json",
+      "targetCount": 2,
+      "targetOrdinalStart": 1,
+      "targetOrdinalEnd": 2,
+      "continuationToken": "page-001",
+      "status": "ready"
+    }
+  ],
+  "completeness": {
+    "isComplete": true,
+    "reason": "all-targets-complete"
+  },
+  "pilotRecommendation": {
+    "name": "manual-exploration-corpus-pilot@v1",
+    "selectionStrategy": "explicit-evidence-list",
+    "minimumTargetCount": 2,
+    "candidateTargetPaths": [
+      "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "Tooling/deployment/VIP_Pre-Install Custom Action.vi"
+    ],
+    "requiredSchemas": [
+      "comparevi-history/shared-evidence@v1",
+      "comparevi-history/evidence-graph@v1"
+    ],
+    "continuationMode": "page-ordinal",
+    "nextStep": "Seed the pilot with an explicit list of long-lived VIs and let downstream processors resume by page ordinal instead of scraping timeline markdown or HTML."
+  }
+}

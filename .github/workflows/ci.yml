@@ -114,6 +114,7 @@ jobs:
             'scripts/Format-CompareVIHistoryModeSummary.ps1',
             'scripts/Write-CompareVIHistorySharedEvidence.ps1',
             'scripts/Write-CompareVIHistoryCorpusIndex.ps1',
+            'scripts/Write-CompareVIHistoryDownstreamProcessorSummary.ps1',
             'scripts/Write-CompareVIHistoryPublicRun.ps1',
             'scripts/Assert-CompareVIHistoryPublishedRun.ps1',
             'scripts/Sync-CompareVIHistoryPublishedTemplates.ps1',
@@ -127,6 +128,7 @@ jobs:
             'scripts/Test-CompareVIHistoryExplorationRun.ps1',
             'scripts/Test-CompareVIHistoryManualExplorationFastLoop.ps1',
             'scripts/Test-CompareVIHistoryCorpusIndex.ps1',
+            'scripts/Test-CompareVIHistoryDownstreamProcessorSummary.ps1',
             'scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1',
             'scripts/Test-CompareVIHistoryTemplateContracts.ps1'
           )) {
@@ -187,6 +189,7 @@ jobs:
             'scripts/Test-CompareVIHistoryExplorationRun.ps1',
             'scripts/Test-CompareVIHistoryManualExplorationFastLoop.ps1',
             'scripts/Test-CompareVIHistoryCorpusIndex.ps1',
+            'scripts/Test-CompareVIHistoryDownstreamProcessorSummary.ps1',
             'scripts/Test-CompareVIHistoryModeSummary.ps1',
             'scripts/Test-CompareVIHistorySharedEvidence.ps1',
             'scripts/Test-CompareVIHistoryPublicRun.ps1',
