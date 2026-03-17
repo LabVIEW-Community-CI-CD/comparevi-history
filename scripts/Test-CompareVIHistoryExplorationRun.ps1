@@ -149,6 +149,10 @@ try {
   $secondHistoryDir = Join-Path ([string]$chunkPlan.chunks[1].outputs.chunkRoot) 'history'
   New-Item -ItemType Directory -Path $firstHistoryDir -Force | Out-Null
   New-Item -ItemType Directory -Path $secondHistoryDir -Force | Out-Null
+  $firstPreviewDir = Join-Path $firstHistoryDir 'preview-images'
+  New-Item -ItemType Directory -Path $firstPreviewDir -Force | Out-Null
+  $firstPreviewPath = Join-Path $firstPreviewDir 'cli-image-00.png'
+  [System.IO.File]::WriteAllBytes($firstPreviewPath, @(0xCA,0xFE,0xBA,0xBE))
   $firstReportMd = Join-Path $firstHistoryDir 'history-report.md'
   $firstReportHtml = Join-Path $firstHistoryDir 'history-report.html'
   $firstModeSummaryJson = Join-Path ([string]$chunkPlan.chunks[0].outputs.chunkRoot) 'mode-summary.json'
@@ -215,6 +219,21 @@ try {
         '<div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div>' = 2
         'Block Diagram objects' = 1
       }
+      previewImages = @(
+        [ordered]@{
+          mode = 'attributes'
+          category = 'Block Diagram objects'
+          comparisonPair = [ordered]@{
+            firstPath = '/compare/m0/Base.vi'
+            secondPath = '/compare/m0/Head.vi'
+          }
+          mimeType = 'image/png'
+          byteLength = 4
+          savedPath = $firstPreviewPath
+          artifactRelativePath = 'preview-images/cli-image-00.png'
+          sortKey = 'attributes|block diagram objects|preview-images/cli-image-00.png'
+        }
+      )
       bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
     }
     failure = $null
@@ -318,6 +337,21 @@ try {
   if ($executedRun.surfaces.comparisonPairs[0].firstPath -ne '/compare/m0/Base.vi' -or $executedRun.surfaces.comparisonPairs[0].secondPath -ne '/compare/m0/Head.vi' -or $executedRun.surfaces.comparisonPairs[0].count -ne 2) {
     throw 'Executed exploration run comparison pair normalization mismatch.'
   }
+  if ($executedRun.surfaces.previewImages.Count -ne 1) {
+    throw 'Executed exploration run preview image count mismatch.'
+  }
+  if ($executedRun.surfaces.previewImages[0].chunkId -ne [string]$chunkPlan.chunks[0].chunkId) {
+    throw 'Executed exploration run preview image chunkId mismatch.'
+  }
+  if ($executedRun.surfaces.previewImages[0].relativePath -ne 'chunk-receipts/chunk-001/history/preview-images/cli-image-00.png') {
+    throw 'Executed exploration run preview image relative path mismatch.'
+  }
+  if ($executedRun.summary.previewImageCount -ne 1 -or $executedRun.summary.previewGalleryCount -ne 1 -or $executedRun.summary.previewGalleryOmittedCount -ne 0) {
+    throw 'Executed exploration run preview gallery summary mismatch.'
+  }
+  if ($executedRun.summary.stepSummaryPreviewCount -ne 1 -or $executedRun.summary.stepSummaryPreviewOmittedCount -ne 0) {
+    throw 'Executed exploration run step-summary preview summary mismatch.'
+  }
 
   $timelineMarkdown = Get-Content -LiteralPath $executedRun.outputs.timelineMd -Raw
   if ($timelineMarkdown -notmatch [regex]::Escape([string]$chunkPlan.chunks[0].chunkId)) {
@@ -349,6 +383,8 @@ try {
       'Failed chunk count: `1`',
       'Suppression profile: `unsuppressed`',
       'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
+      'Preview images: `1`',
+      'Preview gallery: `1` shown, `0` omitted, cap `12`',
       'Comparison pairs: `/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\)`',
       'Replay status: `degraded` \(partial-chunk-execution\)',
       'Bundle status: `not-required`'
@@ -357,18 +393,26 @@ try {
       throw "Executed index markdown must include '$requiredFragment'."
     }
   }
+  if ($indexMarkdown -notmatch [regex]::Escape('![attributes | Block Diagram objects](chunk-receipts/chunk-001/history/preview-images/cli-image-00.png)')) {
+    throw 'Executed index markdown must embed the preview image gallery entry.'
+  }
   $executedSummary = Get-Content -LiteralPath $executedSummaryPath -Raw
   foreach ($requiredFragment in @(
       'Total chunk count: `2`',
       'Failed chunk count: `1`',
       'Remaining planned chunk count: `0`',
       'Continuity break count: `0`',
+      'Preview images: `1`',
+      'Step summary previews: `1` shown, `0` omitted, cap `2`, byte-budget `196608`',
       'Comparison pairs: `/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\)`',
       'Replay status: `degraded` \(partial-chunk-execution\)'
     )) {
     if ($executedSummary -notmatch $requiredFragment) {
       throw "Executed step summary must include '$requiredFragment'."
     }
+  }
+  if ($executedSummary -notmatch 'data:image/png;base64,') {
+    throw 'Executed step summary must embed a preview image data URI.'
   }
 
   $secondReceipt.status = 'succeeded'

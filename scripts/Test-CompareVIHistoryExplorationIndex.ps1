@@ -69,6 +69,10 @@ try {
   $chunkRoot = [string]$chunk.outputs.chunkRoot
   $historyDir = Join-Path $chunkRoot 'history'
   New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
+  $previewDir = Join-Path $historyDir 'preview-images'
+  New-Item -ItemType Directory -Path $previewDir -Force | Out-Null
+  $previewPath = Join-Path $previewDir 'cli-image-00.png'
+  [System.IO.File]::WriteAllBytes($previewPath, @(0xCA,0xFE,0xBA,0xBE))
   '# history report' | Set-Content -LiteralPath (Join-Path $historyDir 'history-report.md') -Encoding utf8
   '<html><body>history report</body></html>' | Set-Content -LiteralPath (Join-Path $historyDir 'history-report.html') -Encoding utf8
   '# mode summary' | Set-Content -LiteralPath (Join-Path $chunkRoot 'mode-summary.md') -Encoding utf8
@@ -94,6 +98,18 @@ try {
       imageMimeTypes = @('image/png')
       chunkCountWithMetadata = 1
       categoryCounts = [ordered]@{ attributes = 1 }
+      previewImages = @(
+        [ordered]@{
+          mode = 'attributes'
+          category = 'attributes'
+          comparisonPair = $null
+          mimeType = 'image/png'
+          byteLength = 4
+          savedPath = $previewPath
+          artifactRelativePath = 'preview-images/cli-image-00.png'
+          sortKey = 'attributes|attributes|preview-images/cli-image-00.png'
+        }
+      )
       bucketCounts = [ordered]@{ 'metadata-rich' = 1 }
     }) -Force
   $receipt.outputs | Add-Member -NotePropertyName historyResultsDir -NotePropertyValue $historyDir -Force
@@ -133,12 +149,17 @@ try {
   if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
     throw 'Index markdown must link the chunk HTML report.'
   }
+  if ($indexMarkdown -notmatch [regex]::Escape('![attributes | attributes](chunk-receipts/chunk-001/history/preview-images/cli-image-00.png)')) {
+    throw 'Index markdown must embed the preview image gallery entry.'
+  }
   foreach ($requiredFragment in @(
       'Continuity status: `break-detected`',
       'Continuity break count: `1`',
       'Segment count: `2`',
       'Suppression profile: `unsuppressed`',
       'Metadata surfaces: `captures=1, images=1, artifact-dirs=1, mime-types=image/png`',
+      'Preview images: `1`',
+      'Preview gallery: `1` shown, `0` omitted, cap `12`',
       'Segment `1`: revisions `1` -> `3`, pairs `2`, start `selected-ref-lineage-start`; break after revision `3` \(delete-observed\)',
       'Segment `2`: revisions `4` -> `4`, pairs `0`, start `reintroduced-after-delete`'
     )) {
@@ -157,11 +178,15 @@ try {
   if ($indexHtmlContent -notmatch [regex]::Escape('history-report.html')) {
     throw 'Index HTML must link the chunk HTML report.'
   }
+  if ($indexHtmlContent -notmatch [regex]::Escape('src="chunk-receipts/chunk-001/history/preview-images/cli-image-00.png"')) {
+    throw 'Index HTML must embed the preview image gallery entry.'
+  }
   foreach ($requiredFragment in @(
       'Continuity status</strong><span>break-detected</span>',
       'Continuity break count</strong><span>1</span>',
       'Suppression profile</strong><span>unsuppressed</span>',
       'Metadata surfaces</strong><span>captures=1, images=1, artifact-dirs=1</span>',
+      'Preview images</strong><span>1</span>',
       'Remaining planned chunks</strong><span>0</span>',
       'reintroduced-after-delete',
       'delete-observed'

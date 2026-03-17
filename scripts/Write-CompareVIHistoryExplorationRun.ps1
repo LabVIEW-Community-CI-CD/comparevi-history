@@ -22,6 +22,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:PreviewGalleryCap = 12
+$script:StepSummaryPreviewCap = 2
+$script:StepSummaryPreviewByteBudget = 196608
+
 function Write-ActionOutput {
   param(
     [Parameter(Mandatory = $true)]
@@ -206,6 +210,19 @@ function Format-HtmlLink {
   }
 
   return ('<a href="{0}">{1}</a>' -f $Href, $Label)
+}
+
+function ConvertTo-HtmlText {
+  param(
+    [AllowNull()]
+    [string]$Value
+  )
+
+  if ($null -eq $Value) {
+    return ''
+  }
+
+  return [System.Net.WebUtility]::HtmlEncode([string]$Value)
 }
 
 function ConvertTo-OrderedCountMap {
@@ -437,10 +454,357 @@ function Format-ComparisonPairText {
   return (($pairArray | ForEach-Object { '{0} -> {1} ({2})' -f [string]$_.firstPath, [string]$_.secondPath, [int]$_.count }) -join ', ')
 }
 
+function ConvertTo-PreviewComparisonPair {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return $null
+  }
+
+  $firstPath = [string](Get-OptionalPropertyValue -InputObject $Value -PropertyName 'firstPath' -Default '')
+  $secondPath = [string](Get-OptionalPropertyValue -InputObject $Value -PropertyName 'secondPath' -Default '')
+  if ([string]::IsNullOrWhiteSpace($firstPath) -or [string]::IsNullOrWhiteSpace($secondPath)) {
+    return $null
+  }
+
+  return [ordered]@{
+    firstPath = $firstPath.Trim()
+    secondPath = $secondPath.Trim()
+  }
+}
+
+function Format-PreviewComparisonPairText {
+  param(
+    [AllowNull()]
+    $Pair
+  )
+
+  $normalizedPair = ConvertTo-PreviewComparisonPair -Value $Pair
+  if ($null -eq $normalizedPair) {
+    return 'n/a'
+  }
+
+  return ('{0} -> {1}' -f [string]$normalizedPair.firstPath, [string]$normalizedPair.secondPath)
+}
+
+function ConvertTo-PreviewImageArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  $images = New-Object System.Collections.Generic.List[object]
+  foreach ($preview in @(ConvertTo-ObjectArray -InputObject $Value)) {
+    $relativePath = [string](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'relativePath' -Default '')
+    if ([string]::IsNullOrWhiteSpace($relativePath)) {
+      continue
+    }
+
+    $chunkId = [string](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'chunkId' -Default 'unknown')
+    $mode = [string](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'mode' -Default 'unknown')
+    $category = Normalize-CategoryLabel -Value ([string](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'category' -Default 'uncategorized'))
+    if ([string]::IsNullOrWhiteSpace($category)) {
+      $category = 'uncategorized'
+    }
+
+    $comparisonPair = ConvertTo-PreviewComparisonPair -Value (Get-OptionalPropertyValue -InputObject $preview -PropertyName 'comparisonPair')
+    $sortKey = [string](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'sortKey' -Default '')
+    $normalizedRelativePath = $relativePath.Replace('\', '/')
+    if ([string]::IsNullOrWhiteSpace($sortKey)) {
+      $sortKey = ('{0}|{1}|{2}|{3}|{4}|{5}' -f $chunkId, $mode, $category, $(if ($null -eq $comparisonPair) { '' } else { [string]$comparisonPair.firstPath }), $(if ($null -eq $comparisonPair) { '' } else { [string]$comparisonPair.secondPath }), $normalizedRelativePath).ToLowerInvariant()
+    }
+
+    $images.Add([ordered]@{
+        chunkId = $(if ([string]::IsNullOrWhiteSpace($chunkId)) { 'unknown' } else { $chunkId.Trim() })
+        mode = $(if ([string]::IsNullOrWhiteSpace($mode)) { 'unknown' } else { $mode.Trim() })
+        category = $category
+        comparisonPair = $comparisonPair
+        mimeType = [string](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'mimeType' -Default '')
+        byteLength = [int](Get-OptionalPropertyValue -InputObject $preview -PropertyName 'byteLength' -Default 0)
+        relativePath = $normalizedRelativePath
+        sortKey = $sortKey
+      }) | Out-Null
+  }
+
+  return @(
+    $images |
+      Sort-Object { [string]$_.sortKey }, { [string]$_.relativePath } |
+      ForEach-Object { $_ }
+  )
+}
+
+function Add-PreviewImageAggregate {
+  param(
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Target,
+    [Parameter(Mandatory = $true)]
+    [string]$ChunkId,
+    [AllowNull()]
+    $PreviewImage,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  if ($null -eq $PreviewImage) {
+    return
+  }
+
+  $relativePath = [string](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'relativePath' -Default '')
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    $savedPath = [string](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'savedPath' -Default '')
+    if (-not [string]::IsNullOrWhiteSpace($savedPath)) {
+      $relativePath = ConvertTo-ArtifactReference -Path $savedPath -ResultsRoot $ResultsRoot -OnlyIfExists
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    return
+  }
+
+  $mode = [string](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'mode' -Default 'unknown')
+  $category = Normalize-CategoryLabel -Value ([string](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'category' -Default 'uncategorized'))
+  if ([string]::IsNullOrWhiteSpace($category)) {
+    $category = 'uncategorized'
+  }
+
+  $comparisonPair = ConvertTo-PreviewComparisonPair -Value (Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'comparisonPair')
+  $mimeType = [string](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'mimeType' -Default '')
+  $byteLength = [int](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'byteLength' -Default 0)
+  $sortKey = [string](Get-OptionalPropertyValue -InputObject $PreviewImage -PropertyName 'sortKey' -Default '')
+  $normalizedRelativePath = $relativePath.Replace('\', '/')
+  if ([string]::IsNullOrWhiteSpace($sortKey)) {
+    $sortKey = ('{0}|{1}|{2}|{3}|{4}|{5}' -f $ChunkId, $mode, $category, $(if ($null -eq $comparisonPair) { '' } else { [string]$comparisonPair.firstPath }), $(if ($null -eq $comparisonPair) { '' } else { [string]$comparisonPair.secondPath }), $normalizedRelativePath).ToLowerInvariant()
+  }
+
+  $key = ('{0}|{1}|{2}|{3}|{4}|{5}' -f $ChunkId.Trim(), $mode.Trim(), $category, $(if ($null -eq $comparisonPair) { '' } else { [string]$comparisonPair.firstPath }), $(if ($null -eq $comparisonPair) { '' } else { [string]$comparisonPair.secondPath }), $normalizedRelativePath).ToLowerInvariant()
+  if ($Target.Contains($key)) {
+    return
+  }
+
+  $Target[$key] = [ordered]@{
+    chunkId = $(if ([string]::IsNullOrWhiteSpace($ChunkId)) { 'unknown' } else { $ChunkId.Trim() })
+    mode = $(if ([string]::IsNullOrWhiteSpace($mode)) { 'unknown' } else { $mode.Trim() })
+    category = $category
+    comparisonPair = $comparisonPair
+    mimeType = $mimeType
+    byteLength = $byteLength
+    relativePath = $normalizedRelativePath
+    sortKey = $sortKey
+  }
+}
+
+function Select-PreviewGalleryImages {
+  param(
+    [AllowNull()]
+    $PreviewImages,
+    [Parameter(Mandatory = $true)]
+    [int]$Limit
+  )
+
+  if ($Limit -le 0) {
+    return @()
+  }
+
+  return @((ConvertTo-PreviewImageArray -Value $PreviewImages) | Select-Object -First $Limit)
+}
+
+function Select-StepSummaryPreviewImages {
+  param(
+    [AllowNull()]
+    $PreviewImages,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [Parameter(Mandatory = $true)]
+    [int]$Limit,
+    [Parameter(Mandatory = $true)]
+    [int]$ByteBudget
+  )
+
+  $selected = New-Object System.Collections.Generic.List[object]
+  $usedBytes = 0
+  $previewArray = @(ConvertTo-PreviewImageArray -Value $PreviewImages)
+  foreach ($preview in $previewArray) {
+    if ($selected.Count -ge $Limit) {
+      break
+    }
+
+    $mimeType = [string]$preview.mimeType
+    if ([string]::IsNullOrWhiteSpace($mimeType) -or -not $mimeType.StartsWith('image/', [System.StringComparison]::OrdinalIgnoreCase)) {
+      continue
+    }
+
+    $resolvedPath = Resolve-AbsolutePath -Path ([string]$preview.relativePath) -BasePath $ResultsRoot
+    if (-not (Test-Path -LiteralPath $resolvedPath -PathType Leaf)) {
+      continue
+    }
+
+    $imageBytes = [System.IO.File]::ReadAllBytes($resolvedPath)
+    $byteLength = if ([int]$preview.byteLength -gt 0) { [int]$preview.byteLength } else { $imageBytes.Length }
+    if (($usedBytes + $byteLength) -gt $ByteBudget) {
+      break
+    }
+
+    $selected.Add([ordered]@{
+        chunkId = [string]$preview.chunkId
+        mode = [string]$preview.mode
+        category = [string]$preview.category
+        comparisonPair = $preview.comparisonPair
+        mimeType = $mimeType
+        byteLength = $byteLength
+        relativePath = [string]$preview.relativePath
+        sortKey = [string]$preview.sortKey
+        dataUri = ('data:{0};base64,{1}' -f $mimeType, [Convert]::ToBase64String($imageBytes))
+      }) | Out-Null
+    $usedBytes += $byteLength
+  }
+
+  return [pscustomobject]@{
+    images = @($selected | ForEach-Object { $_ })
+    byteCount = $usedBytes
+  }
+}
+
+function New-MarkdownPreviewGallery {
+  param(
+    [AllowNull()]
+    $PreviewImages,
+    [Parameter(Mandatory = $true)]
+    $RunStats
+  )
+
+  $previewArray = @(ConvertTo-PreviewImageArray -Value $PreviewImages)
+  if ($previewArray.Count -eq 0) {
+    return ''
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('## Preview gallery') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- Preview images available: `{0}`' -f [int]$RunStats.previewImageCount)) | Out-Null
+  $lines.Add(('- Gallery cap: `{0}`' -f [int]$RunStats.previewGalleryCap)) | Out-Null
+  $lines.Add(('- Gallery shown: `{0}`' -f [int]$RunStats.previewGalleryCount)) | Out-Null
+  $lines.Add(('- Gallery omitted: `{0}`' -f [int]$RunStats.previewGalleryOmittedCount)) | Out-Null
+  $lines.Add('') | Out-Null
+
+  $previewOrdinal = 1
+  foreach ($preview in $previewArray) {
+    $title = '{0} | {1}' -f [string]$preview.mode, [string]$preview.category
+    $lines.Add(('### Preview `{0}`: {1}' -f $previewOrdinal, $title)) | Out-Null
+    $lines.Add(('- Chunk: `{0}`' -f [string]$preview.chunkId)) | Out-Null
+    $lines.Add(('- MIME type: `{0}`' -f [string]$preview.mimeType)) | Out-Null
+    $lines.Add(('- Byte length: `{0}`' -f [int]$preview.byteLength)) | Out-Null
+    if ($null -ne $preview.comparisonPair) {
+      $lines.Add(('- Comparison pair: `{0}`' -f (Format-PreviewComparisonPairText -Pair $preview.comparisonPair))) | Out-Null
+    }
+    $lines.Add(('![{0}]({1})' -f $title, [string]$preview.relativePath)) | Out-Null
+    $lines.Add('') | Out-Null
+    $previewOrdinal++
+  }
+
+  return ($lines -join [Environment]::NewLine)
+}
+
+function New-HtmlPreviewGallery {
+  param(
+    [AllowNull()]
+    $PreviewImages,
+    [Parameter(Mandatory = $true)]
+    $RunStats
+  )
+
+  $previewArray = @(ConvertTo-PreviewImageArray -Value $PreviewImages)
+  if ($previewArray.Count -eq 0) {
+    return ''
+  }
+
+  $cards = New-Object System.Collections.Generic.List[string]
+  foreach ($preview in $previewArray) {
+    $comparisonPairMarkup = if ($null -eq $preview.comparisonPair) {
+      ''
+    } else {
+      ('<div><strong>Comparison pair</strong><span>{0}</span></div>' -f (ConvertTo-HtmlText -Value (Format-PreviewComparisonPairText -Pair $preview.comparisonPair)))
+    }
+
+    $cards.Add(@"
+    <article class="preview-card">
+      <div class="preview-card-title">$((ConvertTo-HtmlText -Value ([string]$preview.mode))) | $((ConvertTo-HtmlText -Value ([string]$preview.category)))</div>
+      <div class="preview-card-meta">
+        <div><strong>Chunk</strong><span>$((ConvertTo-HtmlText -Value ([string]$preview.chunkId)))</span></div>
+        <div><strong>MIME type</strong><span>$((ConvertTo-HtmlText -Value ([string]$preview.mimeType)))</span></div>
+        <div><strong>Byte length</strong><span>$([int]$preview.byteLength)</span></div>
+$comparisonPairMarkup
+      </div>
+      <img src="$([string]$preview.relativePath)" alt="$((ConvertTo-HtmlText -Value ('{0} | {1}' -f [string]$preview.mode, [string]$preview.category)))" loading="lazy" />
+    </article>
+"@) | Out-Null
+  }
+
+  return @"
+  <h2>Preview gallery</h2>
+  <div class="preview-summary">
+    <strong>Preview images available</strong><span>$([int]$RunStats.previewImageCount)</span>
+    <strong>Gallery cap</strong><span>$([int]$RunStats.previewGalleryCap)</span>
+    <strong>Gallery shown</strong><span>$([int]$RunStats.previewGalleryCount)</span>
+    <strong>Gallery omitted</strong><span>$([int]$RunStats.previewGalleryOmittedCount)</span>
+  </div>
+  <div class="preview-grid">
+$($cards -join [Environment]::NewLine)
+  </div>
+"@
+}
+
+function New-StepSummaryPreviewSection {
+  param(
+    [Parameter(Mandatory = $true)]
+    $RunStats,
+    [Parameter(Mandatory = $true)]
+    $PreviewSelection
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  if ([int]$RunStats.previewImageCount -le 0) {
+    return @()
+  }
+
+  $selectedImages = @(ConvertTo-ObjectArray -InputObject $PreviewSelection.images)
+  $lines.Add(('- Preview images: `{0}`' -f [int]$RunStats.previewImageCount)) | Out-Null
+  $lines.Add(('- Preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f [int]$RunStats.previewGalleryCount, [int]$RunStats.previewGalleryOmittedCount, [int]$RunStats.previewGalleryCap)) | Out-Null
+  $lines.Add(('- Step summary previews: `{0}` shown, `{1}` omitted, cap `{2}`, byte-budget `{3}`' -f [int]$RunStats.stepSummaryPreviewCount, [int]$RunStats.stepSummaryPreviewOmittedCount, [int]$RunStats.stepSummaryPreviewCap, [int]$RunStats.stepSummaryPreviewByteBudget)) | Out-Null
+
+  if ($selectedImages.Count -gt 0) {
+    $lines.Add('') | Out-Null
+    $lines.Add('### Preview gallery') | Out-Null
+    foreach ($preview in $selectedImages) {
+      $comparisonPairLine = if ($null -eq $preview.comparisonPair) {
+        ''
+      } else {
+        ('<br/><strong>Comparison pair:</strong> <code>{0}</code>' -f (ConvertTo-HtmlText -Value (Format-PreviewComparisonPairText -Pair $preview.comparisonPair)))
+      }
+      $lines.Add((
+          '<p><strong>{0} | {1}</strong><br/><strong>Chunk:</strong> <code>{2}</code><br/><strong>MIME type:</strong> <code>{3}</code><br/><strong>Byte length:</strong> <code>{4}</code>{5}<br/><img src="{6}" alt="{7}" style="max-width: 420px; height: auto; border: 1px solid #d0d7de; background: #ffffff;" /></p>' -f
+          (ConvertTo-HtmlText -Value ([string]$preview.mode)),
+          (ConvertTo-HtmlText -Value ([string]$preview.category)),
+          (ConvertTo-HtmlText -Value ([string]$preview.chunkId)),
+          (ConvertTo-HtmlText -Value ([string]$preview.mimeType)),
+          [int]$preview.byteLength,
+          $comparisonPairLine,
+          [string]$preview.dataUri,
+          (ConvertTo-HtmlText -Value ('{0} | {1}' -f [string]$preview.mode, [string]$preview.category))
+        )) | Out-Null
+    }
+  }
+
+  return @($lines | ForEach-Object { $_ })
+}
+
 function New-ExplorationSurfaceAggregate {
   param(
     [Parameter(Mandatory = $true)]
-    $ChunkReceipts
+    $ChunkReceipts,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
   )
 
   $chunkReceiptArray = ConvertTo-ObjectArray -InputObject $ChunkReceipts
@@ -454,6 +818,7 @@ function New-ExplorationSurfaceAggregate {
   $comparisonArtifactCount = 0
   $chunkCountWithMetadata = 0
   $imageMimeTypes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $aggregatePreviewImages = @{}
 
   foreach ($chunk in $chunkReceiptArray) {
     $surfaceNode = Get-OptionalPropertyValue -InputObject $chunk -PropertyName 'surfaces'
@@ -495,6 +860,10 @@ function New-ExplorationSurfaceAggregate {
       }
     }
 
+    foreach ($previewImage in @(ConvertTo-ObjectArray -InputObject (Get-OptionalPropertyValue -InputObject $surfaceNode -PropertyName 'previewImages' -Default @()))) {
+      Add-PreviewImageAggregate -Target $aggregatePreviewImages -ChunkId ([string]$chunk.chunkId) -PreviewImage $previewImage -ResultsRoot $ResultsRoot
+    }
+
     if ($chunkHasMetadata) {
       $chunkCountWithMetadata++
     }
@@ -518,6 +887,7 @@ function New-ExplorationSurfaceAggregate {
     categoryCounts = ConvertTo-OrderedCountMap -Value $aggregateCategoryCounts
     comparisonPairs = @(ConvertTo-ComparisonPairArray -Value $aggregateComparisonPairs)
     bucketCounts = ConvertTo-OrderedCountMap -Value $aggregateBucketCounts
+    previewImages = @(ConvertTo-PreviewImageArray -Value $aggregatePreviewImages.Values)
   }
 }
 
@@ -546,7 +916,11 @@ function New-ExplorationSurfaceStats {
     [Parameter(Mandatory = $true)]
     [string[]]$RequestedModes,
     [Parameter(Mandatory = $true)]
-    [string]$NoisePolicy
+    [string]$NoisePolicy,
+    [Parameter(Mandatory = $true)]
+    [int]$PreviewGalleryCount,
+    [Parameter(Mandatory = $true)]
+    [int]$StepSummaryPreviewCount
   )
 
   $segmentArray = ConvertTo-ObjectArray -InputObject $ChunkPlan.segments
@@ -560,6 +934,7 @@ function New-ExplorationSurfaceStats {
   $failedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'failed' }).Count
   $skippedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'skipped' }).Count
   $remainingPlannedChunkCount = @($chunkReceiptArray | Where-Object { [string]$_.status -eq 'planned' }).Count
+  $previewImageCount = @(ConvertTo-PreviewImageArray -Value $SurfaceAggregate.previewImages).Count
 
   return [pscustomobject]@{
     revisionCount             = [int]$Catalog.summary.revisionCount
@@ -591,6 +966,14 @@ function New-ExplorationSurfaceStats {
     categoryCounts            = $SurfaceAggregate.categoryCounts
     comparisonPairs           = @($SurfaceAggregate.comparisonPairs)
     bucketCounts              = $SurfaceAggregate.bucketCounts
+    previewImageCount         = $previewImageCount
+    previewGalleryCap         = $script:PreviewGalleryCap
+    previewGalleryCount       = $PreviewGalleryCount
+    previewGalleryOmittedCount = [Math]::Max($previewImageCount - $PreviewGalleryCount, 0)
+    stepSummaryPreviewCap     = $script:StepSummaryPreviewCap
+    stepSummaryPreviewCount   = $StepSummaryPreviewCount
+    stepSummaryPreviewOmittedCount = [Math]::Max($previewImageCount - $StepSummaryPreviewCount, 0)
+    stepSummaryPreviewByteBudget = $script:StepSummaryPreviewByteBudget
   }
 }
 
@@ -787,6 +1170,8 @@ function New-MarkdownIndex {
     [Parameter(Mandatory = $true)]
     [string]$ResultsRoot,
     [AllowNull()]
+    $PreviewImages,
+    [AllowNull()]
     [string]$TimelineMdPath,
     [AllowNull()]
     [string]$TimelineHtmlPath,
@@ -827,6 +1212,11 @@ function New-MarkdownIndex {
     $lines.Add(('- Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f [int]$RunStats.captureCount, [int]$RunStats.imageArtifactCount, [int]$RunStats.comparisonArtifactCount, $mimeTypeText)) | Out-Null
     $lines.Add(('- Chunks with metadata: `{0}`' -f [int]$RunStats.chunkCountWithMetadata)) | Out-Null
   }
+  if ([int]$RunStats.previewImageCount -gt 0) {
+    $lines.Add(('- Preview images: `{0}`' -f [int]$RunStats.previewImageCount)) | Out-Null
+    $lines.Add(('- Preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f [int]$RunStats.previewGalleryCount, [int]$RunStats.previewGalleryOmittedCount, [int]$RunStats.previewGalleryCap)) | Out-Null
+    $lines.Add(('- Step summary previews: `{0}` shown, `{1}` omitted, cap `{2}`, byte-budget `{3}`' -f [int]$RunStats.stepSummaryPreviewCount, [int]$RunStats.stepSummaryPreviewOmittedCount, [int]$RunStats.stepSummaryPreviewCap, [int]$RunStats.stepSummaryPreviewByteBudget)) | Out-Null
+  }
   if ($RunStats.categoryCounts.Count -gt 0) {
     $lines.Add(('- Category counts: `{0}`' -f (Format-CountMapText -Map $RunStats.categoryCounts))) | Out-Null
   }
@@ -862,6 +1252,11 @@ function New-MarkdownIndex {
     $lines.Add(('- Bundle zip: {0}' -f (Format-MarkdownLink -Label 'manual-vi-exploration-bundle.zip' -Href $bundleReference))) | Out-Null
   }
   $lines.Add('') | Out-Null
+  $previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewImages $PreviewImages -RunStats $RunStats
+  if (-not [string]::IsNullOrWhiteSpace($previewGalleryMarkdown)) {
+    $lines.Add($previewGalleryMarkdown) | Out-Null
+    $lines.Add('') | Out-Null
+  }
   $lines.Add('## Chunk navigation') | Out-Null
   $lines.Add('') | Out-Null
 
@@ -1080,6 +1475,8 @@ function New-HtmlIndex {
     [Parameter(Mandatory = $true)]
     [string]$ResultsRoot,
     [AllowNull()]
+    $PreviewImages,
+    [AllowNull()]
     [string]$TimelineMdPath,
     [AllowNull()]
     [string]$TimelineHtmlPath,
@@ -1157,6 +1554,7 @@ function New-HtmlIndex {
   if ($bundleReference) {
     $topLevelLinks.Add(('<li><a href="{0}">manual-vi-exploration-bundle.zip</a></li>' -f $bundleReference)) | Out-Null
   }
+  $previewGalleryHtml = New-HtmlPreviewGallery -PreviewImages $PreviewImages -RunStats $RunStats
 
   return @"
 <!DOCTYPE html>
@@ -1175,6 +1573,12 @@ function New-HtmlIndex {
     .status-warn { background: #fff7e8; border-left-color: #b26a00; }
     .status-bad { background: #fdecea; border-left-color: #b42318; }
     .status-neutral { background: #f3f3f3; border-left-color: #666; }
+    .preview-summary { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; margin: 1rem 0; }
+    .preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .preview-card { border: 1px solid #ccc; padding: 0.75rem; background: #fff; }
+    .preview-card-title { font-weight: 600; margin-bottom: 0.5rem; }
+    .preview-card-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; margin-bottom: 0.75rem; }
+    .preview-card img { max-width: 100%; height: auto; border: 1px solid #ddd; background: #fafafa; }
   </style>
 </head>
 <body>
@@ -1201,6 +1605,9 @@ function New-HtmlIndex {
     <strong>Total chunk count</strong><span>$([int]$RunStats.totalChunkCount)</span>
     <strong>Metadata surfaces</strong><span>captures=$([int]$RunStats.captureCount), images=$([int]$RunStats.imageArtifactCount), artifact-dirs=$([int]$RunStats.comparisonArtifactCount)</span>
     <strong>Image MIME types</strong><span>$(if ($RunStats.imageMimeTypes.Count -gt 0) { $RunStats.imageMimeTypes -join ', ' } else { 'none' })</span>
+    <strong>Preview images</strong><span>$([int]$RunStats.previewImageCount)</span>
+    <strong>Preview gallery</strong><span>$([int]$RunStats.previewGalleryCount) shown, $([int]$RunStats.previewGalleryOmittedCount) omitted, cap $([int]$RunStats.previewGalleryCap)</span>
+    <strong>Step summary previews</strong><span>$([int]$RunStats.stepSummaryPreviewCount) shown, $([int]$RunStats.stepSummaryPreviewOmittedCount) omitted, cap $([int]$RunStats.stepSummaryPreviewCap), byte-budget $([int]$RunStats.stepSummaryPreviewByteBudget)</span>
     <strong>Category counts</strong><span>$(Format-CountMapText -Map $RunStats.categoryCounts)</span>
     <strong>Comparison pairs</strong><span>$(Format-ComparisonPairText -Pairs $RunStats.comparisonPairs)</span>
     <strong>Bucket counts</strong><span>$(Format-CountMapText -Map $RunStats.bucketCounts)</span>
@@ -1231,6 +1638,7 @@ $($continuityRows -join [Environment]::NewLine)
   <ul>
 $($topLevelLinks -join [Environment]::NewLine)
   </ul>
+$previewGalleryHtml
   <h2>Chunk navigation</h2>
   <table>
     <thead>
@@ -1380,7 +1788,13 @@ if ($planningStatus -eq 'complete' -and $effectiveBundleStatus -eq 'failed') {
   $replayReason = 'bundle-packaging-failed'
 }
 
-$surfaceAggregate = New-ExplorationSurfaceAggregate -ChunkReceipts $chunkReceipts
+$surfaceAggregate = New-ExplorationSurfaceAggregate -ChunkReceipts $chunkReceipts -ResultsRoot $resultsDirResolved
+$previewGalleryImages = @(Select-PreviewGalleryImages -PreviewImages $surfaceAggregate.previewImages -Limit $script:PreviewGalleryCap)
+$stepSummaryPreviewSelection = Select-StepSummaryPreviewImages `
+  -PreviewImages $surfaceAggregate.previewImages `
+  -ResultsRoot $resultsDirResolved `
+  -Limit $script:StepSummaryPreviewCap `
+  -ByteBudget $script:StepSummaryPreviewByteBudget
 $runStats = New-ExplorationSurfaceStats `
   -Catalog $catalog `
   -ChunkPlan $chunkPlan `
@@ -1393,7 +1807,9 @@ $runStats = New-ExplorationSurfaceStats `
   -BundleReason $effectiveBundleReason `
   -SurfaceAggregate $surfaceAggregate `
   -RequestedModes $requestedModes `
-  -NoisePolicy $NoisePolicy
+  -NoisePolicy $NoisePolicy `
+  -PreviewGalleryCount $previewGalleryImages.Count `
+  -StepSummaryPreviewCount (@(ConvertTo-ObjectArray -InputObject $stepSummaryPreviewSelection.images).Count)
 
 $chunkReceiptArray = @(ConvertTo-ObjectArray -InputObject $chunkReceipts)
 $timelineMarkdown = New-MarkdownTimeline -Catalog $catalog -ChunkPlan $chunkPlan -ChunkReceipts $chunkReceiptArray -RunStats $runStats -FinalStatus $finalStatus -FinalReason $finalReason
@@ -1408,6 +1824,7 @@ $indexMarkdown = New-MarkdownIndex `
   -BundleStatus $effectiveBundleStatus `
   -BundleReason $effectiveBundleReason `
   -ResultsRoot $resultsDirResolved `
+  -PreviewImages $previewGalleryImages `
   -TimelineMdPath $timelineMdResolved `
   -TimelineHtmlPath $timelineHtmlResolved `
   -BundlePath $bundlePathResolved
@@ -1421,6 +1838,7 @@ $indexHtml = New-HtmlIndex `
   -BundleStatus $effectiveBundleStatus `
   -BundleReason $effectiveBundleReason `
   -ResultsRoot $resultsDirResolved `
+  -PreviewImages $previewGalleryImages `
   -TimelineMdPath $timelineMdResolved `
   -TimelineHtmlPath $timelineHtmlResolved `
   -BundlePath $bundlePathResolved
@@ -1456,6 +1874,7 @@ $explorationRun = [ordered]@{
     categoryCounts = $surfaceAggregate.categoryCounts
     comparisonPairs = @($surfaceAggregate.comparisonPairs)
     bucketCounts = $surfaceAggregate.bucketCounts
+    previewImages = @(ConvertTo-PreviewImageArray -Value $surfaceAggregate.previewImages)
   }
   discovery = [ordered]@{
     revisionCatalogPath = $revisionCatalogPathResolved
@@ -1506,6 +1925,14 @@ $explorationRun = [ordered]@{
     suppressionProfile = [string]$surfaceAggregate.suppressionProfile
     captureCount = [int]$surfaceAggregate.captureCount
     imageArtifactCount = [int]$surfaceAggregate.imageArtifactCount
+    previewImageCount = [int]$runStats.previewImageCount
+    previewGalleryCap = [int]$runStats.previewGalleryCap
+    previewGalleryCount = [int]$runStats.previewGalleryCount
+    previewGalleryOmittedCount = [int]$runStats.previewGalleryOmittedCount
+    stepSummaryPreviewCap = [int]$runStats.stepSummaryPreviewCap
+    stepSummaryPreviewCount = [int]$runStats.stepSummaryPreviewCount
+    stepSummaryPreviewOmittedCount = [int]$runStats.stepSummaryPreviewOmittedCount
+    stepSummaryPreviewByteBudget = [int]$runStats.stepSummaryPreviewByteBudget
   }
   replay = [ordered]@{
     status = $replayStatus
@@ -1524,6 +1951,7 @@ Write-ActionOutput -Key 'timeline-html' -Value $timelineHtmlResolved
 Write-ActionOutput -Key 'bundle-path' -Value $(if ($null -eq $bundlePathResolved) { '' } else { $bundlePathResolved })
 
 if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
+  $stepSummaryLines = New-Object System.Collections.Generic.List[string]
   @(
     ''
     '## comparevi-history exploration run'
@@ -1557,7 +1985,11 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Bundle path: `{0}`' -f $(if ($null -eq $bundlePathResolved) { '' } else { $bundlePathResolved }))
     ('- Timeline (md): `{0}`' -f $timelineMdResolved)
     ('- Timeline (html): `{0}`' -f $timelineHtmlResolved)
-  ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
+  ) | ForEach-Object { $stepSummaryLines.Add($_) | Out-Null }
+  foreach ($line in @(New-StepSummaryPreviewSection -RunStats $runStats -PreviewSelection $stepSummaryPreviewSelection)) {
+    $stepSummaryLines.Add($line) | Out-Null
+  }
+  $stepSummaryLines | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
 }
 
 $explorationRun | ConvertTo-Json -Depth 64

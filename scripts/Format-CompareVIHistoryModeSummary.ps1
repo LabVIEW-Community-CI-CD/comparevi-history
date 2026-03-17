@@ -313,6 +313,54 @@ function Merge-ComparisonPairCollection {
   }
 }
 
+function Resolve-ArtifactPath {
+  param(
+    [AllowNull()]
+    [AllowEmptyString()]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$BasePath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $resolved = if ([System.IO.Path]::IsPathRooted($Path)) {
+    [System.IO.Path]::GetFullPath($Path)
+  } else {
+    [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+  }
+
+  if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+    return $null
+  }
+
+  return $resolved
+}
+
+function Resolve-ChildRelativePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RootPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ChildPath
+  )
+
+  $rootResolved = [System.IO.Path]::GetFullPath($RootPath)
+  $childResolved = [System.IO.Path]::GetFullPath($ChildPath)
+  $rootWithSeparator = $rootResolved
+  if (-not $rootWithSeparator.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+    $rootWithSeparator += [System.IO.Path]::DirectorySeparatorChar
+  }
+
+  if (-not $childResolved.StartsWith($rootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $null
+  }
+
+  return $childResolved.Substring($rootWithSeparator.Length).Replace('\', '/')
+}
+
 function ConvertTo-NormalizedCategorySurface {
   param(
     [AllowNull()]
@@ -360,6 +408,100 @@ function Format-ComparisonPairList {
   }
 
   return (($pairArray | ForEach-Object { '{0} -> {1} ({2})' -f [string]$_.firstPath, [string]$_.secondPath, [int]$_.count }) -join ', ')
+}
+
+function Get-PreviewCategoryLabel {
+  param(
+    [AllowNull()]
+    $CategoryCounts
+  )
+
+  $normalized = ConvertTo-OrderedCountMap -Value $CategoryCounts
+  if ($normalized.Count -eq 1) {
+    return [string]@($normalized.Keys)[0]
+  }
+
+  if ($normalized.Count -gt 1) {
+    return 'multiple-categories'
+  }
+
+  return 'uncategorized'
+}
+
+function Get-UniqueComparisonPair {
+  param(
+    [AllowNull()]
+    $ComparisonPairs
+  )
+
+  if ($null -ne $ComparisonPairs) {
+    $directFirstPath = [string](Get-EntryValue -Entry $ComparisonPairs -Name 'firstPath' -DefaultValue '')
+    $directSecondPath = [string](Get-EntryValue -Entry $ComparisonPairs -Name 'secondPath' -DefaultValue '')
+    if (-not [string]::IsNullOrWhiteSpace($directFirstPath) -and -not [string]::IsNullOrWhiteSpace($directSecondPath)) {
+      return [ordered]@{
+        firstPath = $directFirstPath.Trim()
+        secondPath = $directSecondPath.Trim()
+        count = [int](Get-EntryValue -Entry $ComparisonPairs -Name 'count' -DefaultValue 0)
+      }
+    }
+  }
+
+  $pairArray = @(ConvertTo-ComparisonPairArray -Value $ComparisonPairs)
+  if ($pairArray.Count -ne 1) {
+    return $null
+  }
+
+  return [ordered]@{
+    firstPath = [string]$pairArray[0].firstPath
+    secondPath = [string]$pairArray[0].secondPath
+    count = [int]$pairArray[0].count
+  }
+}
+
+function ConvertTo-PreviewImageArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  $previewImages = New-Object System.Collections.Generic.List[object]
+  foreach ($entry in @(ConvertTo-ObjectArray -Value $Value)) {
+    $mimeType = [string](Get-EntryValue -Entry $entry -Name 'mimeType' -DefaultValue '')
+    $byteLength = [int](Get-EntryValue -Entry $entry -Name 'byteLength' -DefaultValue 0)
+    $savedPath = [string](Get-EntryValue -Entry $entry -Name 'savedPath' -DefaultValue '')
+    $artifactRelativePath = [string](Get-EntryValue -Entry $entry -Name 'artifactRelativePath' -DefaultValue '')
+    $mode = [string](Get-EntryValue -Entry $entry -Name 'mode' -DefaultValue 'unknown')
+    $category = [string](Get-EntryValue -Entry $entry -Name 'category' -DefaultValue 'uncategorized')
+    if ([string]::IsNullOrWhiteSpace($savedPath) -or [string]::IsNullOrWhiteSpace($artifactRelativePath)) {
+      continue
+    }
+
+    $comparisonPair = Get-EntryValue -Entry $entry -Name 'comparisonPair' -DefaultValue $null
+    $normalizedPair = Get-UniqueComparisonPair -ComparisonPairs $comparisonPair
+    $pairFirstPath = if ($null -eq $normalizedPair) { '' } else { [string]$normalizedPair.firstPath }
+    $pairSecondPath = if ($null -eq $normalizedPair) { '' } else { [string]$normalizedPair.secondPath }
+    $sortKey = [string](Get-EntryValue -Entry $entry -Name 'sortKey' -DefaultValue '')
+    if ([string]::IsNullOrWhiteSpace($sortKey)) {
+      $sortKey = ('{0}|{1}|{2}|{3}|{4}' -f $mode, $category, $pairFirstPath, $pairSecondPath, $artifactRelativePath).ToLowerInvariant()
+    }
+
+    $previewImages.Add([ordered]@{
+        mode = $(if ([string]::IsNullOrWhiteSpace($mode)) { 'unknown' } else { $mode })
+        category = $(if ([string]::IsNullOrWhiteSpace($category)) { 'uncategorized' } else { $category })
+        comparisonPair = $normalizedPair
+        mimeType = $mimeType
+        byteLength = $byteLength
+        savedPath = $savedPath
+        artifactRelativePath = $artifactRelativePath
+        sortKey = $sortKey
+      }) | Out-Null
+  }
+
+  return @(
+    $previewImages |
+      Sort-Object { [string]$_.sortKey }, { [string]$_.artifactRelativePath } |
+      ForEach-Object { $_ }
+  )
 }
 
 function Get-ModeSummaryTotal {
@@ -428,6 +570,7 @@ function Read-CaptureMetadata {
     captureCount = 0
     imageArtifactCount = 0
     imageMimeTypes = @()
+    previewImages = @()
   }
 
   if ([string]::IsNullOrWhiteSpace($ArtifactDir)) {
@@ -453,14 +596,30 @@ function Read-CaptureMetadata {
   $summary.captureCount = 1
   $mimeTypes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
   $images = ConvertTo-ObjectArray -Value $capture.environment.cli.artifacts.images
+  $previewImages = New-Object System.Collections.Generic.List[object]
   foreach ($image in $images) {
     $summary.imageArtifactCount++
     $mimeType = [string](Get-EntryValue -Entry $image -Name 'mimeType' -DefaultValue '')
     if (-not [string]::IsNullOrWhiteSpace($mimeType)) {
       [void]$mimeTypes.Add($mimeType.Trim())
     }
+
+    $savedPath = Resolve-ArtifactPath -Path ([string](Get-EntryValue -Entry $image -Name 'savedPath' -DefaultValue '')) -BasePath $ArtifactDir
+    $artifactRelativePath = if ($null -eq $savedPath) { $null } else { Resolve-ChildRelativePath -RootPath $ArtifactDir -ChildPath $savedPath }
+    if ($null -eq $savedPath -or [string]::IsNullOrWhiteSpace($artifactRelativePath)) {
+      continue
+    }
+
+    $previewImages.Add([ordered]@{
+        mimeType = $mimeType
+        byteLength = [int](Get-EntryValue -Entry $image -Name 'byteLength' -DefaultValue 0)
+        index = [int](Get-EntryValue -Entry $image -Name 'index' -DefaultValue 0)
+        savedPath = $savedPath
+        artifactRelativePath = $artifactRelativePath
+      }) | Out-Null
   }
   $summary.imageMimeTypes = @($mimeTypes | Sort-Object)
+  $summary.previewImages = @(ConvertTo-PreviewImageArray -Value $previewImages)
   return $summary
 }
 
@@ -506,6 +665,10 @@ function Get-ModeSurfaceSummary {
   $imageArtifactCount = 0
   $comparisonArtifactCount = 0
   $imageMimeTypes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $previewImages = New-Object System.Collections.Generic.List[object]
+  $modeValue = [string](Get-EntryValue -Entry $Entry -Name 'mode' -DefaultValue 'unknown')
+  $previewCategory = Get-PreviewCategoryLabel -CategoryCounts $categoryCounts
+  $previewComparisonPair = Get-UniqueComparisonPair -ComparisonPairs $comparisonPairs
   foreach ($comparison in @(ConvertTo-ObjectArray -Value $(if ($manifest) { Get-EntryValue -Entry $manifest -Name 'comparisons' -DefaultValue @() } else { @() }))) {
     $resultNode = Get-EntryValue -Entry $comparison -Name 'result' -DefaultValue $null
     $artifactDir = [string](Get-EntryValue -Entry $resultNode -Name 'artifactDir' -DefaultValue '')
@@ -528,6 +691,26 @@ function Get-ModeSurfaceSummary {
     foreach ($mimeType in @($captureSummary.imageMimeTypes)) {
       [void]$imageMimeTypes.Add([string]$mimeType)
     }
+    foreach ($previewImage in @(ConvertTo-ObjectArray -Value $captureSummary.previewImages)) {
+      $artifactRelativePath = [string](Get-EntryValue -Entry $previewImage -Name 'artifactRelativePath' -DefaultValue '')
+      $savedPath = [string](Get-EntryValue -Entry $previewImage -Name 'savedPath' -DefaultValue '')
+      if ([string]::IsNullOrWhiteSpace($artifactRelativePath) -or [string]::IsNullOrWhiteSpace($savedPath)) {
+        continue
+      }
+
+      $pairFirstPath = if ($null -eq $previewComparisonPair) { '' } else { [string]$previewComparisonPair.firstPath }
+      $pairSecondPath = if ($null -eq $previewComparisonPair) { '' } else { [string]$previewComparisonPair.secondPath }
+      $previewImages.Add([ordered]@{
+          mode = $(if ([string]::IsNullOrWhiteSpace($modeValue)) { 'unknown' } else { $modeValue })
+          category = $previewCategory
+          comparisonPair = $previewComparisonPair
+          mimeType = [string](Get-EntryValue -Entry $previewImage -Name 'mimeType' -DefaultValue '')
+          byteLength = [int](Get-EntryValue -Entry $previewImage -Name 'byteLength' -DefaultValue 0)
+          savedPath = $savedPath
+          artifactRelativePath = $artifactRelativePath
+          sortKey = ('{0}|{1}|{2}|{3}|{4}' -f $modeValue, $previewCategory, $pairFirstPath, $pairSecondPath, $artifactRelativePath).ToLowerInvariant()
+        }) | Out-Null
+    }
   }
 
   return [pscustomobject]@{
@@ -543,6 +726,7 @@ function Get-ModeSurfaceSummary {
     categoryCounts = $categoryCounts
     comparisonPairs = $comparisonPairs
     bucketCounts = $bucketCounts
+    previewImages = @(ConvertTo-PreviewImageArray -Value $previewImages)
     metadata = [ordered]@{
       comparisonArtifactCount = $comparisonArtifactCount
       captureCount = $captureCount
@@ -587,6 +771,7 @@ $aggregateImageArtifactCount = 0
 $aggregateComparisonArtifactCount = 0
 $aggregateMimeTypes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 $aggregateProfiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$aggregatePreviewImages = New-Object System.Collections.Generic.List[object]
 $hasUnknownProfile = $false
 
 foreach ($modeSummary in $modeSummaries) {
@@ -604,6 +789,9 @@ foreach ($modeSummary in $modeSummaries) {
   $aggregateComparisonArtifactCount += [int]$modeSummary.metadata.comparisonArtifactCount
   foreach ($mimeType in @($modeSummary.metadata.imageMimeTypes)) {
     [void]$aggregateMimeTypes.Add([string]$mimeType)
+  }
+  foreach ($previewImage in @(ConvertTo-ObjectArray -Value (Get-EntryValue -Entry $modeSummary -Name 'previewImages' -DefaultValue @()))) {
+    $aggregatePreviewImages.Add($previewImage) | Out-Null
   }
 }
 
@@ -638,6 +826,7 @@ $modeSummaryObject = [ordered]@{
   categoryCounts = [ordered]@{}
   comparisonPairs = @()
   bucketCounts = [ordered]@{}
+  previewImages = @()
   metadata = [ordered]@{
     comparisonArtifactCount = $aggregateComparisonArtifactCount
     captureCount = $aggregateCaptureCount
@@ -654,6 +843,7 @@ $modeSummaryObject.comparisonPairs = @(ConvertTo-ComparisonPairArray -Value $agg
 foreach ($key in @($aggregateBucketCounts.Keys | Sort-Object)) {
   $modeSummaryObject.bucketCounts[$key] = [int]$aggregateBucketCounts[$key]
 }
+$modeSummaryObject.previewImages = @(ConvertTo-PreviewImageArray -Value $aggregatePreviewImages)
 
 $summaryLines = New-Object System.Collections.Generic.List[string]
 $summaryLines.Add(('Requested modes: `{0}`' -f $(if ($requestedModes.Count -gt 0) { $requestedModes -join ', ' } else { 'n/a' })))
@@ -670,6 +860,9 @@ if (-not [string]::IsNullOrWhiteSpace($StopReason)) {
 if ($aggregateCaptureCount -gt 0 -or $aggregateImageArtifactCount -gt 0 -or $aggregateComparisonArtifactCount -gt 0) {
   $mimeTypeText = if ($aggregateMimeTypes.Count -gt 0) { @($aggregateMimeTypes | Sort-Object) -join ', ' } else { 'none' }
   $summaryLines.Add(('Metadata surfaces: `captures={0}, images={1}, artifact-dirs={2}, mime-types={3}`' -f $aggregateCaptureCount, $aggregateImageArtifactCount, $aggregateComparisonArtifactCount, $mimeTypeText))
+}
+if ($modeSummaryObject.previewImages.Count -gt 0) {
+  $summaryLines.Add(('Preview images: `{0}`' -f $modeSummaryObject.previewImages.Count))
 }
 if ($modeSummaryObject.categoryCounts.Count -gt 0) {
   $summaryLines.Add(('Category counts: `{0}`' -f (Format-CountMap -Map $modeSummaryObject.categoryCounts)))
@@ -727,6 +920,9 @@ if ($modeSummaries.Count -gt 0) {
     if ([int]$entry.metadata.captureCount -gt 0 -or [int]$entry.metadata.imageArtifactCount -gt 0) {
       $mimeTypeText = if ($entry.metadata.imageMimeTypes.Count -gt 0) { $entry.metadata.imageMimeTypes -join ', ' } else { 'none' }
       $detailParts.Add(('metadata=captures:{0}, images:{1}, artifact-dirs:{2}, mime-types:{3}' -f [int]$entry.metadata.captureCount, [int]$entry.metadata.imageArtifactCount, [int]$entry.metadata.comparisonArtifactCount, $mimeTypeText)) | Out-Null
+    }
+    if (@($entry.previewImages).Count -gt 0) {
+      $detailParts.Add(('preview-images={0}' -f @($entry.previewImages).Count)) | Out-Null
     }
     if ($detailParts.Count -gt 0) {
       $summaryLines.Add(('- {0}: `{1}`' -f $entry.mode, ($detailParts -join '; ')))

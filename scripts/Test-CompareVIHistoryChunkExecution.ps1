@@ -256,6 +256,15 @@ $processedCount = if ($null -eq $MaxPairs) { 1 } else { [int]$MaxPairs }
     if ($receipt.surfaces.suppressionProfile -ne 'unsuppressed') {
       throw "Expected unsuppressed mode profile for $($chunk.chunkId)."
     }
+    if ($receipt.surfaces.previewImages.Count -ne 1) {
+      throw "Expected one preview image in the chunk surfaces for $($chunk.chunkId)."
+    }
+    if ($receipt.surfaces.previewImages[0].artifactRelativePath -ne 'cli-images/cli-image-00.png') {
+      throw "Expected normalized artifact-relative preview path for $($chunk.chunkId)."
+    }
+    if ($receipt.surfaces.previewImages[0].byteLength -ne 4) {
+      throw "Expected preview image byte length for $($chunk.chunkId)."
+    }
   }
 
   $githubOutputs = Get-Content -LiteralPath $githubOutputPath -Raw
