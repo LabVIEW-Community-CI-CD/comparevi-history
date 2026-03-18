@@ -10,6 +10,8 @@ function New-PreviewReportFixture {
     [Parameter(Mandatory = $true)]
     [string]$ModeRoot,
     [Parameter(Mandatory = $true)]
+    [string]$ModeName,
+    [Parameter(Mandatory = $true)]
     [int]$ComparisonIndex,
     [Parameter(Mandatory = $true)]
     [string]$BaseRef,
@@ -26,7 +28,57 @@ function New-PreviewReportFixture {
   [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'bd_2.png'), @(0x10, 0x0C, 0xD1, 0xA6))
 
   $reportHtmlPath = Join-Path $artifactDir 'compare-report.html'
-  @'
+  $reportHtml = if ($ModeName -eq 'attributes') {
+@"
+<!DOCTYPE html>
+<html>
+<body>
+<div class="compared-VIs">
+<details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/base/Base.vi</div><div class="dropdown-right">Second VI: /compare/head/Head.vi</div></summary>
+<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr>
+<tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Block Diagram Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_2.png"/></td></tr></table></details>
+</div>
+<div class="included-attributes">
+<ul class="inclusion-list">
+<li class="checked">Block Diagram Functional</li>
+<li class="checked">VI Attribute</li>
+</ul>
+</div>
+<h2 class="section-header">Detailed Information</h2>
+$(if ($ComparisonIndex -eq 1) {
+@'
+<details open>
+<summary class="difference-heading">1. Block Diagram objects</summary>
+<ol class="detailed-description-list" type="A">
+<li class="diff-detail">Property Node - moved : changed from "(-35,102)" to "(-55,77)"</li>
+<li class="diff-detail">Tunnel - moved : changed from "(141,124)" to "(141,124)"</li>
+<li class="diff-detail">Case Selector - moved : changed from "(141,143)" to "(141,143)"</li>
+</ol>
+</details>
+<details open>
+<summary class="difference-heading">2. Block Diagram objects</summary>
+<ol class="detailed-description-list" type="A">
+<li class="diff-detail">Boolean Constant - moved : changed from "(675,231)" to "(675,231)"</li>
+</ol>
+</details>
+'@
+} else {
+@'
+<details open>
+<summary class="difference-heading">1. VI Attribute - Miscellaneous</summary>
+<ol class="detailed-description-list" type="A">
+<li class="diff-detail">VI Version : changed from "21.0" to "20.0"</li>
+</ol>
+</details>
+'@
+})
+</body>
+</html>
+"@
+  } else {
+@'
 <!DOCTYPE html>
 <html>
 <body>
@@ -39,7 +91,9 @@ function New-PreviewReportFixture {
 </div>
 </body>
 </html>
-'@ | Set-Content -LiteralPath $reportHtmlPath -Encoding utf8
+'@
+  }
+  $reportHtml | Set-Content -LiteralPath $reportHtmlPath -Encoding utf8
 
   return [ordered]@{
     index = $ComparisonIndex
@@ -68,8 +122,8 @@ try {
     New-Item -ItemType Directory -Path $modeRoot -Force | Out-Null
 
     $comparisons = @(
-      (New-PreviewReportFixture -ModeRoot $modeRoot -ComparisonIndex 1 -BaseRef ('{0}-base-1' -f $modeName) -HeadRef ('{0}-head-1' -f $modeName)),
-      (New-PreviewReportFixture -ModeRoot $modeRoot -ComparisonIndex 2 -BaseRef ('{0}-base-2' -f $modeName) -HeadRef ('{0}-head-2' -f $modeName))
+      (New-PreviewReportFixture -ModeRoot $modeRoot -ModeName $modeName -ComparisonIndex 1 -BaseRef ('{0}-base-1' -f $modeName) -HeadRef ('{0}-head-1' -f $modeName)),
+      (New-PreviewReportFixture -ModeRoot $modeRoot -ModeName $modeName -ComparisonIndex 2 -BaseRef ('{0}-base-2' -f $modeName) -HeadRef ('{0}-head-2' -f $modeName))
     )
 
     $modeManifestPath = Join-Path $modeRoot 'manifest.json'
@@ -211,6 +265,27 @@ try {
   if ($receipt.commentPreviewCards[0].surfaces[0].baseImageRelativePath -ne 'targets/001-demo/history/front-panel/Demo.vi-001-artifacts/compare-report_files/fp_1.png' -or
     $receipt.commentPreviewCards[0].surfaces[1].baseImageRelativePath -ne 'targets/001-demo/history/block-diagram/Demo.vi-001-artifacts/compare-report_files/bd_1.png') {
     throw 'Reviewer cards should preserve both front-panel and block-diagram image paths for the same history pair.'
+  }
+  if ([string]$receipt.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
+    [string]$receipt.commentPreviewCards[0].changeDetails.sourceMode -ne 'attributes') {
+    throw 'Reviewer cards should attach bounded change-detail summaries from the attributes compare report.'
+  }
+  if ((@($receipt.commentPreviewCards[0].changeDetails.includedCategories) -join ',') -ne 'Block Diagram Functional,VI Attribute') {
+    throw 'Reviewer cards should preserve included categories from the attributes compare report.'
+  }
+  if ([string]$receipt.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block Diagram objects' -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].detailCount -ne 4 -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionCount -ne 2 -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].omittedDetailCount -ne 1) {
+    throw 'Reviewer cards should aggregate repeated attributes-report sections into a bounded change-detail summary.'
+  }
+  if ($receipt.commentPreviewCards[0].changeDetails.groups[0].sampleDetails.Count -ne 3 -or
+    $receipt.commentPreviewCards[0].changeDetails.groups[0].sampleDetails[0] -notmatch 'Property Node - moved') {
+    throw 'Reviewer cards should preserve the first bounded change-detail samples.'
+  }
+  if ([string]$receipt.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI Attribute - Miscellaneous' -or
+    $receipt.commentPreviewCards[1].changeDetails.groups[0].sampleDetails[0] -notmatch 'VI Version : changed from "21\.0" to "20\.0"') {
+    throw 'Reviewer cards should preserve distinct VI attribute change summaries for later history pairs.'
   }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw

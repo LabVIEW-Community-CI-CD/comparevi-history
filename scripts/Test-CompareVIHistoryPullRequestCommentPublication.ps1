@@ -62,6 +62,33 @@ function New-PreviewCard {
     targetId = 'dynamic-demo-target'
     targetPath = 'Tooling/demo/Demo.vi'
     comparison = $matchingPairs[0].comparison
+    changeDetails = [ordered]@{
+      label = 'Change details'
+      sourceMode = 'attributes'
+      reportHtmlRelativePath = ('targets/001/history/attributes/Demo.vi-{0:D3}-artifacts/compare-report.html' -f $ComparisonIndex)
+      includedCategories = $(if ($ComparisonIndex -eq 1) { @('Block Diagram Functional', 'VI Attribute') } else { @('VI Attribute') })
+      groupCount = 1
+      omittedGroupCount = 0
+      sectionCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
+      detailCount = $(if ($ComparisonIndex -eq 1) { 4 } else { 1 })
+      groups = @(
+        [ordered]@{
+          heading = $(if ($ComparisonIndex -eq 1) { 'Block Diagram objects' } else { 'VI Attribute - Miscellaneous' })
+          sectionCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
+          detailCount = $(if ($ComparisonIndex -eq 1) { 4 } else { 1 })
+          sampleDetails = $(if ($ComparisonIndex -eq 1) {
+              @(
+                'Property Node - moved : changed from "(-35,102)" to "(-55,77)"',
+                'Tunnel - moved : changed from "(141,124)" to "(141,124)"',
+                'Case Selector - moved : changed from "(141,143)" to "(141,143)"'
+              )
+            } else {
+              @('VI Version : changed from "21.0" to "20.0"')
+            })
+          omittedDetailCount = $(if ($ComparisonIndex -eq 1) { 1 } else { 0 })
+        }
+      )
+    }
     surfaces = @(
       $matchingPairs |
         ForEach-Object {
@@ -439,6 +466,14 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     [regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Block diagram</strong></p>')).Count -ne 2) {
     throw 'Created PR comment body should render both front-panel and block-diagram surfaces for each history pair.'
   }
+  if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Change details</strong></p>')).Count -ne 2 -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('Block Diagram objects') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('+1 more details in report') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('VI Attribute - Miscellaneous') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('VI Version : changed from &quot;21.0&quot; to &quot;20.0&quot;') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('open change details report')) {
+    throw 'Created PR comment body should render bounded change-detail summaries from the attributes compare report.'
+  }
   if ([regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/base\.png').Count -ne 4 -or
     [regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/head\.png').Count -ne 4) {
     throw 'Created PR comment body should embed eight preview image URLs.'
@@ -466,6 +501,11 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ($createReceipt.previewPublication.commentPreviewCards.Count -ne 2 -or
     (@($createReceipt.previewPublication.commentPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
     throw 'Preview publication should retain reviewer cards with both front-panel and block-diagram surfaces.'
+  }
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block Diagram objects' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI Attribute - Miscellaneous') {
+    throw 'Preview publication should retain reviewer-facing change-detail summaries.'
   }
 
   $writeOrder = @(

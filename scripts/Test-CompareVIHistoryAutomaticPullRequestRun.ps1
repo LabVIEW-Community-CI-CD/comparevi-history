@@ -10,6 +10,8 @@ function New-PreviewReportFixture {
     [Parameter(Mandatory = $true)]
     [string]$ModeRoot,
     [Parameter(Mandatory = $true)]
+    [string]$ModeName,
+    [Parameter(Mandatory = $true)]
     [string]$ArtifactPrefix,
     [Parameter(Mandatory = $true)]
     [int]$ComparisonIndex,
@@ -28,7 +30,57 @@ function New-PreviewReportFixture {
   [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'bd_2.png'), @(0x10, 0x0C, 0xD1, 0xA6))
 
   $reportHtmlPath = Join-Path $artifactDir 'compare-report.html'
-  @'
+  $reportHtml = if ($ModeName -eq 'attributes') {
+@"
+<!DOCTYPE html>
+<html>
+<body>
+<div class="compared-VIs">
+<details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/base/Base.vi</div><div class="dropdown-right">Second VI: /compare/head/Head.vi</div></summary>
+<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr>
+<tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Block Diagram Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_2.png"/></td></tr></table></details>
+</div>
+<div class="included-attributes">
+<ul class="inclusion-list">
+<li class="checked">Block Diagram Functional</li>
+<li class="checked">VI Attribute</li>
+</ul>
+</div>
+<h2 class="section-header">Detailed Information</h2>
+$(if ($ComparisonIndex -eq 1) {
+@'
+<details open>
+<summary class="difference-heading">1. Block Diagram objects</summary>
+<ol class="detailed-description-list" type="A">
+<li class="diff-detail">Property Node - moved : changed from "(-35,102)" to "(-55,77)"</li>
+<li class="diff-detail">Tunnel - moved : changed from "(141,124)" to "(141,124)"</li>
+<li class="diff-detail">Case Selector - moved : changed from "(141,143)" to "(141,143)"</li>
+</ol>
+</details>
+<details open>
+<summary class="difference-heading">2. Block Diagram objects</summary>
+<ol class="detailed-description-list" type="A">
+<li class="diff-detail">Boolean Constant - moved : changed from "(675,231)" to "(675,231)"</li>
+</ol>
+</details>
+'@
+} else {
+@'
+<details open>
+<summary class="difference-heading">1. VI Attribute - Miscellaneous</summary>
+<ol class="detailed-description-list" type="A">
+<li class="diff-detail">VI Version : changed from "21.0" to "20.0"</li>
+</ol>
+</details>
+'@
+})
+</body>
+</html>
+"@
+  } else {
+@'
 <!DOCTYPE html>
 <html>
 <body>
@@ -41,7 +93,9 @@ function New-PreviewReportFixture {
 </div>
 </body>
 </html>
-'@ | Set-Content -LiteralPath $reportHtmlPath -Encoding utf8
+'@
+  }
+  $reportHtml | Set-Content -LiteralPath $reportHtmlPath -Encoding utf8
 
   return [ordered]@{
     index = $ComparisonIndex
@@ -73,8 +127,8 @@ function New-PreviewModeFixture {
   New-Item -ItemType Directory -Path $modeRoot -Force | Out-Null
   $modeManifestPath = Join-Path $modeRoot 'manifest.json'
   $comparisons = @(
-    (New-PreviewReportFixture -ModeRoot $modeRoot -ArtifactPrefix $ArtifactPrefix -ComparisonIndex 1 -BaseRef ('{0}-base-1' -f $ModeName) -HeadRef ('{0}-head-1' -f $ModeName)),
-    (New-PreviewReportFixture -ModeRoot $modeRoot -ArtifactPrefix $ArtifactPrefix -ComparisonIndex 2 -BaseRef ('{0}-base-2' -f $ModeName) -HeadRef ('{0}-head-2' -f $ModeName))
+    (New-PreviewReportFixture -ModeRoot $modeRoot -ModeName $ModeName -ArtifactPrefix $ArtifactPrefix -ComparisonIndex 1 -BaseRef ('{0}-base-1' -f $ModeName) -HeadRef ('{0}-head-1' -f $ModeName)),
+    (New-PreviewReportFixture -ModeRoot $modeRoot -ModeName $ModeName -ArtifactPrefix $ArtifactPrefix -ComparisonIndex 2 -BaseRef ('{0}-base-2' -f $ModeName) -HeadRef ('{0}-head-2' -f $ModeName))
   )
 
   ([ordered]@{
@@ -462,6 +516,13 @@ try {
     [regex]::Matches($indexMarkdown, [regex]::Escape('#### Block diagram')).Count -ne 2) {
     throw 'Index markdown should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
+  if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Change details')).Count -ne 2 -or
+    $indexMarkdown -notmatch [regex]::Escape('`Block Diagram objects`: `4` details across `2` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('+1 more details in report') -or
+    $indexMarkdown -notmatch [regex]::Escape('`VI Attribute - Miscellaneous`: `1` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('Included categories: `Block Diagram Functional`, `VI Attribute`')) {
+    throw 'Index markdown should render bounded change-detail summaries from the attributes compare report.'
+  }
 
   $markdownPositions = Get-OrdinalPositions -Content $indexMarkdown -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
@@ -496,6 +557,13 @@ try {
     [regex]::Matches($indexHtml, [regex]::Escape('<h4>Block diagram</h4>')).Count -ne 2) {
     throw 'Index HTML should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
+  if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Change details</h4>')).Count -ne 2 -or
+    $indexHtml -notmatch [regex]::Escape('Block Diagram objects') -or
+    $indexHtml -notmatch [regex]::Escape('+1 more details in report') -or
+    $indexHtml -notmatch [regex]::Escape('VI Attribute - Miscellaneous') -or
+    $indexHtml -notmatch [regex]::Escape('open change details report')) {
+    throw 'Index HTML should render bounded change-detail summaries from the attributes compare report.'
+  }
 
   $htmlPositions = Get-OrdinalPositions -Content $indexHtml -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
@@ -520,6 +588,11 @@ try {
     $previewManifest.summary.indexPreviewCardCount -ne 2 -or
     $previewManifest.summary.indexPreviewSurfaceCount -ne 4) {
     throw 'Preview manifest summary mismatch.'
+  }
+  if ([string]$previewManifest.indexPreviewCards[0].changeDetails.label -ne 'Change details' -or
+    [string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].heading -ne 'Block Diagram objects' -or
+    [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].heading -ne 'VI Attribute - Miscellaneous') {
+    throw 'Preview manifest should carry reviewer-facing change-detail summaries into the aggregate PR run.'
   }
   if ($previewManifest.indexPreviewCards.Count -ne 2 -or
     (@($previewManifest.indexPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
