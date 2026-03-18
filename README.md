@@ -44,6 +44,10 @@ Legacy direct invocation remains available for maintainers:
 - Emits `comparevi-history/pr-run@v2` as the aggregate pull-request diagnostics receipt for the dynamic changed-VI PR
   surface, including `selectedTargets`, artifact index paths, and sticky-comment publication inputs.
 - Emits `comparevi-history/pr-comment-publication@v1` as the `workflow_run` publication receipt for sticky PR comments.
+- Emits `comparevi-history/agent-canary-policy@v1` as the repo-owned governance contract for same-repo canary proof
+  lanes that exercise the PR diagnostics surface without touching production VIs.
+- Emits `comparevi-history/agent-canary-evaluation@v1` as the `workflow_run` evaluation receipt for agent-canary
+  publication proofs.
 - Renders reviewer-facing markdown from the bundled helper resolved through `tooling-path` instead of copied inline
   consumer scripts.
 - Verifies the downloaded bundle against the published release digest before extraction.
@@ -160,6 +164,10 @@ Automatic pull-request diagnostics workflows emit additive PR-scope receipts alo
 - `pr-comment.md`
 - `pr-step-summary.md`
 
+Agent-canary proof workflows emit one additive publication-evaluation receipt alongside the action outputs:
+
+- `agent-canary-evaluation.json` (`comparevi-history/agent-canary-evaluation@v1`)
+
 Corpus/downstream-processing pilots can also emit additive processing receipts:
 
 - `downstream-processor-summary.json` (`comparevi-history/downstream-processor-summary@v1`)
@@ -249,6 +257,43 @@ This keeps consumer repositories thin while giving reviewers one stable entrypoi
 - the full unsuppressed review surface stays in the artifact-hosted `index.md` and `index.html`
 - execution remains bundle-backed and platform-owned
 - consumer repositories own only the checked-in policy file, branch trigger wiring, and permissions policy
+
+## Agent-canary evaluation workflow
+
+Trusted consumer repositories can add one governed same-repo-only canary proof lane on top of the automatic PR
+diagnostics/publication surface:
+
+- evaluator reusable workflow:
+  [`./.github/workflows/pull-request-diagnostics-canary-evaluate.yml`](.github/workflows/pull-request-diagnostics-canary-evaluate.yml)
+- thin consumer evaluation wrapper:
+  [`docs/examples/comparevi-history-agent-canary-evaluate.yml`](docs/examples/comparevi-history-agent-canary-evaluate.yml)
+- checked-in canary policy source:
+  [`docs/examples/comparevi-history-agent-canary-policy.json`](docs/examples/comparevi-history-agent-canary-policy.json)
+
+The canary lane is intentionally narrow:
+
+- same-repo only
+- one long-lived draft PR, not a stream of throwaway PRs
+- branch prefix `agent-canary/`
+- required label `agent-canary`
+- a dedicated canary VI path instead of production VIs
+- no auto-merge
+
+The evaluator consumes publication receipts and artifact contents only:
+
+- it downloads the publication artifact from `CompareVI History Pull Request Diagnostics Publish`
+- it reads `pr-comment-publication.json`, `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`
+- it verifies the changed-VI count, selected-target count, canonical canary path, explicit public modes, raw
+  `noisePolicy = include`, sticky comment publication, and `artifact-index` reviewer surface
+- it emits `agent-canary-evaluation.json` (`comparevi-history/agent-canary-evaluation@v1`)
+- it fails closed for canary regressions and skips cleanly for non-canary PRs
+
+This keeps the canary lane machine-readable and bounded:
+
+- the long-lived draft PR remains the durable proof surface
+- the sticky PR comment remains the reviewer entrypoint
+- the full evidence stays artifact-hosted
+- human feature PRs remain unaffected by autonomous mutation in this pilot
 
 ### Legacy catalog-matched PR diagnostics workflow
 

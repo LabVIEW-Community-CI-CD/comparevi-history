@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-agent-canary-policy-v1.schema.json",
+  "title": "comparevi-history agent canary policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "prIdentification",
+    "targetContract",
+    "executionContract",
+    "publicationContract",
+    "promotionContract"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/agent-canary-policy@v1"
+    },
+    "prIdentification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branchPrefix",
+        "requiredLabels"
+      ],
+      "properties": {
+        "branchPrefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiredLabels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "targetContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonicalPath",
+        "expectedChangedViCount",
+        "expectedSelectedTargetCount"
+      ],
+      "properties": {
+        "canonicalPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedChangedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedSelectedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "executionContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedPublicModes",
+        "expectedNoisePolicy",
+        "expectedFullSurface"
+      ],
+      "properties": {
+        "expectedPublicModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "attributes",
+              "front-panel",
+              "block-diagram"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "expectedNoisePolicy": {
+          "type": "string",
+          "enum": [
+            "include",
+            "collapse",
+            "skip"
+          ]
+        },
+        "expectedFullSurface": {
+          "type": "string",
+          "enum": [
+            "artifact-index"
+          ]
+        }
+      }
+    },
+    "publicationContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stickyCommentRequired",
+        "requiredStatus"
+      ],
+      "properties": {
+        "stickyCommentRequired": {
+          "type": "boolean"
+        },
+        "requiredStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded"
+          ]
+        }
+      }
+    },
+    "promotionContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mergePolicy",
+        "prMode"
+      ],
+      "properties": {
+        "mergePolicy": {
+          "type": "string",
+          "enum": [
+            "manual-only"
+          ]
+        },
+        "prMode": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "ready-for-review"
+          ]
+        }
+      }
+    }
+  }
+}

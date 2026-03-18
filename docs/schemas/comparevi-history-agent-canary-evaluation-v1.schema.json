@@ -1,0 +1,507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-agent-canary-evaluation-v1.schema.json",
+  "title": "comparevi-history agent canary evaluation receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repository",
+    "workflowRunId",
+    "artifactName",
+    "canaryPolicy",
+    "pullRequest",
+    "trustContext",
+    "discovery",
+    "execution",
+    "publication",
+    "outputs",
+    "checks",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/agent-canary-evaluation@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflowRunId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifactName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canaryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "prIdentification",
+        "targetContract",
+        "executionContract",
+        "publicationContract",
+        "promotionContract"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/agent-canary-policy@v1"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prIdentification": {
+          "type": "object"
+        },
+        "targetContract": {
+          "type": "object"
+        },
+        "executionContract": {
+          "type": "object"
+        },
+        "publicationContract": {
+          "type": "object"
+        },
+        "promotionContract": {
+          "type": "object"
+        }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "baseRepository",
+        "baseRef",
+        "baseSha",
+        "headRepository",
+        "headRef",
+        "headSha",
+        "isFork",
+        "draft",
+        "labels"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "htmlUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRepository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headSha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isFork": {
+          "type": "boolean"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "trustContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sameRepository",
+        "forkBehavior",
+        "fullSurface"
+      ],
+      "properties": {
+        "sameRepository": {
+          "type": "boolean"
+        },
+        "forkBehavior": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fullSurface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "status",
+        "reason",
+        "changedViCount",
+        "selectedTargetCount",
+        "selectedTargetPaths"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/changed-vi-discovery@v2"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "skipped",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedTargetPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "finalStatus",
+        "finalReason",
+        "publicModes",
+        "noisePolicy",
+        "fullSurface"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/pr-run@v2"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finalStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "skipped",
+            "blocked",
+            "failed"
+          ]
+        },
+        "finalReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicModes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "noisePolicy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fullSurface": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "path",
+        "status",
+        "reason",
+        "commentAction",
+        "commentId",
+        "commentUrl"
+      ],
+      "properties": {
+        "schema": {
+          "const": "comparevi-history/pr-comment-publication@v1"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commentAction": {
+          "type": "string",
+          "enum": [
+            "none",
+            "created",
+            "updated",
+            "unchanged"
+          ]
+        },
+        "commentId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "commentUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resultsDir",
+        "evaluationPath",
+        "publicationArtifactRoot",
+        "publicationReceiptPath",
+        "prRunPath",
+        "discoveryPath",
+        "indexMarkdownPath",
+        "indexHtmlPath"
+      ],
+      "properties": {
+        "resultsDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluationPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicationArtifactRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicationReceiptPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prRunPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discoveryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indexMarkdownPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "indexHtmlPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identification",
+        "targetContract",
+        "executionContract",
+        "publicationContract",
+        "artifactContract"
+      ],
+      "properties": {
+        "identification": {
+          "$ref": "#/$defs/checkResult"
+        },
+        "targetContract": {
+          "$ref": "#/$defs/checkResult"
+        },
+        "executionContract": {
+          "$ref": "#/$defs/checkResult"
+        },
+        "publicationContract": {
+          "$ref": "#/$defs/checkResult"
+        },
+        "artifactContract": {
+          "$ref": "#/$defs/checkResult"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matchedPolicy",
+        "status",
+        "reason",
+        "failureReasons",
+        "changedViCount",
+        "selectedTargetCount",
+        "executionFinalStatus",
+        "executionFinalReason",
+        "publicationStatus",
+        "publicationReason"
+      ],
+      "properties": {
+        "matchedPolicy": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "skipped"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "changedViCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selectedTargetCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executionFinalStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "skipped",
+            "blocked",
+            "failed"
+          ]
+        },
+        "executionFinalReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publicationStatus": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed"
+          ]
+        },
+        "publicationReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "checkResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matched",
+        "reasons"
+      ],
+      "properties": {
+        "matched": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

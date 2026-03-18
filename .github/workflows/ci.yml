@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
           ./actionlint -color
           ./actionlint -color \
+            docs/examples/comparevi-history-agent-canary-evaluate.yml \
             docs/examples/comparevi-history-pull-request-diagnostics.yml \
             docs/examples/comparevi-history-pull-request-diagnostics-auto.yml \
             docs/examples/comparevi-history-pull-request-diagnostics-publish.yml \
@@ -124,6 +125,7 @@ jobs:
             'scripts/Write-CompareVIHistoryDownstreamProcessorSummary.ps1',
             'scripts/Write-CompareVIHistoryPullRequestRun.ps1',
             'scripts/Write-CompareVIHistoryAutomaticPullRequestRun.ps1',
+            'scripts/Write-CompareVIHistoryAgentCanaryEvaluation.ps1',
             'scripts/Write-CompareVIHistoryPublicRun.ps1',
             'scripts/Publish-CompareVIHistoryPullRequestComment.ps1',
             'scripts/Assert-CompareVIHistoryPublishedRun.ps1',
@@ -144,6 +146,7 @@ jobs:
             'scripts/Test-CompareVIHistoryAutomaticPullRequestDiscovery.ps1',
             'scripts/Test-CompareVIHistoryAutomaticPullRequestDiagnostics.ps1',
             'scripts/Test-CompareVIHistoryAutomaticPullRequestRun.ps1',
+            'scripts/Test-CompareVIHistoryAgentCanaryEvaluation.ps1',
             'scripts/Test-CompareVIHistoryPullRequestCommentPublication.ps1',
             'scripts/Test-CompareVIHistoryTemplateContracts.ps1'
           )) {
@@ -201,6 +204,7 @@ jobs:
             'scripts/Test-CompareVIHistoryAutomaticPullRequestDiscovery.ps1',
             'scripts/Test-CompareVIHistoryAutomaticPullRequestDiagnostics.ps1',
             'scripts/Test-CompareVIHistoryAutomaticPullRequestRun.ps1',
+            'scripts/Test-CompareVIHistoryAgentCanaryEvaluation.ps1',
             'scripts/Test-CompareVIHistoryPullRequestCommentPublication.ps1',
             'scripts/Test-CompareVIHistoryRequest.ps1',
             'scripts/Test-CompareVIHistoryRevisionCatalog.ps1',
