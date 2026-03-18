@@ -170,6 +170,73 @@ function Escape-Html {
   return [System.Net.WebUtility]::HtmlEncode($Value)
 }
 
+function Get-ReportAnchorId {
+  param(
+    [AllowNull()]
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $hashIndex = $Path.IndexOf('#', [System.StringComparison]::Ordinal)
+  if ($hashIndex -lt 0 -or $hashIndex -ge ($Path.Length - 1)) {
+    return $null
+  }
+
+  return $Path.Substring($hashIndex + 1)
+}
+
+function Add-AnchorToRelativePath {
+  param(
+    [AllowNull()]
+    [string]$Path,
+    [AllowNull()]
+    [string]$AnchorId
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($AnchorId)) {
+    return $Path
+  }
+
+  return '{0}#{1}' -f $Path, $AnchorId
+}
+
+function Resolve-RelativeLinkFromPage {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$PageRelativePath,
+    [AllowNull()]
+    [string]$TargetRelativePath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($TargetRelativePath)) {
+    return $null
+  }
+
+  $anchorId = Get-ReportAnchorId -Path $TargetRelativePath
+  $pathWithoutAnchor = $TargetRelativePath
+  $hashIndex = $TargetRelativePath.IndexOf('#', [System.StringComparison]::Ordinal)
+  if ($hashIndex -ge 0) {
+    $pathWithoutAnchor = $TargetRelativePath.Substring(0, $hashIndex)
+  }
+
+  $pageDirectory = [System.IO.Path]::GetDirectoryName(($PageRelativePath -replace '/', '\'))
+  $targetPath = $pathWithoutAnchor -replace '/', '\'
+  $relativePath = if ([string]::IsNullOrWhiteSpace($pageDirectory)) {
+    $targetPath
+  } else {
+    [System.IO.Path]::GetRelativePath($pageDirectory, $targetPath)
+  }
+
+  return Add-AnchorToRelativePath -Path ($relativePath.Replace('\', '/')) -AnchorId $anchorId
+}
+
 function ConvertTo-ShortRef {
   param([AllowNull()][string]$Ref)
 
@@ -332,6 +399,39 @@ function Get-WorkspaceCardAnchorId {
   $comparisonIndex = Get-ReviewerPreviewComparisonIndex -PreviewPair $PreviewCard
   $targetSlug = ConvertTo-Slug -Value (Get-OptionalString -Value $PreviewCard.targetPath) -Fallback (ConvertTo-Slug -Value (Get-OptionalString -Value $PreviewCard.targetId) -Fallback 'target')
   return 'history-pair-{0:D2}-{1}' -f $comparisonIndex, $targetSlug
+}
+
+function Get-WorkspacePairPageRootRelativePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [Parameter(Mandatory = $true)]
+    [int]$Ordinal
+  )
+
+  return 'history-pairs/{0:D3}-{1}' -f $Ordinal, (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard)
+}
+
+function Get-WorkspacePairPageHtmlRelativePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [Parameter(Mandatory = $true)]
+    [int]$Ordinal
+  )
+
+  return '{0}/index.html' -f (Get-WorkspacePairPageRootRelativePath -PreviewCard $PreviewCard -Ordinal $Ordinal)
+}
+
+function Get-WorkspacePairPageMarkdownRelativePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [Parameter(Mandatory = $true)]
+    [int]$Ordinal
+  )
+
+  return '{0}/index.md' -f (Get-WorkspacePairPageRootRelativePath -PreviewCard $PreviewCard -Ordinal $Ordinal)
 }
 
 function Get-WorkspaceSurfaceReportLink {
@@ -756,7 +856,7 @@ function New-MarkdownChangeDetailsLines {
   }
   $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
   if (-not [string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
-    $lines.Add(('- Report: [{0}]({0})' -f $reportHtmlRelativePath)) | Out-Null
+    $lines.Add(('- Review page: [{0}]({0})' -f $reportHtmlRelativePath)) | Out-Null
   }
   $lines.Add('') | Out-Null
   return @($lines | ForEach-Object { $_ })
@@ -858,7 +958,7 @@ function New-HtmlChangeDetailsBlock {
   }
   $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
   if (-not [string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
-    $items.Add('<li><a href="' + (Escape-Html $reportHtmlRelativePath) + '">open change details report</a></li>') | Out-Null
+    $items.Add('<li><a href="' + (Escape-Html $reportHtmlRelativePath) + '">open change details review</a></li>') | Out-Null
   }
 
   return '<section class="preview-change-details"><h4>Change details</h4><ul>' + ($items -join '') + '</ul></section>'
@@ -1016,6 +1116,507 @@ function New-ReviewerPreviewCards {
   return @($cards | ForEach-Object { $_ })
 }
 
+function ConvertTo-WorkspaceReviewerSectionLink {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$SectionLink,
+    [Parameter(Mandatory = $true)]
+    [string]$PairPageHtmlRelativePath,
+    [string]$FallbackAnchorId = 'change-details'
+  )
+
+  $rawReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('reportHtmlRelativePath'))
+  $anchorId = Get-ReportAnchorId -Path $rawReportHtmlRelativePath
+  if ([string]::IsNullOrWhiteSpace($anchorId)) {
+    $anchorId = ConvertTo-Slug -Value (Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('label'))) -Fallback $FallbackAnchorId
+  }
+
+  return [ordered]@{
+    sectionOrdinal = [int](Get-NestedValue -Object $SectionLink -Path @('sectionOrdinal') -Default 0)
+    label = Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('label'))
+    reportHtmlRelativePath = Add-AnchorToRelativePath -Path $PairPageHtmlRelativePath -AnchorId $anchorId
+    debugReportHtmlRelativePath = $rawReportHtmlRelativePath
+  }
+}
+
+function ConvertTo-WorkspaceReviewerSummary {
+  param(
+    [AllowNull()]
+    [object]$ReviewerSummary,
+    [Parameter(Mandatory = $true)]
+    [string]$PairPageHtmlRelativePath
+  )
+
+  if ($null -eq $ReviewerSummary) {
+    return $null
+  }
+
+  $signals = New-Object System.Collections.Generic.List[object]
+  foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()))) {
+    $rawPrimaryPath = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportHtmlRelativePath'))
+    $primaryAnchorId = Get-ReportAnchorId -Path $rawPrimaryPath
+    if ([string]::IsNullOrWhiteSpace($primaryAnchorId)) {
+      $primaryAnchorId = ConvertTo-Slug -Value (Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))) -Fallback 'reviewer-signal'
+    }
+
+    $signals.Add([ordered]@{
+        signalKey = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('signalKey'))
+        label = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+        severity = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('severity'))
+        detailCount = [int](Get-NestedValue -Object $signal -Path @('detailCount') -Default 0)
+        sectionCount = [int](Get-NestedValue -Object $signal -Path @('sectionCount') -Default 0)
+        summary = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('summary'))
+        primaryReportHtmlRelativePath = Add-AnchorToRelativePath -Path $PairPageHtmlRelativePath -AnchorId $primaryAnchorId
+        debugPrimaryReportHtmlRelativePath = $rawPrimaryPath
+        sectionLinks = @(
+          ConvertTo-ObjectArray -Value (Get-NestedValue -Object $signal -Path @('sectionLinks') -Default @()) |
+            ForEach-Object { ConvertTo-WorkspaceReviewerSectionLink -SectionLink $_ -PairPageHtmlRelativePath $PairPageHtmlRelativePath -FallbackAnchorId $primaryAnchorId }
+        )
+      }) | Out-Null
+  }
+
+  return [ordered]@{
+    label = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('label'))
+    overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('overallSeverity'))
+    headline = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('headline'))
+    signalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('signalCount') -Default 0)
+    omittedSignalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('omittedSignalCount') -Default 0)
+    signals = @($signals | ForEach-Object { $_ })
+  }
+}
+
+function ConvertTo-WorkspaceChangeDetails {
+  param(
+    [AllowNull()]
+    [object]$ChangeDetails,
+    [Parameter(Mandatory = $true)]
+    [string]$PairPageHtmlRelativePath
+  )
+
+  if ($null -eq $ChangeDetails) {
+    return $null
+  }
+
+  $groups = New-Object System.Collections.Generic.List[object]
+  foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
+    $rawPrimaryPath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
+    $primaryAnchorId = Get-ReportAnchorId -Path $rawPrimaryPath
+    if ([string]::IsNullOrWhiteSpace($primaryAnchorId)) {
+      $primaryAnchorId = ConvertTo-Slug -Value (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))) -Fallback 'change-group'
+    }
+
+    $groups.Add([ordered]@{
+        heading = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+        sectionCount = [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0)
+        detailCount = [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0)
+        sampleDetails = @(
+          ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sampleDetails') -Default @()) |
+            ForEach-Object { [string]$_ }
+        )
+        omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
+        primaryReportHtmlRelativePath = Add-AnchorToRelativePath -Path $PairPageHtmlRelativePath -AnchorId $primaryAnchorId
+        debugPrimaryReportHtmlRelativePath = $rawPrimaryPath
+        sectionLinks = @(
+          ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()) |
+            ForEach-Object { ConvertTo-WorkspaceReviewerSectionLink -SectionLink $_ -PairPageHtmlRelativePath $PairPageHtmlRelativePath -FallbackAnchorId $primaryAnchorId }
+        )
+      }) | Out-Null
+  }
+
+  return [ordered]@{
+    label = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('label'))
+    sourceMode = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('sourceMode'))
+    reportHtmlRelativePath = Add-AnchorToRelativePath -Path $PairPageHtmlRelativePath -AnchorId 'change-details'
+    debugReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
+    includedCategories = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('includedCategories') -Default @()) |
+        ForEach-Object { [string]$_ }
+    )
+    groupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('groupCount') -Default 0)
+    omittedGroupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('omittedGroupCount') -Default 0)
+    sectionCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('sectionCount') -Default 0)
+    detailCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('detailCount') -Default 0)
+    groups = @($groups | ForEach-Object { $_ })
+  }
+}
+
+function ConvertTo-WorkspacePreviewCard {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [Parameter(Mandatory = $true)]
+    [int]$Ordinal
+  )
+
+  $pairPageHtmlRelativePath = Get-WorkspacePairPageHtmlRelativePath -PreviewCard $PreviewCard -Ordinal $Ordinal
+  $pairPageMarkdownRelativePath = Get-WorkspacePairPageMarkdownRelativePath -PreviewCard $PreviewCard -Ordinal $Ordinal
+
+  $surfaces = New-Object System.Collections.Generic.List[object]
+  foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $PreviewCard -Path @('surfaces') -Default @()))) {
+    $surfaceKind = Get-OptionalString -Value $surface.surfaceKind
+    $surfaceAnchorId = switch ($surfaceKind) {
+      'front-panel' { 'front-panel' }
+      'block-diagram' { 'block-diagram' }
+      default { ConvertTo-Slug -Value $surfaceKind -Fallback 'preview-surface' }
+    }
+
+    $surfaces.Add([ordered]@{
+        surfaceKind = $surfaceKind
+        surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind $surfaceKind -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+        reportHtmlRelativePath = Add-AnchorToRelativePath -Path $pairPageHtmlRelativePath -AnchorId $surfaceAnchorId
+        debugReportHtmlRelativePath = Get-OptionalString -Value $surface.reportHtmlRelativePath
+        baseImageRelativePath = Get-OptionalString -Value $surface.baseImageRelativePath
+        headImageRelativePath = Get-OptionalString -Value $surface.headImageRelativePath
+      }) | Out-Null
+  }
+
+  return [ordered]@{
+    targetId = [string]$PreviewCard.targetId
+    targetPath = [string]$PreviewCard.targetPath
+    comparison = $PreviewCard.comparison
+    pairPageHtmlRelativePath = $pairPageHtmlRelativePath
+    pairPageMarkdownRelativePath = $pairPageMarkdownRelativePath
+    reviewerSummary = ConvertTo-WorkspaceReviewerSummary -ReviewerSummary (Get-NestedValue -Object $PreviewCard -Path @('reviewerSummary')) -PairPageHtmlRelativePath $pairPageHtmlRelativePath
+    changeDetails = ConvertTo-WorkspaceChangeDetails -ChangeDetails (Get-NestedValue -Object $PreviewCard -Path @('changeDetails')) -PairPageHtmlRelativePath $pairPageHtmlRelativePath
+    surfaces = @($surfaces | ForEach-Object { $_ })
+  }
+}
+
+function New-WorkspacePrimaryPreviewCards {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @()
+  )
+
+  $convertedCards = New-Object System.Collections.Generic.List[object]
+  $ordinal = 1
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $convertedCards.Add((ConvertTo-WorkspacePreviewCard -PreviewCard $previewCard -Ordinal $ordinal)) | Out-Null
+    $ordinal += 1
+  }
+
+  return @($convertedCards | ForEach-Object { $_ })
+}
+
+function New-WorkspacePrimaryPreviewPairs {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @()
+  )
+
+  $previewPairs = New-Object System.Collections.Generic.List[object]
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $representativeSurface = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()) |
+        Select-Object -First 1
+    )
+    if ($null -eq $representativeSurface) {
+      continue
+    }
+
+    $previewPairs.Add([ordered]@{
+        targetId = [string]$previewCard.targetId
+        targetPath = [string]$previewCard.targetPath
+        mode = Get-OptionalString -Value $representativeSurface.surfaceKind
+        label = Get-OptionalString -Value $representativeSurface.surfaceLabel
+        sectionKind = 'review-pair'
+        comparison = $previewCard.comparison
+        reportHtmlRelativePath = Get-OptionalString -Value $representativeSurface.reportHtmlRelativePath
+        debugReportHtmlRelativePath = Get-OptionalString -Value $representativeSurface.debugReportHtmlRelativePath
+        baseImageRelativePath = Get-OptionalString -Value $representativeSurface.baseImageRelativePath
+        headImageRelativePath = Get-OptionalString -Value $representativeSurface.headImageRelativePath
+      }) | Out-Null
+  }
+
+  return @($previewPairs | ForEach-Object { $_ })
+}
+
+function New-MarkdownWorkspacePairPage {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $pageRelativePath = Get-OptionalString -Value $PreviewCard.pairPageMarkdownRelativePath
+  $workspaceHtmlLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Add-AnchorToRelativePath -Path 'index.html' -AnchorId (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard))
+  $workspaceMarkdownLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Add-AnchorToRelativePath -Path 'index.md' -AnchorId (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard))
+  $lines = New-Object System.Collections.Generic.List[string]
+  $title = Get-ReviewerPreviewTitle -PreviewPair $PreviewCard
+  $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $PreviewCard
+  $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $PreviewCard
+  $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $PreviewCard)
+
+  $lines.Add(('# `{0}`' -f $title)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('## {0}' -f $subtitle)) | Out-Null
+  $lines.Add('') | Out-Null
+  if (-not [string]::IsNullOrWhiteSpace($revisionContext)) {
+    $lines.Add(('`{0}`' -f $revisionContext)) | Out-Null
+    $lines.Add('') | Out-Null
+  }
+  foreach ($detailLine in $detailLines) {
+    $lines.Add(('- {0}' -f $detailLine)) | Out-Null
+  }
+  if ($detailLines.Count -gt 0) {
+    $lines.Add('') | Out-Null
+  }
+  $lines.Add(('Back to workspace: [index.html]({0}), [index.md]({1})' -f $workspaceHtmlLink, $workspaceMarkdownLink)) | Out-Null
+  $lines.Add('') | Out-Null
+
+  foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $PreviewCard -Path @('surfaces') -Default @()))) {
+    $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+    $baseImageRelativePath = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value $surface.baseImageRelativePath)
+    $headImageRelativePath = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value $surface.headImageRelativePath)
+    $debugReportLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value $surface.debugReportHtmlRelativePath)
+
+    $lines.Add(('## {0}' -f $surfaceLabel)) | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('**Base**') | Out-Null
+    $lines.Add(('![{0}]({1})' -f ('{0} base' -f $surfaceLabel), $baseImageRelativePath)) | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('**Head**') | Out-Null
+    $lines.Add(('![{0}]({1})' -f ('{0} head' -f $surfaceLabel), $headImageRelativePath)) | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($debugReportLink)) {
+      $lines.Add('') | Out-Null
+      $lines.Add(('- Debug raw report: [{0}]({0})' -f $debugReportLink)) | Out-Null
+    }
+    $lines.Add('') | Out-Null
+  }
+
+  foreach ($reviewerSummaryLine in @(New-MarkdownReviewerSummaryLines -ReviewerSummary (Get-NestedValue -Object $PreviewCard -Path @('reviewerSummary')))) {
+    $lines.Add($reviewerSummaryLine) | Out-Null
+  }
+  foreach ($changeDetailLine in @(New-MarkdownChangeDetailsLines -ChangeDetails (Get-NestedValue -Object $PreviewCard -Path @('changeDetails')))) {
+    $lines.Add($changeDetailLine) | Out-Null
+  }
+
+  $targetLinks = Get-WorkspaceTargetLinks -PreviewCard $PreviewCard -Targets $Targets -ResultsRoot $ResultsRoot
+  $debugLinks = New-Object System.Collections.Generic.List[string]
+  foreach ($key in @('historyReport', 'sharedEvidence', 'publicRun', 'modeSummary', 'request')) {
+    $path = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value (Get-NestedValue -Object $targetLinks -Path @($key)))
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      continue
+    }
+    $label = switch ($key) {
+      'historyReport' { 'history report' }
+      'sharedEvidence' { 'shared evidence' }
+      'publicRun' { 'public run' }
+      'modeSummary' { 'mode summary' }
+      'request' { 'request' }
+      default { $key }
+    }
+    $debugLinks.Add(('[{0}]({1})' -f $label, $path)) | Out-Null
+  }
+  if ($debugLinks.Count -gt 0) {
+    $lines.Add('## Debug evidence') | Out-Null
+    $lines.Add('') | Out-Null
+    foreach ($debugLink in $debugLinks) {
+      $lines.Add(('- {0}' -f $debugLink)) | Out-Null
+    }
+    $lines.Add('') | Out-Null
+  }
+
+  return ($lines -join "`n").TrimEnd() + "`n"
+}
+
+function New-HtmlWorkspacePairPage {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $pageRelativePath = Get-OptionalString -Value $PreviewCard.pairPageHtmlRelativePath
+  $workspaceHtmlLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Add-AnchorToRelativePath -Path 'index.html' -AnchorId (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard))
+  $workspaceMarkdownLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Add-AnchorToRelativePath -Path 'index.md' -AnchorId (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard))
+  $title = Get-ReviewerPreviewTitle -PreviewPair $PreviewCard
+  $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $PreviewCard
+  $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $PreviewCard
+  $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $PreviewCard)
+
+  $surfaceSections = New-Object System.Collections.Generic.List[string]
+  foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $PreviewCard -Path @('surfaces') -Default @()))) {
+    $surfaceKind = Get-OptionalString -Value $surface.surfaceKind
+    $surfaceAnchorId = switch ($surfaceKind) {
+      'front-panel' { 'front-panel' }
+      'block-diagram' { 'block-diagram' }
+      default { ConvertTo-Slug -Value $surfaceKind -Fallback 'preview-surface' }
+    }
+    $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind $surfaceKind -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+    $baseImageRelativePath = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value $surface.baseImageRelativePath)
+    $headImageRelativePath = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value $surface.headImageRelativePath)
+    $debugReportLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value $surface.debugReportHtmlRelativePath)
+
+    $surfaceSections.Add(@"
+  <section class="pair-surface" id="$(Escape-Html $surfaceAnchorId)">
+    <h2>$(Escape-Html $surfaceLabel)</h2>
+    <div class="pair-image-grid">
+      <figure>
+        <img alt="$(Escape-Html ($surfaceLabel + ' base'))" src="$(Escape-Html $baseImageRelativePath)">
+        <figcaption>Base</figcaption>
+      </figure>
+      <figure>
+        <img alt="$(Escape-Html ($surfaceLabel + ' head'))" src="$(Escape-Html $headImageRelativePath)">
+        <figcaption>Head</figcaption>
+      </figure>
+    </div>
+    $(if (-not [string]::IsNullOrWhiteSpace($debugReportLink)) { '<p class="pair-debug-links"><strong>Debug raw report:</strong> <a href="' + (Escape-Html $debugReportLink) + '">open raw report</a></p>' } else { '' })
+  </section>
+"@) | Out-Null
+  }
+
+  $reviewerSummaryHtml = New-HtmlReviewerSummaryBlock -ReviewerSummary (Get-NestedValue -Object $PreviewCard -Path @('reviewerSummary'))
+
+  $changeDetailItems = New-Object System.Collections.Generic.List[string]
+  $changeDetails = Get-NestedValue -Object $PreviewCard -Path @('changeDetails')
+  if ($null -ne $changeDetails) {
+    $includedCategories = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $changeDetails -Path @('includedCategories') -Default @()) |
+        ForEach-Object { Get-OptionalString -Value $_ } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($includedCategories.Count -gt 0) {
+      $changeDetailItems.Add('<li><strong>Included categories:</strong> ' + (Escape-Html ($includedCategories -join ', ')) + '</li>') | Out-Null
+    }
+    foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $changeDetails -Path @('groups') -Default @()))) {
+      $groupAnchorId = Get-ReportAnchorId -Path (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath')))
+      $heading = Escape-Html (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading')))
+      $detailCount = [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0)
+      $sectionCount = [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0)
+      $sampleItems = New-Object System.Collections.Generic.List[string]
+      foreach ($sampleDetail in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sampleDetails') -Default @()))) {
+        $sampleItems.Add('<li>' + (Escape-Html ([string]$sampleDetail)) + '</li>') | Out-Null
+      }
+      $omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
+      if ($omittedDetailCount -gt 0) {
+        $sampleItems.Add('<li>+' + $omittedDetailCount + ' more details in report</li>') | Out-Null
+      }
+      $sectionLinksHtml = New-HtmlChangeDetailSectionLinks -SectionLinks @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()))
+      if (-not [string]::IsNullOrWhiteSpace($sectionLinksHtml)) {
+        $sampleItems.Add($sectionLinksHtml) | Out-Null
+      }
+      $debugPrimaryPath = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('debugPrimaryReportHtmlRelativePath')))
+      if (-not [string]::IsNullOrWhiteSpace($debugPrimaryPath)) {
+        $sampleItems.Add('<li><strong>Debug raw section:</strong> <a href="' + (Escape-Html $debugPrimaryPath) + '">open raw section</a></li>') | Out-Null
+      }
+      $changeDetailItems.Add(@"
+<li>
+  <a id="$(Escape-Html $groupAnchorId)"></a>
+  <strong>${heading}:</strong> $detailCount details across $sectionCount sections
+  <ul>$($sampleItems -join '')</ul>
+</li>
+"@) | Out-Null
+    }
+    $debugReportLink = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value (Get-NestedValue -Object $changeDetails -Path @('debugReportHtmlRelativePath')))
+    if (-not [string]::IsNullOrWhiteSpace($debugReportLink)) {
+      $changeDetailItems.Add('<li><a href="' + (Escape-Html $debugReportLink) + '">open raw attributes report</a></li>') | Out-Null
+    }
+  }
+
+  $targetLinks = Get-WorkspaceTargetLinks -PreviewCard $PreviewCard -Targets $Targets -ResultsRoot $ResultsRoot
+  $debugEvidenceItems = New-Object System.Collections.Generic.List[string]
+  foreach ($key in @('historyReport', 'sharedEvidence', 'publicRun', 'modeSummary', 'request')) {
+    $path = Resolve-RelativeLinkFromPage -PageRelativePath $pageRelativePath -TargetRelativePath (Get-OptionalString -Value (Get-NestedValue -Object $targetLinks -Path @($key)))
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      continue
+    }
+    $label = switch ($key) {
+      'historyReport' { 'history report' }
+      'sharedEvidence' { 'shared evidence' }
+      'publicRun' { 'public run' }
+      'modeSummary' { 'mode summary' }
+      'request' { 'request' }
+      default { $key }
+    }
+    $debugEvidenceItems.Add('<li><a href="' + (Escape-Html $path) + '">' + (Escape-Html $label) + '</a></li>') | Out-Null
+  }
+
+  return @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>$(Escape-Html $title)</title>
+  <style>
+    body { font-family: Segoe UI, sans-serif; margin: 0; color: #1f2933; background: #f8fafc; }
+    .page-shell { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    code { background: #e2e8f0; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .pair-nav, .pair-meta, .pair-debug { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .pair-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+    .pair-image-grid figure { margin: 0; }
+    .pair-image-grid img { max-width: 100%; height: auto; border: 1px solid #cbd5e1; background: #ffffff; }
+    .pair-surface, .pair-section { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .pair-debug-links { color: #334155; }
+  </style>
+</head>
+<body>
+  <div class="page-shell">
+    <h1><code>$(Escape-Html $title)</code></h1>
+    <div class="pair-meta">
+      <p><strong>History pair:</strong> $(Escape-Html $subtitle)</p>
+      $(if (-not [string]::IsNullOrWhiteSpace($revisionContext)) { '<p><code>' + (Escape-Html $revisionContext) + '</code></p>' } else { '' })
+      $(if ($detailLines.Count -gt 0) { '<div>' + (($detailLines | ForEach-Object { '<p>' + (Escape-Html $_) + '</p>' }) -join '') + '</div>' } else { '' })
+    </div>
+    <div class="pair-nav">
+      <strong>Navigation:</strong>
+      <a href="$(Escape-Html $workspaceHtmlLink)">workspace html</a>,
+      <a href="$(Escape-Html $workspaceMarkdownLink)">workspace markdown</a>,
+      <a href="#front-panel">front panel</a>,
+      <a href="#block-diagram">block diagram</a>,
+      <a href="#reviewer-summary">reviewer summary</a>,
+      <a href="#change-details">change details</a>
+    </div>
+    $($surfaceSections -join "`n")
+    <section class="pair-section" id="reviewer-summary">
+      <h2>Reviewer summary</h2>
+      $reviewerSummaryHtml
+    </section>
+    <section class="pair-section" id="change-details">
+      <h2>Change details</h2>
+      <ul>$($changeDetailItems -join '')</ul>
+    </section>
+    $(if ($debugEvidenceItems.Count -gt 0) {
+      '<section class="pair-debug"><h2>Debug evidence</h2><ul>' + ($debugEvidenceItems -join '') + '</ul></section>'
+    } else { '' })
+  </div>
+</body>
+</html>
+"@
+}
+
+function Write-WorkspacePairPages {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @(),
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $markdownRelativePath = Get-OptionalString -Value $previewCard.pairPageMarkdownRelativePath
+    $htmlRelativePath = Get-OptionalString -Value $previewCard.pairPageHtmlRelativePath
+    if ([string]::IsNullOrWhiteSpace($markdownRelativePath) -or [string]::IsNullOrWhiteSpace($htmlRelativePath)) {
+      continue
+    }
+
+    $markdownPath = Join-Path $ResultsRoot ($markdownRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $htmlPath = Join-Path $ResultsRoot ($htmlRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    New-Item -ItemType Directory -Path (Split-Path -Parent $markdownPath) -Force | Out-Null
+    New-Item -ItemType Directory -Path (Split-Path -Parent $htmlPath) -Force | Out-Null
+    (New-MarkdownWorkspacePairPage -PreviewCard $previewCard -Targets $Targets -ResultsRoot $ResultsRoot) | Set-Content -LiteralPath $markdownPath -Encoding utf8
+    (New-HtmlWorkspacePairPage -PreviewCard $previewCard -Targets $Targets -ResultsRoot $ResultsRoot) | Set-Content -LiteralPath $htmlPath -Encoding utf8
+  }
+}
+
 function New-MarkdownPreviewGallery {
   param(
     [AllowEmptyCollection()]
@@ -1093,7 +1694,7 @@ function New-MarkdownPreviewGallery {
       }
       $lines.Add($headImageMarkdown) | Out-Null
       if (-not [string]::IsNullOrWhiteSpace($surfaceReportPath)) {
-        $lines.Add(('- Report: [{0}]({0})' -f $surfaceReportPath)) | Out-Null
+        $lines.Add(('- Review page: [{0}]({0})' -f $surfaceReportPath)) | Out-Null
       }
       $lines.Add('') | Out-Null
     }
@@ -1138,7 +1739,7 @@ function New-HtmlPreviewGallery {
       $reportLink = if ([string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
         ''
       } else {
-        '<p><a href="' + (Escape-Html ([string]$surface.reportHtmlRelativePath)) + '">open ' + (Escape-Html $surfaceLabel.ToLowerInvariant()) + ' report</a></p>'
+        '<p><a href="' + (Escape-Html ([string]$surface.reportHtmlRelativePath)) + '">open ' + (Escape-Html $surfaceLabel.ToLowerInvariant()) + ' review</a></p>'
       }
       $baseImageHtml = '<img alt="' + (Escape-Html ($surfaceLabel + ' base')) + '" src="' + (Escape-Html ([string]$surface.baseImageRelativePath)) + '">'
       if (-not [string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
@@ -1257,6 +1858,7 @@ $indexPreviewCardCount = 0
 $commentPreviewPairCap = 0
 $indexPreviewPairCap = 0
 $indexPreviewCards = @()
+$commentPreviewCards = @()
 $previewTargetPairCountById = @{}
 if ($null -ne $targetManifest) {
   $targets = @($targetManifest.targets | ForEach-Object { $_ })
@@ -1294,6 +1896,20 @@ if ($null -ne $targetManifest) {
       -SelectedPreviewPairs @($previewManifest.indexPreviewPairs | ForEach-Object { $_ }) `
       -AllPreviewPairs @($previewManifest.previewPairs | ForEach-Object { $_ }) `
       -ExistingCards @($previewManifest.indexPreviewCards | ForEach-Object { $_ }))
+  $commentPreviewCards = @(New-ReviewerPreviewCards `
+      -SelectedPreviewPairs @($previewManifest.commentPreviewPairs | ForEach-Object { $_ }) `
+      -AllPreviewPairs @($previewManifest.previewPairs | ForEach-Object { $_ }) `
+      -ExistingCards @($previewManifest.commentPreviewCards | ForEach-Object { $_ }))
+  $indexPreviewCards = @(New-WorkspacePrimaryPreviewCards -PreviewCards $indexPreviewCards)
+  $commentPreviewCards = @(New-WorkspacePrimaryPreviewCards -PreviewCards $commentPreviewCards)
+  Write-WorkspacePairPages -PreviewCards $indexPreviewCards -Targets $targets -ResultsRoot $resultsDirResolved
+  $previewManifest.indexPreviewCards = @($indexPreviewCards | ForEach-Object { $_ })
+  $previewManifest.indexPreviewPairs = @(New-WorkspacePrimaryPreviewPairs -PreviewCards $indexPreviewCards)
+  $previewManifest.commentPreviewCards = @($commentPreviewCards | ForEach-Object { $_ })
+  $previewManifest.commentPreviewPairs = @(New-WorkspacePrimaryPreviewPairs -PreviewCards $commentPreviewCards)
+  $previewManifest.summary.indexPreviewCardCount = $indexPreviewCards.Count
+  $previewManifest.summary.commentPreviewCardCount = $commentPreviewCards.Count
+  ($previewManifest | ConvertTo-Json -Depth 100) | Set-Content -LiteralPath $previewManifestPathResolved -Encoding utf8
   foreach ($previewTarget in @($previewManifest.targets | ForEach-Object { $_ })) {
     $previewTargetPairCountById[[string]$previewTarget.targetId] = [int]$previewTarget.previewPairCount
   }

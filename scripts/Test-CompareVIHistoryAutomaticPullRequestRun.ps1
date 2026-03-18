@@ -591,6 +591,16 @@ try {
   }
 
   $indexMarkdown = Get-Content -LiteralPath $receipt.outputs.indexMarkdownPath -Raw
+  $pair1Html = 'history-pairs/001-history-pair-01-tooling-deployment-vip-post-install-custom-action-vi/index.html'
+  $pair1Markdown = 'history-pairs/001-history-pair-01-tooling-deployment-vip-post-install-custom-action-vi/index.md'
+  $pair2Html = 'history-pairs/002-history-pair-02-tooling-deployment-vip-post-install-custom-action-vi/index.html'
+  $pair2Markdown = 'history-pairs/002-history-pair-02-tooling-deployment-vip-post-install-custom-action-vi/index.md'
+  foreach ($pairPageRelativePath in @($pair1Html, $pair1Markdown, $pair2Html, $pair2Markdown)) {
+    $pairPagePath = Join-Path $resultsDir ($pairPageRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $pairPagePath -PathType Leaf)) {
+      throw "Expected pair review page '$pairPageRelativePath'."
+    }
+  }
   foreach ($requiredText in @(
       '# comparevi-history PR diagnostics workspace',
       '## Workspace summary',
@@ -605,9 +615,9 @@ try {
       '<a id="history-pair-01-tooling-deployment-vip-post-install-custom-action-vi"></a>',
       '<a id="history-pair-02-tooling-deployment-vip-post-install-custom-action-vi"></a>',
       'Quick links: [card](#history-pair-01-tooling-deployment-vip-post-install-custom-action-vi)',
-      '[front panel](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)',
-      '[block diagram](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)',
-      '[change details](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html)',
+      ('[front panel]({0}#front-panel)' -f $pair1Html),
+      ('[block diagram]({0}#block-diagram)' -f $pair1Html),
+      ('[change details]({0}#change-details)' -f $pair1Html),
       '[changed-vi-discovery.json](changed-vi-discovery.json)',
       '[pr-run.json](pr-run.json)',
       '[pr-preview-manifest.json](pr-preview-manifest.json)',
@@ -640,26 +650,26 @@ try {
     [regex]::Matches($indexMarkdown, [regex]::Escape('#### Block diagram')).Count -ne 2) {
     throw 'Index markdown should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
-  if ($indexMarkdown -notmatch [regex]::Escape('[![Front panel base](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png)](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)') -or
-    $indexMarkdown -notmatch [regex]::Escape('[![Block diagram base](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png)](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)') -or
-    $indexMarkdown -notmatch [regex]::Escape('[![Front panel head](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_2.png)](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html)') -or
-    $indexMarkdown -notmatch [regex]::Escape('[![Block diagram head](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_2.png)](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html)')) {
-    throw 'Index markdown should make preview images one-click links to exact visual report surfaces.'
+  if ($indexMarkdown -notmatch [regex]::Escape(('[![Front panel base](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png)]({0}#front-panel)' -f $pair1Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('[![Block diagram base](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png)]({0}#block-diagram)' -f $pair1Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('[![Front panel head](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_2.png)]({0}#front-panel)' -f $pair2Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('[![Block diagram head](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_2.png)]({0}#block-diagram)' -f $pair2Html))) {
+    throw 'Index markdown should route preview images to unified history-pair review pages first.'
   }
   if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Reviewer summary')).Count -ne 2 -or
     $indexMarkdown -notmatch [regex]::Escape('- Headline: `Material logic-affecting movement and structure resizing`') -or
     $indexMarkdown -notmatch [regex]::Escape('- Overall severity: `medium`') -or
-    $indexMarkdown -notmatch [regex]::Escape('- [`Logic-affecting movement`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects): `medium` severity, `3` details across `1` sections') -or
-    $indexMarkdown -notmatch [regex]::Escape('- [`Structure resizing`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects): `low` severity, `2` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape(('- [`Logic-affecting movement`]({0}#comparevi-change-001-block-diagram-objects): `medium` severity, `3` details across `1` sections' -f $pair1Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('- [`Structure resizing`]({0}#comparevi-change-002-block-diagram-objects): `low` severity, `2` details across `1` sections' -f $pair1Html)) -or
     $indexMarkdown -notmatch [regex]::Escape('- Headline: `Material version or compatibility changes`') -or
-    $indexMarkdown -notmatch [regex]::Escape('- [`Version or compatibility changes`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous): `medium` severity, `1` details across `1` sections')) {
+    $indexMarkdown -notmatch [regex]::Escape(('- [`Version or compatibility changes`]({0}#comparevi-change-001-vi-attribute-miscellaneous): `medium` severity, `1` details across `1` sections' -f $pair2Html))) {
     throw 'Index markdown should render reviewer-summary headlines, severity, and exact linked signals.'
   }
   if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Change details')).Count -ne 2 -or
-    $indexMarkdown -notmatch [regex]::Escape('[`Block diagram moves`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects): `3` details across `1` sections') -or
-    $indexMarkdown -notmatch [regex]::Escape('[`Block diagram resizing`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects): `2` details across `1` sections') -or
-    $indexMarkdown -notmatch [regex]::Escape('Exact sections: [section 1](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects)') -or
-    $indexMarkdown -notmatch [regex]::Escape('[`VI version changes`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous): `1` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape(('[`Block diagram moves`]({0}#comparevi-change-001-block-diagram-objects): `3` details across `1` sections' -f $pair1Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('[`Block diagram resizing`]({0}#comparevi-change-002-block-diagram-objects): `2` details across `1` sections' -f $pair1Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('Exact sections: [section 1]({0}#comparevi-change-001-block-diagram-objects)' -f $pair1Html)) -or
+    $indexMarkdown -notmatch [regex]::Escape(('[`VI version changes`]({0}#comparevi-change-001-vi-attribute-miscellaneous): `1` details across `1` sections' -f $pair2Html)) -or
     $indexMarkdown -notmatch [regex]::Escape('Included categories: `Block Diagram Functional`, `VI Attribute`')) {
     throw 'Index markdown should render bounded change-detail summaries from the attributes compare report.'
   }
@@ -718,27 +728,27 @@ try {
     [regex]::Matches($indexHtml, [regex]::Escape('<h4>Block diagram</h4>')).Count -ne 2) {
     throw 'Index HTML should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
-  if ($indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html"><img alt="Front panel base" src="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png"></a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html"><img alt="Block diagram base" src="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png"></a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html"><img alt="Front panel head" src="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_2.png"></a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html"><img alt="Block diagram head" src="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_2.png"></a>')) {
-    throw 'Index HTML should make preview images one-click links to exact visual report surfaces.'
+  if ($indexHtml -notmatch [regex]::Escape(('<a href="{0}#front-panel"><img alt="Front panel base" src="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png"></a>' -f $pair1Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#block-diagram"><img alt="Block diagram base" src="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png"></a>' -f $pair1Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#front-panel"><img alt="Front panel head" src="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_2.png"></a>' -f $pair2Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#block-diagram"><img alt="Block diagram head" src="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_2.png"></a>' -f $pair2Html))) {
+    throw 'Index HTML should route preview images to unified history-pair review pages first.'
   }
   if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Reviewer summary</h4>')).Count -ne 2 -or
     $indexHtml -notmatch [regex]::Escape('<strong>Headline:</strong> Material logic-affecting movement and structure resizing') -or
     $indexHtml -notmatch [regex]::Escape('<strong>Overall severity:</strong> medium') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">Logic-affecting movement</a>:</strong> medium severity, 3 details across 1 sections') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects">Structure resizing</a>:</strong> low severity, 2 details across 1 sections') -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#comparevi-change-001-block-diagram-objects">Logic-affecting movement</a>:</strong> medium severity, 3 details across 1 sections' -f $pair1Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#comparevi-change-002-block-diagram-objects">Structure resizing</a>:</strong> low severity, 2 details across 1 sections' -f $pair1Html)) -or
     $indexHtml -notmatch [regex]::Escape('<strong>Headline:</strong> Material version or compatibility changes') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous">Version or compatibility changes</a>:</strong> medium severity, 1 details across 1 sections')) {
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#comparevi-change-001-vi-attribute-miscellaneous">Version or compatibility changes</a>:</strong> medium severity, 1 details across 1 sections' -f $pair2Html))) {
     throw 'Index HTML should render reviewer-summary headlines, severity, and exact linked signals.'
   }
   if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Change details</h4>')).Count -ne 2 -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
-    $indexHtml -notmatch [regex]::Escape('<strong>Exact sections:</strong> <a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">section 1</a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>') -or
-    $indexHtml -notmatch [regex]::Escape('open change details report')) {
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#comparevi-change-001-block-diagram-objects">Block diagram moves</a>' -f $pair1Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>' -f $pair1Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<strong>Exact sections:</strong> <a href="{0}#comparevi-change-001-block-diagram-objects">section 1</a>' -f $pair1Html)) -or
+    $indexHtml -notmatch [regex]::Escape(('<a href="{0}#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>' -f $pair2Html)) -or
+    $indexHtml -notmatch [regex]::Escape('open change details review')) {
     throw 'Index HTML should render bounded change-detail summaries from the attributes compare report.'
   }
 
@@ -776,8 +786,9 @@ try {
     [string]$previewManifest.indexPreviewCards[1].reviewerSummary.signals[0].label -ne 'Version or compatibility changes') {
     throw 'Preview manifest should carry reviewer-summary headlines and signals into the aggregate PR run.'
   }
-  if ([string]$previewManifest.indexPreviewCards[0].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects' -or
-    [string]$previewManifest.indexPreviewCards[1].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous') {
+  if ([string]$previewManifest.indexPreviewCards[0].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne ($pair1Html + '#comparevi-change-001-block-diagram-objects') -or
+    [string]$previewManifest.indexPreviewCards[1].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne ($pair2Html + '#comparevi-change-001-vi-attribute-miscellaneous') -or
+    [string]$previewManifest.indexPreviewCards[0].reviewerSummary.signals[0].debugPrimaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects') {
     throw 'Preview manifest should carry exact reviewer-summary links into the aggregate PR run.'
   }
   if ([string]$previewManifest.indexPreviewCards[0].changeDetails.label -ne 'Change details' -or
@@ -786,12 +797,15 @@ try {
     [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].heading -ne 'VI version changes') {
     throw 'Preview manifest should carry reviewer-facing change-detail summaries into the aggregate PR run.'
   }
-  if ([string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects' -or
-    [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous') {
+  if ([string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne ($pair1Html + '#comparevi-change-001-block-diagram-objects') -or
+    [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne ($pair2Html + '#comparevi-change-001-vi-attribute-miscellaneous') -or
+    [string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].sectionLinks[0].debugReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects') {
     throw 'Preview manifest should carry exact attribute-section links into the aggregate PR run.'
   }
   if ($previewManifest.indexPreviewCards.Count -ne 2 -or
-    (@($previewManifest.indexPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
+    (@($previewManifest.indexPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram' -or
+    [string]$previewManifest.indexPreviewCards[0].surfaces[0].reportHtmlRelativePath -ne ($pair1Html + '#front-panel') -or
+    [string]$previewManifest.indexPreviewCards[0].surfaces[0].debugReportHtmlRelativePath -ne 'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html') {
     throw 'Preview manifest should expose reviewer cards with both front-panel and block-diagram surfaces.'
   }
 
