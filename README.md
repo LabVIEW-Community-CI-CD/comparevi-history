@@ -370,6 +370,69 @@ For faster local iteration, maintainers can still pass existing backend bounds s
 keeps the hosted artifact contract and does not replace the hosted workflow as the source of truth.
 Its defaults now match the raw manual exploration surface: `-Mode full` and `-NoisePolicy include`.
 
+## Local review facade
+
+For local-first reviewer iteration, use
+[`scripts/Invoke-CompareVIHistoryLocalReview.ps1`](scripts/Invoke-CompareVIHistoryLocalReview.ps1).
+It keeps the NI Linux execution plane from the trusted local fast loop, but compiles the same reviewer bundle and
+workspace shape that the automatic PR diagnostics surface publishes.
+
+The canonical local receipt is `local-review.json` (`comparevi-history/local-review@v1`).
+The script also writes PR-shaped compatibility projections so the local and hosted surfaces share one bundle layout:
+
+- `local-review-pr-policy.json`
+- `changed-vi-discovery.json`
+- `pr-target-runs-manifest.json`
+- `review-bundle.json`
+- `pr-preview-manifest.json`
+- `pr-run.json`
+- `pr-comment.md`
+- `pr-step-summary.md`
+- `index.md`
+- `index.html`
+- `local-review-summary.md`
+
+The default results root is:
+
+- `tests/results/local-review`
+
+The primary local human review surface is `index.html`.
+`pr-comment.md` and the other PR-shaped receipts are compatibility projections so local iteration and hosted PR runs
+stay on one deterministic bundle shape.
+
+Two selection modes are supported:
+
+- explicit paths:
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot C:\dev\labview-icon-editor `
+  -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi'
+```
+
+- git diff between base and head refs:
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot C:\dev\labview-icon-editor `
+  -BaseRef develop `
+  -HeadRef HEAD
+```
+
+The local review facade keeps the PR-review defaults:
+
+- explicit public modes only: `attributes`, `front-panel`, `block-diagram`
+- `noise_policy=include`
+- fail closed above `maxChangedViCount = 10`
+- pair-level review workspace and pair pages
+
+By default the facade resolves the latest immutable `comparevi-history` release and downloads the self-contained review
+compiler asset for the current host runtime. Override that canonical released compiler path only when you intentionally
+need a local compiler build:
+
+- packaged default: latest immutable release asset
+- packaged override: `-CompilerPath <path>` or `COMPAREVI_HISTORY_REVIEW_COMPILER_PATH=<path>`
+
 ## Corpus evidence indexing
 
 For corpus-scale deterministic processing, use
