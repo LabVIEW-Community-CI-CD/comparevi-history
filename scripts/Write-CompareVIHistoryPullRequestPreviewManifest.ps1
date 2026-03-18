@@ -1326,6 +1326,304 @@ function New-ReviewerPreviewCards {
   return @($cards | ForEach-Object { $_ })
 }
 
+function Invoke-CompareVIHistoryReviewBundleCompiler {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$TargetRunsManifestPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsDir,
+    [Parameter(Mandatory = $true)]
+    [string]$OutputPath
+  )
+
+  $wrapperPath = Resolve-AbsolutePath -Path 'Invoke-CompareVIHistoryReviewBundleCompiler.ps1' -BasePath $PSScriptRoot
+  if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+    throw "Review bundle compiler wrapper not found: $wrapperPath"
+  }
+
+  & $wrapperPath -TargetRunsManifestPath $TargetRunsManifestPath -ResultsDir $ResultsDir -OutputPath $OutputPath | Out-Null
+
+  if (-not (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
+    throw "Review bundle compiler did not emit expected output: $OutputPath"
+  }
+
+  return $OutputPath
+}
+
+function Get-ReviewPairKey {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$TargetId,
+    [Parameter(Mandatory = $true)]
+    [int]$ComparisonIndex
+  )
+
+  return '{0}|{1}' -f $TargetId, $ComparisonIndex
+}
+
+function Convert-ReviewBundleRawPreviewPair {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  return [ordered]@{
+    targetId = [string]$PreviewPair.targetId
+    targetPath = [string]$PreviewPair.targetPath
+    mode = Get-OptionalString -Value $PreviewPair.mode
+    comparison = Get-NestedValue -Object $PreviewPair -Path @('comparison')
+    sectionKind = Get-OptionalString -Value $PreviewPair.sectionKind
+    sectionOrdinal = [int](Get-NestedValue -Object $PreviewPair -Path @('sectionOrdinal') -Default 0)
+    label = [string]$PreviewPair.label
+    reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('debugReportHtmlRelativePath'))
+    baseImageRelativePath = [string]$PreviewPair.baseImageRelativePath
+    headImageRelativePath = [string]$PreviewPair.headImageRelativePath
+    baseByteLength = [int64](Get-NestedValue -Object $PreviewPair -Path @('baseByteLength') -Default 0)
+    headByteLength = [int64](Get-NestedValue -Object $PreviewPair -Path @('headByteLength') -Default 0)
+    baseImageSha256 = Get-OptionalString -Value $PreviewPair.baseImageSha256
+    headImageSha256 = Get-OptionalString -Value $PreviewPair.headImageSha256
+    sortKey = Get-OptionalString -Value $PreviewPair.sortKey
+  }
+}
+
+function Convert-ReviewBundleChangeDetailSectionLink {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$SectionLink
+  )
+
+  $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('reviewerRelativePath'))
+  if ([string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
+    $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('debugReportHtmlRelativePath'))
+  }
+
+  return [ordered]@{
+    sectionOrdinal = [int](Get-NestedValue -Object $SectionLink -Path @('sectionOrdinal') -Default 0)
+    label = [string](Get-NestedValue -Object $SectionLink -Path @('label') -Default '')
+    reportHtmlRelativePath = $reportHtmlRelativePath
+  }
+}
+
+function Convert-ReviewBundleChangeDetailGroup {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Group
+  )
+
+  $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $Group -Path @('primaryReviewerRelativePath'))
+  if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $Group -Path @('primaryDebugReportHtmlRelativePath'))
+  }
+
+  return [ordered]@{
+    heading = [string](Get-NestedValue -Object $Group -Path @('heading') -Default '')
+    sectionCount = [int](Get-NestedValue -Object $Group -Path @('sectionCount') -Default 0)
+    detailCount = [int](Get-NestedValue -Object $Group -Path @('detailCount') -Default 0)
+    sampleDetails = @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $Group -Path @('sampleDetails') -Default @()))
+    omittedDetailCount = [int](Get-NestedValue -Object $Group -Path @('omittedDetailCount') -Default 0)
+    primaryReportHtmlRelativePath = $primaryReportHtmlRelativePath
+    sectionLinks = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $Group -Path @('sectionLinks') -Default @()) |
+        ForEach-Object { Convert-ReviewBundleChangeDetailSectionLink -SectionLink $_ }
+    )
+  }
+}
+
+function Convert-ReviewBundleChangeDetails {
+  param(
+    [AllowNull()]
+    [object]$ChangeDetails
+  )
+
+  if ($null -eq $ChangeDetails) {
+    return $null
+  }
+
+  $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('primaryReviewerRelativePath'))
+  if ([string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
+    $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('debugReportHtmlRelativePath'))
+  }
+
+  return [ordered]@{
+    label = [string](Get-NestedValue -Object $ChangeDetails -Path @('label') -Default 'Change details')
+    sourceMode = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('sourceMode'))
+    reportHtmlRelativePath = $reportHtmlRelativePath
+    includedCategories = @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('includedCategories') -Default @()))
+    groupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('groupCount') -Default 0)
+    omittedGroupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('omittedGroupCount') -Default 0)
+    sectionCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('sectionCount') -Default 0)
+    detailCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('detailCount') -Default 0)
+    groups = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()) |
+        ForEach-Object { Convert-ReviewBundleChangeDetailGroup -Group $_ }
+    )
+  }
+}
+
+function Convert-ReviewBundleReviewerSignal {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Signal
+  )
+
+  $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $Signal -Path @('primaryReviewerRelativePath'))
+  if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $Signal -Path @('primaryDebugReportHtmlRelativePath'))
+  }
+
+  return [ordered]@{
+    signalKey = Get-OptionalString -Value (Get-NestedValue -Object $Signal -Path @('signalKey'))
+    label = [string](Get-NestedValue -Object $Signal -Path @('label') -Default '')
+    severity = Get-OptionalString -Value (Get-NestedValue -Object $Signal -Path @('severity'))
+    detailCount = [int](Get-NestedValue -Object $Signal -Path @('detailCount') -Default 0)
+    sectionCount = [int](Get-NestedValue -Object $Signal -Path @('sectionCount') -Default 0)
+    summary = [string](Get-NestedValue -Object $Signal -Path @('summary') -Default '')
+    primaryReportHtmlRelativePath = $primaryReportHtmlRelativePath
+    sectionLinks = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $Signal -Path @('sectionLinks') -Default @()) |
+        ForEach-Object { Convert-ReviewBundleChangeDetailSectionLink -SectionLink $_ }
+    )
+  }
+}
+
+function Convert-ReviewBundleReviewerSummary {
+  param(
+    [AllowNull()]
+    [object]$ReviewerSummary
+  )
+
+  if ($null -eq $ReviewerSummary) {
+    return $null
+  }
+
+  return [ordered]@{
+    label = [string](Get-NestedValue -Object $ReviewerSummary -Path @('label') -Default 'Reviewer summary')
+    overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('overallSeverity'))
+    headline = [string](Get-NestedValue -Object $ReviewerSummary -Path @('headline') -Default '')
+    signalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('signalCount') -Default 0)
+    omittedSignalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('omittedSignalCount') -Default 0)
+    signals = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()) |
+        ForEach-Object { Convert-ReviewBundleReviewerSignal -Signal $_ }
+    )
+  }
+}
+
+function Convert-ReviewBundleSurface {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Surface
+  )
+
+  $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('primaryReviewerRelativePath'))
+  if ([string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
+    $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('debugReportHtmlRelativePath'))
+  }
+
+  return [ordered]@{
+    surfaceKind = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('surfaceKind'))
+    surfaceLabel = [string](Get-NestedValue -Object $Surface -Path @('surfaceLabel') -Default '')
+    mode = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('mode'))
+    label = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('label'))
+    reportHtmlRelativePath = $reportHtmlRelativePath
+    baseImageRelativePath = [string](Get-NestedValue -Object $Surface -Path @('baseImageRelativePath') -Default '')
+    headImageRelativePath = [string](Get-NestedValue -Object $Surface -Path @('headImageRelativePath') -Default '')
+    baseByteLength = [int64](Get-NestedValue -Object $Surface -Path @('baseByteLength') -Default 0)
+    headByteLength = [int64](Get-NestedValue -Object $Surface -Path @('headByteLength') -Default 0)
+    baseImageSha256 = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('baseImageSha256'))
+    headImageSha256 = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('headImageSha256'))
+    sortKey = Get-OptionalString -Value (Get-NestedValue -Object $Surface -Path @('sortKey'))
+  }
+}
+
+function Convert-ReviewBundleReviewPairCard {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$ReviewPair
+  )
+
+  return [ordered]@{
+    targetId = [string]$ReviewPair.targetId
+    targetPath = [string]$ReviewPair.targetPath
+    comparison = Get-NestedValue -Object $ReviewPair -Path @('comparison')
+    sortKey = Get-OptionalString -Value (Get-NestedValue -Object $ReviewPair -Path @('sortKey'))
+    surfaces = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewPair -Path @('surfaces') -Default @()) |
+        ForEach-Object { Convert-ReviewBundleSurface -Surface $_ }
+    )
+    reviewerSummary = Convert-ReviewBundleReviewerSummary -ReviewerSummary (Get-NestedValue -Object $ReviewPair -Path @('reviewerSummary'))
+    changeDetails = Convert-ReviewBundleChangeDetails -ChangeDetails (Get-NestedValue -Object $ReviewPair -Path @('changeDetails'))
+  }
+}
+
+function ConvertTo-ReviewCardArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  return @(
+    ConvertTo-ObjectArray -Value $Value |
+      Sort-Object {
+        $sortKey = Get-OptionalString -Value $_.sortKey
+        if ([string]::IsNullOrWhiteSpace($sortKey)) {
+          '{0}|{1:D4}' -f [string]$_.targetPath, [int](Get-NestedValue -Object $_ -Path @('comparison', 'index') -Default 0)
+        } else {
+          $sortKey
+        }
+      }
+  )
+}
+
+function Convert-ReviewBundleTargetReceipt {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Target
+  )
+
+  $rawPreviewPairs = @(
+    ConvertTo-ObjectArray -Value (Get-NestedValue -Object $Target -Path @('rawPreviewPairs') -Default @()) |
+      ForEach-Object { Convert-ReviewBundleRawPreviewPair -PreviewPair $_ }
+  )
+
+  return [ordered]@{
+    targetId = [string]$Target.targetId
+    targetPath = [string]$Target.targetPath
+    finalStatus = [string](Get-NestedValue -Object $Target -Path @('finalStatus') -Default '')
+    finalReason = [string](Get-NestedValue -Object $Target -Path @('finalReason') -Default '')
+    previewPairCount = [int](Get-NestedValue -Object $Target -Path @('rawPreviewPairCount') -Default $rawPreviewPairs.Count)
+    previewPairs = @(ConvertTo-PreviewPairArray -Value $rawPreviewPairs)
+    reviewPairCount = [int](Get-NestedValue -Object $Target -Path @('reviewPairCount') -Default 0)
+  }
+}
+
+function Select-RepresentativePreviewPairsForCards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$Cards,
+    [Parameter(Mandatory = $true)]
+    [object[]]$AllPreviewPairs
+  )
+
+  $firstPairByKey = @{}
+  foreach ($previewPair in @(ConvertTo-PreviewPairArray -Value $AllPreviewPairs)) {
+    $pairKey = Get-ReviewPairKey -TargetId ([string]$previewPair.targetId) -ComparisonIndex ([int](Get-NestedValue -Object $previewPair -Path @('comparison', 'index') -Default 0))
+    if (-not $firstPairByKey.ContainsKey($pairKey)) {
+      $firstPairByKey[$pairKey] = $previewPair
+    }
+  }
+
+  $selectedPairs = New-Object System.Collections.Generic.List[object]
+  foreach ($card in @(ConvertTo-ReviewCardArray -Value $Cards)) {
+    $pairKey = Get-ReviewPairKey -TargetId ([string]$card.targetId) -ComparisonIndex ([int](Get-NestedValue -Object $card -Path @('comparison', 'index') -Default 0))
+    if ($firstPairByKey.ContainsKey($pairKey)) {
+      $selectedPairs.Add($firstPairByKey[$pairKey]) | Out-Null
+    }
+  }
+
+  return @($selectedPairs | ForEach-Object { $_ })
+}
+
 function Get-ReportPreviewPairs {
   param(
     [Parameter(Mandatory = $true)]
@@ -1432,67 +1730,35 @@ if ([string]$targetRunsManifest.schema -ne 'comparevi-history/pr-target-runs-man
   throw "Unsupported target-runs manifest schema in '$manifestPathResolved': $($targetRunsManifest.schema)"
 }
 
-$allPreviewPairs = New-Object System.Collections.Generic.List[object]
-$allChangeDetails = New-Object System.Collections.Generic.List[object]
-$targetReceipts = New-Object System.Collections.Generic.List[object]
-
-foreach ($target in @(ConvertTo-ObjectArray -Value $targetRunsManifest.targets)) {
-  $targetPreviewPairs = New-Object System.Collections.Generic.List[object]
-  $targetRepositoryRoot = Resolve-TargetRepositoryRoot -Target $target -BasePath $basePath
-  $suiteManifestPath = Resolve-ExistingPath -Path (Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('manifestPath'))) -BasePath $basePath -PathType Leaf
-  if ($null -ne $suiteManifestPath) {
-    $suiteManifest = Read-JsonFile -Path $suiteManifestPath
-    foreach ($modeEntry in @(ConvertTo-ObjectArray -Value $suiteManifest.modes)) {
-      $modeName = Get-OptionalString -Value $modeEntry.name
-      $modeManifestPath = Resolve-ExistingPath -Path (Get-OptionalString -Value $modeEntry.manifestPath) -BasePath $basePath -PathType Leaf
-      if ($null -eq $modeManifestPath) {
-        continue
-      }
-
-      $modeManifest = Read-JsonFile -Path $modeManifestPath
-      foreach ($comparison in @(ConvertTo-ObjectArray -Value $modeManifest.comparisons)) {
-        $reportHtmlPath = Resolve-ExistingPath -Path (Get-OptionalString -Value (Get-NestedValue -Object $comparison -Path @('result', 'reportHtml'))) -BasePath $basePath -PathType Leaf
-        if ($null -eq $reportHtmlPath) {
-          $reportHtmlPath = Resolve-ExistingPath -Path (Get-OptionalString -Value (Get-NestedValue -Object $comparison -Path @('result', 'reportPath'))) -BasePath $basePath -PathType Leaf
-        }
-        if ($null -eq $reportHtmlPath) {
-          continue
-        }
-
-        if ($modeName -eq 'attributes') {
-          $changeDetailsRecord = Get-ReviewerChangeDetailsFromReport -ReportHtmlPath $reportHtmlPath -ResultsRoot $resultsDirResolved -TargetId ([string]$target.targetId) -TargetPath ([string]$target.targetPath) -Comparison $comparison -RepositoryRoot $targetRepositoryRoot
-          if ($null -ne $changeDetailsRecord) {
-            $allChangeDetails.Add($changeDetailsRecord) | Out-Null
-          }
-        }
-
-        foreach ($previewPair in @(Get-ReportPreviewPairs -ReportHtmlPath $reportHtmlPath -ResultsRoot $resultsDirResolved -TargetId ([string]$target.targetId) -TargetPath ([string]$target.targetPath) -Mode $modeName -Comparison $comparison -RepositoryRoot $targetRepositoryRoot)) {
-          $targetPreviewPairs.Add($previewPair) | Out-Null
-          $allPreviewPairs.Add($previewPair) | Out-Null
-        }
-      }
-    }
-  }
-
-  $targetReceipts.Add([ordered]@{
-      targetId = [string]$target.targetId
-      targetPath = [string]$target.targetPath
-      finalStatus = [string]$target.finalStatus
-      finalReason = [string]$target.finalReason
-      previewPairCount = $targetPreviewPairs.Count
-      previewPairs = @(ConvertTo-PreviewPairArray -Value $targetPreviewPairs)
-    }) | Out-Null
+$reviewBundlePathResolved = Join-Path $resultsDirResolved 'review-bundle.json'
+$reviewBundlePathResolved = Invoke-CompareVIHistoryReviewBundleCompiler `
+  -TargetRunsManifestPath $manifestPathResolved `
+  -ResultsDir $resultsDirResolved `
+  -OutputPath $reviewBundlePathResolved
+$reviewBundle = Read-JsonFile -Path $reviewBundlePathResolved
+if ([string]$reviewBundle.schema -ne 'comparevi-history/review-bundle@v1') {
+  throw "Unsupported review bundle schema in '$reviewBundlePathResolved': $($reviewBundle.schema)"
 }
 
-$orderedPreviewPairs = @(ConvertTo-PreviewPairArray -Value $allPreviewPairs)
-$reviewerPreviewPairs = @(Get-ReviewerPreviewPairArray -Value $orderedPreviewPairs)
-$commentPreviewPairs = @(Select-PreviewPairs -PreviewPairs $orderedPreviewPairs -Limit $CommentPreviewPairCap)
-$indexPreviewPairs = @(Select-PreviewPairs -PreviewPairs $orderedPreviewPairs -Limit $IndexPreviewPairCap)
-$allChangeDetailRecords = @($allChangeDetails | ForEach-Object { $_ })
-$reviewerPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $reviewerPreviewPairs -AllPreviewPairs $orderedPreviewPairs -AllChangeDetails $allChangeDetailRecords)
-$commentPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $commentPreviewPairs -AllPreviewPairs $orderedPreviewPairs -AllChangeDetails $allChangeDetailRecords)
-$indexPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $indexPreviewPairs -AllPreviewPairs $orderedPreviewPairs -AllChangeDetails $allChangeDetailRecords)
-$targetReceiptArray = @($targetReceipts | ForEach-Object { $_ })
+$targetReceiptArray = @(
+  ConvertTo-ObjectArray -Value $reviewBundle.targets |
+    ForEach-Object { Convert-ReviewBundleTargetReceipt -Target $_ }
+)
+$orderedPreviewPairs = @(
+  ConvertTo-ObjectArray -Value $reviewBundle.rawPreviewPairs |
+    ForEach-Object { Convert-ReviewBundleRawPreviewPair -PreviewPair $_ }
+)
+$reviewerPreviewCards = @(
+  ConvertTo-ReviewCardArray -Value @(
+    ConvertTo-ObjectArray -Value $reviewBundle.reviewPairs |
+      ForEach-Object { Convert-ReviewBundleReviewPairCard -ReviewPair $_ }
+  )
+)
+$commentPreviewCards = @($reviewerPreviewCards | Select-Object -First $CommentPreviewPairCap)
+$indexPreviewCards = @($reviewerPreviewCards | Select-Object -First $IndexPreviewPairCap)
+$reviewerPreviewPairs = @(Select-RepresentativePreviewPairsForCards -Cards $reviewerPreviewCards -AllPreviewPairs $orderedPreviewPairs)
+$commentPreviewPairs = @(Select-RepresentativePreviewPairsForCards -Cards $commentPreviewCards -AllPreviewPairs $orderedPreviewPairs)
+$indexPreviewPairs = @(Select-RepresentativePreviewPairsForCards -Cards $indexPreviewCards -AllPreviewPairs $orderedPreviewPairs)
 $orderedPreviewPairArray = @($orderedPreviewPairs | ForEach-Object { $_ })
 $commentPreviewPairArray = @($commentPreviewPairs | ForEach-Object { $_ })
 $indexPreviewPairArray = @($indexPreviewPairs | ForEach-Object { $_ })
@@ -1542,6 +1808,7 @@ $receipt = [ordered]@{
 $receipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $outputPathResolved -Encoding utf8
 
 Write-ActionOutput -Key 'preview-manifest-path' -Value $outputPathResolved
+Write-ActionOutput -Key 'review-bundle-path' -Value $reviewBundlePathResolved
 Write-ActionOutput -Key 'preview-pair-count' -Value ([string]$reviewerPreviewPairs.Count)
 Write-ActionOutput -Key 'raw-preview-pair-count' -Value ([string]$orderedPreviewPairs.Count)
 Write-ActionOutput -Key 'reviewer-preview-pair-count' -Value ([string]$reviewerPreviewPairs.Count)
@@ -1561,6 +1828,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     '## comparevi-history PR preview manifest'
     ''
     ('- Preview manifest: `{0}`' -f $outputPathResolved)
+    ('- Review bundle: `{0}`' -f $reviewBundlePathResolved)
     ('- Raw preview pairs: `{0}`' -f $orderedPreviewPairs.Count)
     ('- Reviewer preview cards: `{0}` across `{1}` visual surfaces' -f $reviewerPreviewCards.Count, $reviewerPreviewSurfaceCount)
     ('- Comment preview pairs: `{0}` shown, `{1}` omitted, cap `{2}`' -f $commentPreviewPairs.Count, [Math]::Max($reviewerPreviewPairs.Count - $commentPreviewPairs.Count, 0), [int]$CommentPreviewPairCap)

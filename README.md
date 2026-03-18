@@ -45,6 +45,8 @@ Legacy direct invocation remains available for maintainers:
   surface, including `selectedTargets`, artifact index paths, and sticky-comment publication inputs.
 - Emits `comparevi-history/pr-preview-manifest@v1` as the normalized preview-image manifest for dynamic PR diagnostics,
   index galleries, and sticky-comment preview publication.
+- Emits `comparevi-history/review-bundle@v1` as the canonical compiled review graph for pair-level normalization,
+  reviewer interpretation, and renderer inputs.
 - Emits `comparevi-history/pr-comment-publication@v1` as the `workflow_run` publication receipt for sticky PR comments.
 - Emits `comparevi-history/agent-canary-policy@v1` as the repo-owned governance contract for same-repo canary proof
   lanes that exercise the PR diagnostics surface without touching production VIs.
@@ -162,6 +164,7 @@ Automatic pull-request diagnostics workflows emit additive PR-scope receipts alo
 
 - `changed-vi-discovery.json` (`comparevi-history/changed-vi-discovery@v1`)
 - `pr-target-runs-manifest.json`
+- `review-bundle.json` (`comparevi-history/review-bundle@v1`)
 - `pr-run.json` (`comparevi-history/pr-run@v1`)
 - `pr-preview-manifest.json` (`comparevi-history/pr-preview-manifest@v1`)
 - `pr-comment.md`
