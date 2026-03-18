@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ViPath,
   [string]$ConsumerRef = 'HEAD',
+  [string]$SourceBranchRef,
   [string]$ConsumerRepository,
   [string]$ResultsDir = 'tests/results/ref-compare/history-exploration/local-fast-loop',
   [string]$Mode = 'full',
@@ -17,6 +18,7 @@ param(
   [string]$ToolingRoot,
   [string]$CompareviRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   [string]$CompareviRef,
+  [string]$ContainerImage,
   [string]$GitHubToken,
   [switch]$SkipImagePull
 )
@@ -244,6 +246,9 @@ if ([string]::IsNullOrWhiteSpace($hostedRunnerDefaultImage)) {
     $env:COMPAREVI_NI_LINUX_IMAGE.Trim()
   }
 }
+if (-not [string]::IsNullOrWhiteSpace($ContainerImage)) {
+  $hostedRunnerDefaultImage = $ContainerImage.Trim()
+}
 
 if (-not $SkipImagePull.IsPresent) {
   Invoke-DockerPull -Image $hostedRunnerDefaultImage
@@ -275,6 +280,7 @@ $requestOutputPath = Join-Path $resultsDirResolved 'request.out'
   -IncludeMergeParents:$IncludeMergeParents.IsPresent `
   -ConsumerRepository $consumerRepositorySlug `
   -ConsumerRef $ConsumerRef `
+  -SourceBranchRef $SourceBranchRef `
   -GitHubOutputPath $requestOutputPath | Out-Null
 $requestValues = Read-KeyValueFile -Path $requestOutputPath
 
@@ -366,6 +372,7 @@ $localReceipt = [ordered]@{
     repositoryRoot = $consumerRootResolved
     repository = $consumerRepositorySlug
     requestedRef = $ConsumerRef
+    sourceBranchRef = if ([string]::IsNullOrWhiteSpace($SourceBranchRef)) { $null } else { $SourceBranchRef.Trim() }
     selectedSha = $selectedConsumerSha
   }
   target = [ordered]@{
@@ -410,6 +417,7 @@ $localReceipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $localReceip
   ''
   ('- Consumer repository: `{0}`' -f $consumerRepositorySlug)
   ('- Consumer ref: `{0}`' -f $ConsumerRef)
+  ('- Source branch ref: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($SourceBranchRef)) { 'n/a' } else { $SourceBranchRef }))
   ('- Selected SHA: `{0}`' -f $selectedConsumerSha)
   ('- Target path: `{0}`' -f $ViPath)
   ('- Requested modes: `{0}`' -f $Mode)
