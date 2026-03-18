@@ -67,15 +67,15 @@ function New-PreviewCard {
       sourceMode = 'attributes'
       reportHtmlRelativePath = ('targets/001/history/attributes/Demo.vi-{0:D3}-artifacts/compare-report.html' -f $ComparisonIndex)
       includedCategories = $(if ($ComparisonIndex -eq 1) { @('Block Diagram Functional', 'VI Attribute') } else { @('VI Attribute') })
-      groupCount = 1
+      groupCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
       omittedGroupCount = 0
       sectionCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
-      detailCount = $(if ($ComparisonIndex -eq 1) { 4 } else { 1 })
+      detailCount = $(if ($ComparisonIndex -eq 1) { 5 } else { 1 })
       groups = @(
         [ordered]@{
-          heading = $(if ($ComparisonIndex -eq 1) { 'Block Diagram objects' } else { 'VI Attribute - Miscellaneous' })
-          sectionCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
-          detailCount = $(if ($ComparisonIndex -eq 1) { 4 } else { 1 })
+          heading = $(if ($ComparisonIndex -eq 1) { 'Block diagram moves' } else { 'VI version changes' })
+          sectionCount = 1
+          detailCount = $(if ($ComparisonIndex -eq 1) { 3 } else { 1 })
           sampleDetails = $(if ($ComparisonIndex -eq 1) {
               @(
                 'Property Node - moved : changed from "(-35,102)" to "(-55,77)"',
@@ -85,8 +85,37 @@ function New-PreviewCard {
             } else {
               @('VI Version : changed from "21.0" to "20.0"')
             })
-          omittedDetailCount = $(if ($ComparisonIndex -eq 1) { 1 } else { 0 })
+          omittedDetailCount = 0
+          primaryReportHtmlRelativePath = ('targets/001/history/attributes/Demo.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+          sectionLinks = @(
+            [ordered]@{
+              sectionOrdinal = 1
+              label = 'section 1'
+              reportHtmlRelativePath = ('targets/001/history/attributes/Demo.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+            }
+          )
         }
+        $(if ($ComparisonIndex -eq 1) {
+            ,
+            [ordered]@{
+              heading = 'Block diagram resizing'
+              sectionCount = 1
+              detailCount = 2
+              sampleDetails = @(
+                'Case Structure - resized : changed from "702*298" to "702*370"',
+                ' - resized : changed from "690*23" to "690*25"'
+              )
+              omittedDetailCount = 0
+              primaryReportHtmlRelativePath = 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+              sectionLinks = @(
+                [ordered]@{
+                  sectionOrdinal = 2
+                  label = 'section 2'
+                  reportHtmlRelativePath = 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+                }
+              )
+            }
+          })
       )
     }
     surfaces = @(
@@ -467,9 +496,10 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     throw 'Created PR comment body should render both front-panel and block-diagram surfaces for each history pair.'
   }
   if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Change details</strong></p>')).Count -ne 2 -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('Block Diagram objects') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('+1 more details in report') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('VI Attribute - Miscellaneous') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Exact sections:</strong> <a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">section 1</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('VI Version : changed from &quot;21.0&quot; to &quot;20.0&quot;') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('open change details report')) {
     throw 'Created PR comment body should render bounded change-detail summaries from the attributes compare report.'
@@ -503,9 +533,14 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     throw 'Preview publication should retain reviewer cards with both front-panel and block-diagram surfaces.'
   }
   if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
-    [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block Diagram objects' -or
-    [string]$createReceipt.previewPublication.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI Attribute - Miscellaneous') {
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block diagram moves' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[1].heading -ne 'Block diagram resizing' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI version changes') {
     throw 'Preview publication should retain reviewer-facing change-detail summaries.'
+  }
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous') {
+    throw 'Preview publication should retain exact section links for reviewer change details.'
   }
 
   $writeOrder = @(

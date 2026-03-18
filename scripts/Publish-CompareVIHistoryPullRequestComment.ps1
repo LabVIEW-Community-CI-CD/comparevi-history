@@ -371,8 +371,15 @@ function New-CommentChangeDetailsMarkdown {
     $lines.Add(('<li><strong>Included categories:</strong> {0}</li>' -f (ConvertTo-HtmlText ($includedCategories -join ', ')))) | Out-Null
   }
   foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
+    $headingText = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
+    $headingMarkup = if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+      ConvertTo-HtmlText $headingText
+    } else {
+      '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $primaryReportHtmlRelativePath), (ConvertTo-HtmlText $headingText)
+    }
     $lines.Add(('<li><strong>{0}:</strong> {1} details across {2} sections' -f `
-          (ConvertTo-HtmlText (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading')))), `
+          $headingMarkup, `
           [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0), `
           [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0))) | Out-Null
     $lines.Add('<ul>') | Out-Null
@@ -382,6 +389,22 @@ function New-CommentChangeDetailsMarkdown {
     $omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
     if ($omittedDetailCount -gt 0) {
       $lines.Add(('<li>+{0} more details in report</li>' -f $omittedDetailCount)) | Out-Null
+    }
+    $sectionLinks = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()) |
+        ForEach-Object {
+          $label = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('label'))
+          $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+          if ([string]::IsNullOrWhiteSpace($label) -or [string]::IsNullOrWhiteSpace($path)) {
+            return $null
+          }
+
+          '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $path), (ConvertTo-HtmlText $label)
+        } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($sectionLinks.Count -gt 0) {
+      $lines.Add(('<li><strong>Exact sections:</strong> {0}</li>' -f ($sectionLinks -join ', '))) | Out-Null
     }
     $lines.Add('</ul>') | Out-Null
     $lines.Add('</li>') | Out-Null
