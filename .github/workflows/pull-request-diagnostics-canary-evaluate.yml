@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       artifact_name:
-        description: Optional publication artifact name override.
+        description: Optional publication artifact name override. When unset, the evaluator resolves the publication artifact from the completed publisher run.
         required: false
         default: ''
         type: string
