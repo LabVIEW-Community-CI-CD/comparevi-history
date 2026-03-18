@@ -125,13 +125,16 @@ try {
   if ($receipt.summary.previewPairCount -ne 6) {
     throw 'Expected six preview pairs from the PR31-shaped fixture.'
   }
-  if ($receipt.summary.commentSelectionPolicy -ne 'mode-balanced@v1' -or $receipt.summary.indexSelectionPolicy -ne 'mode-balanced@v1') {
-    throw 'Expected explicit mode-balanced selection policies in the preview manifest summary.'
+  if ($receipt.summary.rawPreviewPairCount -ne 6 -or $receipt.summary.reviewerPreviewPairCount -ne 2) {
+    throw 'Expected explicit raw and reviewer preview pair counts in the preview manifest summary.'
   }
-  if ($receipt.summary.commentPreviewPairCount -ne 4 -or $receipt.summary.commentPreviewPairOmittedCount -ne 2) {
+  if ($receipt.summary.commentSelectionPolicy -ne 'reviewer-canonical@v1' -or $receipt.summary.indexSelectionPolicy -ne 'reviewer-canonical@v1') {
+    throw 'Expected explicit reviewer-canonical selection policies in the preview manifest summary.'
+  }
+  if ($receipt.summary.commentPreviewPairCount -ne 2 -or $receipt.summary.commentPreviewPairOmittedCount -ne 0) {
     throw 'Comment preview pair selection mismatch.'
   }
-  if ($receipt.summary.indexPreviewPairCount -ne 6 -or $receipt.summary.indexPreviewPairOmittedCount -ne 0) {
+  if ($receipt.summary.indexPreviewPairCount -ne 2 -or $receipt.summary.indexPreviewPairOmittedCount -ne 0) {
     throw 'Index preview pair selection mismatch.'
   }
   if ($receipt.targets.Count -ne 1 -or $receipt.targets[0].previewPairCount -ne 6) {
@@ -142,7 +145,7 @@ try {
     $receipt.commentPreviewPairs |
       ForEach-Object { '{0}:{1}' -f [string]$_.mode, [int]$_.comparison.index }
   ) -join ','
-  if ($commentOrder -ne 'front-panel:1,block-diagram:1,attributes:1,front-panel:2') {
+  if ($commentOrder -ne 'front-panel:1,front-panel:2') {
     throw "Comment preview pair order mismatch: $commentOrder"
   }
 
@@ -150,24 +153,26 @@ try {
     $receipt.indexPreviewPairs |
       ForEach-Object { '{0}:{1}' -f [string]$_.mode, [int]$_.comparison.index }
   ) -join ','
-  if ($indexOrder -ne 'front-panel:1,block-diagram:1,attributes:1,front-panel:2,block-diagram:2,attributes:2') {
+  if ($indexOrder -ne 'front-panel:1,front-panel:2') {
     throw "Index preview pair order mismatch: $indexOrder"
   }
 
   if ($receipt.commentPreviewPairs[0].baseImageRelativePath -ne 'targets/001-demo/history/front-panel/Demo.vi-001-artifacts/compare-report_files/fp_1.png') {
     throw 'Expected normalized relative path for the first comment preview base image.'
   }
-  if ($receipt.commentPreviewPairs[1].baseImageRelativePath -ne 'targets/001-demo/history/block-diagram/Demo.vi-001-artifacts/compare-report_files/fp_1.png') {
-    throw 'Expected mode-specific preview identity to survive repeated image filenames.'
+  if ($receipt.commentPreviewPairs[1].baseImageRelativePath -ne 'targets/001-demo/history/front-panel/Demo.vi-002-artifacts/compare-report_files/fp_1.png') {
+    throw 'Expected reviewer selection to collapse mode-duplicated preview pairs while preserving comparison order.'
   }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw
   foreach ($requiredKey in @(
       'preview-manifest-path=',
-      'preview-pair-count=6',
-      'comment-preview-pair-count=4',
-      'comment-preview-pair-omitted-count=2',
-      'index-preview-pair-count=6',
+      'preview-pair-count=2',
+      'raw-preview-pair-count=6',
+      'reviewer-preview-pair-count=2',
+      'comment-preview-pair-count=2',
+      'comment-preview-pair-omitted-count=0',
+      'index-preview-pair-count=2',
       'index-preview-pair-omitted-count=0'
     )) {
     if ($outputText -notmatch [regex]::Escape($requiredKey)) {

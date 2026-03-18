@@ -281,6 +281,8 @@
         "totalProcessed",
         "totalDiffs",
         "previewPairCount",
+        "rawPreviewPairCount",
+        "reviewerPreviewPairCount",
         "commentPreviewPairCap",
         "commentPreviewPairCount",
         "commentPreviewPairOmittedCount",
@@ -342,6 +344,14 @@
           "minimum": 0
         },
         "previewPairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rawPreviewPairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewerPreviewPairCount": {
           "type": "integer",
           "minimum": 0
         },

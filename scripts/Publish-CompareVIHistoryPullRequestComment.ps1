@@ -90,6 +90,15 @@ function Get-NestedValue {
       return $Default
     }
 
+    if ($current -is [System.Collections.IDictionary]) {
+      if (-not $current.Contains($segment)) {
+        return $Default
+      }
+
+      $current = $current[$segment]
+      continue
+    }
+
     $property = $current.PSObject.Properties[$segment]
     if ($null -eq $property) {
       return $Default
@@ -231,6 +240,24 @@ function ConvertTo-HtmlText {
   }
 
   return [System.Net.WebUtility]::HtmlEncode($Value)
+}
+
+function Get-ReviewerPreviewTitle {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  return [string]$PreviewPair.targetPath
+}
+
+function Get-ReviewerPreviewSubtitle {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  $comparisonIndex = [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
+  $label = Get-OptionalString -Value $PreviewPair.label
+  if ([string]::IsNullOrWhiteSpace($label)) {
+    return 'Comparison {0}' -f $comparisonIndex
+  }
+
+  return 'Comparison {0} - {1}' -f $comparisonIndex, $label
 }
 
 function ConvertTo-GitHubContentPath {
@@ -376,15 +403,26 @@ function New-CommentPreviewMarkdown {
   $lines.Add('### Preview gallery') | Out-Null
   $lines.Add('') | Out-Null
   foreach ($previewPair in $PreviewPairs) {
-    $title = '{0} | {1} | {2}' -f [string]$previewPair.targetPath, [string]$previewPair.mode, [string]$previewPair.label
+    $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
+    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
     $baseUrl = [string]$previewPair.baseImageUrl
     $headUrl = [string]$previewPair.headImageUrl
     $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
-    $lines.Add(('#### `{0}`' -f $title)) | Out-Null
+    $baseAlt = '{0} base' -f $subtitle
+    $headAlt = '{0} head' -f $subtitle
+    $lines.Add(('<h4><code>{0}</code></h4>' -f (ConvertTo-HtmlText $title))) | Out-Null
+    $lines.Add(('<p>{0}</p>' -f (ConvertTo-HtmlText $subtitle))) | Out-Null
     $lines.Add('') | Out-Null
-    $lines.Add('| Base | Head |') | Out-Null
-    $lines.Add('| --- | --- |') | Out-Null
-    $lines.Add(('| [![{0} base]({1})]({3}) | [![{0} head]({2})]({3}) |' -f $title, $baseUrl, $headUrl, $linkUrl)) | Out-Null
+    $lines.Add('<table>') | Out-Null
+    $lines.Add('<thead><tr><th>Base</th><th>Head</th></tr></thead>') | Out-Null
+    $lines.Add('<tbody><tr>') | Out-Null
+    $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $baseAlt), (ConvertTo-HtmlText $baseUrl))) | Out-Null
+    $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $headAlt), (ConvertTo-HtmlText $headUrl))) | Out-Null
+    $lines.Add('</tr></tbody>') | Out-Null
+    $lines.Add('</table>') | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($RunUrl)) {
+      $lines.Add(('<p><a href="{0}">workflow run</a></p>' -f (ConvertTo-HtmlText $RunUrl))) | Out-Null
+    }
     $lines.Add('') | Out-Null
   }
 
