@@ -249,6 +249,47 @@ function ConvertTo-PreviewPairArray {
   )
 }
 
+function Get-PreviewPairIdentityKey {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  return '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}' -f `
+    [string]$PreviewPair.targetId, `
+    [string]$PreviewPair.mode, `
+    [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0), `
+    [string]$PreviewPair.sectionKind, `
+    [int](Get-NestedValue -Object $PreviewPair -Path @('sectionOrdinal') -Default 0), `
+    $(if ([string]::IsNullOrWhiteSpace([string]$PreviewPair.reportHtmlRelativePath)) { '' } else { [string]$PreviewPair.reportHtmlRelativePath }), `
+    [string]$PreviewPair.baseImageRelativePath, `
+    [string]$PreviewPair.headImageRelativePath
+}
+
+function Add-PreviewPairSelection {
+  param(
+    [AllowNull()]
+    [object]$PreviewPair,
+    [AllowEmptyCollection()]
+    [System.Collections.Generic.List[object]]$Selected,
+    [AllowEmptyCollection()]
+    [System.Collections.Generic.HashSet[string]]$Seen,
+    [int]$Limit
+  )
+
+  if ($null -eq $PreviewPair -or $Selected.Count -ge $Limit) {
+    return $false
+  }
+
+  $identityKey = Get-PreviewPairIdentityKey -PreviewPair $PreviewPair
+  if (-not $Seen.Add($identityKey)) {
+    return $false
+  }
+
+  $Selected.Add($PreviewPair) | Out-Null
+  return $true
+}
+
 function Select-PreviewPairs {
   param(
     [Parameter(Mandatory = $true)]
@@ -260,25 +301,34 @@ function Select-PreviewPairs {
     return @()
   }
 
+  $orderedPairs = @(ConvertTo-PreviewPairArray -Value $PreviewPairs)
   $selected = New-Object System.Collections.Generic.List[object]
   $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-  foreach ($pair in @(ConvertTo-PreviewPairArray -Value $PreviewPairs)) {
+
+  foreach ($mode in @('front-panel', 'block-diagram', 'attributes')) {
     if ($selected.Count -ge $Limit) {
       break
     }
 
-    $dedupeKey = '{0}|{1}|{2}|{3}|{4}|{5}' -f `
-      [string]$pair.targetId, `
-      [int](Get-NestedValue -Object $pair -Path @('comparison', 'index') -Default 0), `
-      [string]$pair.sectionKind, `
-      [string]$pair.label, `
-      [System.IO.Path]::GetFileName([string]$pair.baseImageRelativePath), `
-      [System.IO.Path]::GetFileName([string]$pair.headImageRelativePath)
-    if (-not $seen.Add($dedupeKey)) {
-      continue
+    $overviewPair = @(
+      $orderedPairs |
+        Where-Object {
+          [string]$_.mode -eq $mode -and
+          [string]$_.sectionKind -eq 'overview'
+        } |
+        Select-Object -First 1
+    )
+    if ($overviewPair) {
+      Add-PreviewPairSelection -PreviewPair $overviewPair[0] -Selected $selected -Seen $seen -Limit $Limit | Out-Null
+    }
+  }
+
+  foreach ($pair in $orderedPairs) {
+    if ($selected.Count -ge $Limit) {
+      break
     }
 
-    $selected.Add($pair) | Out-Null
+    Add-PreviewPairSelection -PreviewPair $pair -Selected $selected -Seen $seen -Limit $Limit | Out-Null
   }
 
   return @($selected | ForEach-Object { $_ })
@@ -466,9 +516,11 @@ $receipt = [ordered]@{
     targetCount = $targetReceiptArray.Count
     previewPairCount = $orderedPreviewPairs.Count
     commentPreviewPairCap = [int]$CommentPreviewPairCap
+    commentSelectionPolicy = 'mode-balanced@v1'
     commentPreviewPairCount = $commentPreviewPairs.Count
     commentPreviewPairOmittedCount = [Math]::Max($orderedPreviewPairs.Count - $commentPreviewPairs.Count, 0)
     indexPreviewPairCap = [int]$IndexPreviewPairCap
+    indexSelectionPolicy = 'mode-balanced@v1'
     indexPreviewPairCount = $indexPreviewPairs.Count
     indexPreviewPairOmittedCount = [Math]::Max($orderedPreviewPairs.Count - $indexPreviewPairs.Count, 0)
   }

@@ -48,9 +48,17 @@
         "targetCount": { "type": "integer", "minimum": 0 },
         "previewPairCount": { "type": "integer", "minimum": 0 },
         "commentPreviewPairCap": { "type": "integer", "minimum": 0 },
+        "commentSelectionPolicy": {
+          "type": "string",
+          "const": "mode-balanced@v1"
+        },
         "commentPreviewPairCount": { "type": "integer", "minimum": 0 },
         "commentPreviewPairOmittedCount": { "type": "integer", "minimum": 0 },
         "indexPreviewPairCap": { "type": "integer", "minimum": 0 },
+        "indexSelectionPolicy": {
+          "type": "string",
+          "const": "mode-balanced@v1"
+        },
         "indexPreviewPairCount": { "type": "integer", "minimum": 0 },
         "indexPreviewPairOmittedCount": { "type": "integer", "minimum": 0 }
       }

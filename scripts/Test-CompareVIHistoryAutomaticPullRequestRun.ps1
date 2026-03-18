@@ -5,6 +5,103 @@ $scriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryAutomaticPullReques
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('comparevi-history-auto-pr-run-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
+function New-PreviewReportFixture {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ModeRoot,
+    [Parameter(Mandatory = $true)]
+    [string]$ArtifactPrefix,
+    [Parameter(Mandatory = $true)]
+    [int]$ComparisonIndex,
+    [Parameter(Mandatory = $true)]
+    [string]$BaseRef,
+    [Parameter(Mandatory = $true)]
+    [string]$HeadRef
+  )
+
+  $artifactDir = Join-Path $ModeRoot ('{0}-{1:D3}-artifacts' -f $ArtifactPrefix, $ComparisonIndex)
+  $reportFilesDir = Join-Path $artifactDir 'compare-report_files'
+  New-Item -ItemType Directory -Path $reportFilesDir -Force | Out-Null
+  foreach ($imageName in @('fp_1.png', 'fp_2.png')) {
+    [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir $imageName), @(0xCA, 0xFE, 0xBA, 0xBE))
+  }
+
+  $reportHtmlPath = Join-Path $artifactDir 'compare-report.html'
+  @'
+<!DOCTYPE html>
+<html>
+<body>
+<div class="compared-VIs">
+<details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/base/Base.vi</div><div class="dropdown-right">Second VI: /compare/head/Head.vi</div></summary>
+<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr></table></details>
+</div>
+</body>
+</html>
+'@ | Set-Content -LiteralPath $reportHtmlPath -Encoding utf8
+
+  return [ordered]@{
+    index = $ComparisonIndex
+    base = [ordered]@{ ref = $BaseRef }
+    head = [ordered]@{ ref = $HeadRef }
+    result = [ordered]@{
+      reportHtml = $reportHtmlPath
+    }
+  }
+}
+
+function New-PreviewModeFixture {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$HistoryRoot,
+    [Parameter(Mandatory = $true)]
+    [string]$ModeName,
+    [Parameter(Mandatory = $true)]
+    [string]$ArtifactPrefix
+  )
+
+  $modeRoot = Join-Path $HistoryRoot $ModeName
+  New-Item -ItemType Directory -Path $modeRoot -Force | Out-Null
+  $modeManifestPath = Join-Path $modeRoot 'manifest.json'
+  $comparisons = @(
+    (New-PreviewReportFixture -ModeRoot $modeRoot -ArtifactPrefix $ArtifactPrefix -ComparisonIndex 1 -BaseRef ('{0}-base-1' -f $ModeName) -HeadRef ('{0}-head-1' -f $ModeName)),
+    (New-PreviewReportFixture -ModeRoot $modeRoot -ArtifactPrefix $ArtifactPrefix -ComparisonIndex 2 -BaseRef ('{0}-base-2' -f $ModeName) -HeadRef ('{0}-head-2' -f $ModeName))
+  )
+
+  ([ordered]@{
+      schema = 'vi-compare/history@v1'
+      generatedAt = '2026-03-17T00:00:30Z'
+      mode = $ModeName
+      comparisons = $comparisons
+    } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
+
+  return [ordered]@{
+    name = $ModeName
+    manifestPath = $modeManifestPath
+  }
+}
+
+function Get-OrdinalPositions {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Content,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Needles
+  )
+
+  $positions = New-Object System.Collections.Generic.List[int]
+  foreach ($needle in $Needles) {
+    $position = $Content.IndexOf($needle, [System.StringComparison]::Ordinal)
+    if ($position -lt 0) {
+      throw "Missing expected content: $needle"
+    }
+
+    $positions.Add($position) | Out-Null
+  }
+
+  return @($positions | ForEach-Object { $_ })
+}
+
 try {
   $resultsDir = Join-Path $tempRoot 'results'
   New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
@@ -146,64 +243,17 @@ try {
   }
 
   $targetOneHistoryRoot = Split-Path -Parent $targetOneRoot
-  $targetOneModeRoot = Join-Path $targetOneHistoryRoot 'front-panel'
-  $targetOneArtifactDir = Join-Path $targetOneModeRoot 'VIP_Post-Install_Custom_Action.vi-001-artifacts'
-  $targetOneReportFilesDir = Join-Path $targetOneArtifactDir 'compare-report_files'
-  New-Item -ItemType Directory -Path $targetOneReportFilesDir -Force | Out-Null
-  foreach ($imageName in @('fp_1.png', 'fp_2.png', '0_0_11_11_1.png', '0_0_11_11_2.png')) {
-    [System.IO.File]::WriteAllBytes((Join-Path $targetOneReportFilesDir $imageName), @(0xCA, 0xFE, 0xBA, 0xBE))
-  }
-
-  $targetOneReportHtmlPath = Join-Path $targetOneArtifactDir 'compare-report.html'
-  @'
-<!DOCTYPE html>
-<html>
-<body>
-<div class="compared-VIs">
-<details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div></summary>
-<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
-<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr></table></details>
-</div>
-<details class="cosmetic" closed>
-<summary class="difference-cosmetic-heading">1. Front Panel - Variant</summary>
-<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">/compare/m0/Base.vi</td><td class="difference-divider"></td><td class="compared-vi-image-caption">/compare/m0/Head.vi</td></tr><tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/0_0_11_11_1.png" alt="compare-report_files/0_0_11_11_1.png"></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/0_0_11_11_2.png" alt="compare-report_files/0_0_11_11_2.png"></td></tr></table>
-</details>
-</body>
-</html>
-'@ | Set-Content -LiteralPath $targetOneReportHtmlPath -Encoding utf8
-
-  $targetOneModeManifestPath = Join-Path $targetOneModeRoot 'manifest.json'
-  @"
-{
-  "schema": "vi-compare/history@v1",
-  "generatedAt": "2026-03-17T00:00:30Z",
-  "mode": "front-panel",
-  "comparisons": [
-    {
-      "index": 1,
-      "base": { "ref": "base-sha" },
-      "head": { "ref": "head-sha" },
-      "result": {
-        "reportHtml": "$($targetOneReportHtmlPath.Replace('\', '\\'))"
-      }
-    }
-  ]
-}
-"@ | Set-Content -LiteralPath $targetOneModeManifestPath -Encoding utf8
-
   $targetOneSuiteManifestPath = Join-Path $targetOneHistoryRoot 'manifest.json'
-  @"
-{
-  "schema": "vi-compare/history-suite@v1",
-  "generatedAt": "2026-03-17T00:00:30Z",
-  "modes": [
-    {
-      "name": "front-panel",
-      "manifestPath": "$($targetOneModeManifestPath.Replace('\', '\\'))"
-    }
-  ]
-}
-"@ | Set-Content -LiteralPath $targetOneSuiteManifestPath -Encoding utf8
+  $targetOneModes = @(
+    (New-PreviewModeFixture -HistoryRoot $targetOneHistoryRoot -ModeName 'front-panel' -ArtifactPrefix 'VIP_Post-Install_Custom_Action.vi'),
+    (New-PreviewModeFixture -HistoryRoot $targetOneHistoryRoot -ModeName 'block-diagram' -ArtifactPrefix 'VIP_Post-Install_Custom_Action.vi'),
+    (New-PreviewModeFixture -HistoryRoot $targetOneHistoryRoot -ModeName 'attributes' -ArtifactPrefix 'VIP_Post-Install_Custom_Action.vi')
+  )
+  ([ordered]@{
+      schema = 'vi-compare/history-suite@v1'
+      generatedAt = '2026-03-17T00:00:30Z'
+      modes = $targetOneModes
+    } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $targetOneSuiteManifestPath -Encoding utf8
 
   foreach ($path in @(
       (Join-Path $targetOneRoot 'request.json'),
@@ -319,7 +369,11 @@ try {
   if ($receipt.summary.totalProcessed -ne 5 -or $receipt.summary.totalDiffs -ne 2) {
     throw 'Aggregate totals mismatch.'
   }
-  if ($receipt.summary.previewPairCount -ne 2 -or $receipt.summary.commentPreviewPairCount -ne 2 -or $receipt.summary.indexPreviewPairCount -ne 2) {
+  if ($receipt.summary.previewPairCount -ne 6 -or
+    $receipt.summary.commentPreviewPairCount -ne 4 -or
+    $receipt.summary.commentPreviewPairOmittedCount -ne 2 -or
+    $receipt.summary.indexPreviewPairCount -ne 6 -or
+    $receipt.summary.indexPreviewPairOmittedCount -ne 0) {
     throw 'Aggregate preview pair summary mismatch.'
   }
   if ($receipt.outputs.workflowRunUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/123456789') {
@@ -353,8 +407,8 @@ try {
   if ($commentBody -notmatch [regex]::Escape('comparevi-history-pr-diagnostics-123456789')) {
     throw 'PR comment body should point reviewers at the artifact bundle.'
   }
-  if ($commentBody -notmatch [regex]::Escape('PR comment preview gallery: `2` shown, `0` omitted, cap `4`')) {
-    throw 'PR comment body should surface preview pair counts.'
+  if ($commentBody -notmatch [regex]::Escape('PR comment preview gallery: `4` shown, `2` omitted, cap `4`')) {
+    throw 'PR comment body should surface the corrected preview pair counts.'
   }
 
   $indexMarkdown = Get-Content -LiteralPath $receipt.outputs.indexMarkdownPath -Raw
@@ -372,26 +426,50 @@ try {
       throw "Index markdown is missing '$requiredText'."
     }
   }
-  if ($indexMarkdown -notmatch [regex]::Escape('![Tooling/deployment/VIP_Post-Install Custom Action.vi | front-panel | Front Panel Overview base](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png)')) {
-    throw 'Index markdown should embed the preview base image.'
+  if ([regex]::Matches($indexMarkdown, [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi |')).Count -ne 6) {
+    throw 'Index markdown should render six preview entries for the PR31-shaped fixture.'
   }
-  if ($indexMarkdown -notmatch [regex]::Escape('![Tooling/deployment/VIP_Post-Install Custom Action.vi | front-panel | Front Panel Overview head](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_2.png)')) {
-    throw 'Index markdown should embed the preview head image.'
+
+  $markdownPositions = Get-OrdinalPositions -Content $indexMarkdown -Needles @(
+    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
+  )
+  if (-not ($markdownPositions[0] -lt $markdownPositions[1] -and $markdownPositions[1] -lt $markdownPositions[2] -and $markdownPositions[2] -lt $markdownPositions[3])) {
+    throw 'Index markdown should preserve the mode-balanced preview ordering.'
   }
 
   $indexHtml = Get-Content -LiteralPath $receipt.outputs.indexHtmlPath -Raw
-  if ($indexHtml -notmatch [regex]::Escape('<section class="preview-gallery">') -or
-    $indexHtml -notmatch [regex]::Escape('targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png')) {
+  if ($indexHtml -notmatch [regex]::Escape('<section class="preview-gallery">')) {
     throw 'Index HTML should embed the preview gallery.'
+  }
+  if ([regex]::Matches($indexHtml, [regex]::Escape('<article class="preview-card">')).Count -ne 6) {
+    throw 'Index HTML should render six preview cards for the PR31-shaped fixture.'
+  }
+
+  $htmlPositions = Get-OrdinalPositions -Content $indexHtml -Needles @(
+    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
+  )
+  if (-not ($htmlPositions[0] -lt $htmlPositions[1] -and $htmlPositions[1] -lt $htmlPositions[2] -and $htmlPositions[2] -lt $htmlPositions[3])) {
+    throw 'Index HTML should preserve the mode-balanced preview ordering.'
   }
 
   $previewManifest = Get-Content -LiteralPath $receipt.outputs.previewManifestPath -Raw | ConvertFrom-Json -Depth 64
-  if ($previewManifest.summary.previewPairCount -ne 2) {
+  if ($previewManifest.summary.previewPairCount -ne 6 -or
+    $previewManifest.summary.commentPreviewPairCount -ne 4 -or
+    $previewManifest.summary.indexPreviewPairCount -ne 6) {
     throw 'Preview manifest summary mismatch.'
   }
 
   $stepSummary = Get-Content -LiteralPath $receipt.outputs.publicStepSummaryPath -Raw
-  if ($stepSummary -notmatch 'automatic pull request run' -or $stepSummary -notmatch 'Final status: `failed`' -or $stepSummary -notmatch 'Preview pairs: `2`') {
+  if ($stepSummary -notmatch 'automatic pull request run' -or
+    $stepSummary -notmatch 'Final status: `failed`' -or
+    $stepSummary -notmatch 'Preview pairs: `6`' -or
+    $stepSummary -notmatch 'PR comment preview gallery: `4` shown, `2` omitted, cap `4`') {
     throw 'Public step summary content mismatch.'
   }
 
