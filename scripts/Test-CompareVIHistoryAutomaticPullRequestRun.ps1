@@ -517,6 +517,15 @@ try {
     [regex]::Matches($indexMarkdown, [regex]::Escape('#### Block diagram')).Count -ne 2) {
     throw 'Index markdown should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
+  if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Reviewer summary')).Count -ne 2 -or
+    $indexMarkdown -notmatch [regex]::Escape('- Headline: `Material logic-affecting movement and structure resizing`') -or
+    $indexMarkdown -notmatch [regex]::Escape('- Overall severity: `medium`') -or
+    $indexMarkdown -notmatch [regex]::Escape('- [`Logic-affecting movement`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects): `medium` severity, `3` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('- [`Structure resizing`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects): `low` severity, `2` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('- Headline: `Material version or compatibility changes`') -or
+    $indexMarkdown -notmatch [regex]::Escape('- [`Version or compatibility changes`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous): `medium` severity, `1` details across `1` sections')) {
+    throw 'Index markdown should render reviewer-summary headlines, severity, and exact linked signals.'
+  }
   if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Change details')).Count -ne 2 -or
     $indexMarkdown -notmatch [regex]::Escape('[`Block diagram moves`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects): `3` details across `1` sections') -or
     $indexMarkdown -notmatch [regex]::Escape('[`Block diagram resizing`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects): `2` details across `1` sections') -or
@@ -559,6 +568,15 @@ try {
     [regex]::Matches($indexHtml, [regex]::Escape('<h4>Block diagram</h4>')).Count -ne 2) {
     throw 'Index HTML should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
+  if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Reviewer summary</h4>')).Count -ne 2 -or
+    $indexHtml -notmatch [regex]::Escape('<strong>Headline:</strong> Material logic-affecting movement and structure resizing') -or
+    $indexHtml -notmatch [regex]::Escape('<strong>Overall severity:</strong> medium') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">Logic-affecting movement</a>:</strong> medium severity, 3 details across 1 sections') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects">Structure resizing</a>:</strong> low severity, 2 details across 1 sections') -or
+    $indexHtml -notmatch [regex]::Escape('<strong>Headline:</strong> Material version or compatibility changes') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous">Version or compatibility changes</a>:</strong> medium severity, 1 details across 1 sections')) {
+    throw 'Index HTML should render reviewer-summary headlines, severity, and exact linked signals.'
+  }
   if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Change details</h4>')).Count -ne 2 -or
     $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
     $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
@@ -591,6 +609,20 @@ try {
     $previewManifest.summary.indexPreviewCardCount -ne 2 -or
     $previewManifest.summary.indexPreviewSurfaceCount -ne 4) {
     throw 'Preview manifest summary mismatch.'
+  }
+  if ([string]$previewManifest.indexPreviewCards[0].reviewerSummary.label -ne 'Reviewer summary' -or
+    [string]$previewManifest.indexPreviewCards[0].reviewerSummary.overallSeverity -ne 'medium' -or
+    [string]$previewManifest.indexPreviewCards[0].reviewerSummary.headline -ne 'Material logic-affecting movement and structure resizing' -or
+    [int]$previewManifest.indexPreviewCards[0].reviewerSummary.signalCount -ne 2 -or
+    [string]$previewManifest.indexPreviewCards[0].reviewerSummary.signals[0].label -ne 'Logic-affecting movement' -or
+    [string]$previewManifest.indexPreviewCards[0].reviewerSummary.signals[1].label -ne 'Structure resizing' -or
+    [string]$previewManifest.indexPreviewCards[1].reviewerSummary.headline -ne 'Material version or compatibility changes' -or
+    [string]$previewManifest.indexPreviewCards[1].reviewerSummary.signals[0].label -ne 'Version or compatibility changes') {
+    throw 'Preview manifest should carry reviewer-summary headlines and signals into the aggregate PR run.'
+  }
+  if ([string]$previewManifest.indexPreviewCards[0].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$previewManifest.indexPreviewCards[1].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous') {
+    throw 'Preview manifest should carry exact reviewer-summary links into the aggregate PR run.'
   }
   if ([string]$previewManifest.indexPreviewCards[0].changeDetails.label -ne 'Change details' -or
     [string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].heading -ne 'Block diagram moves' -or

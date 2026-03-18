@@ -26,6 +26,7 @@ $sectionKindOrder = @{
 
 $reviewerChangeDetailGroupCap = 3
 $reviewerChangeDetailSampleCap = 3
+$reviewerSummarySignalCap = 3
 
 function Write-ActionOutput {
   param(
@@ -582,6 +583,223 @@ function Get-ReviewerSemanticHeadingFromSection {
   }
 }
 
+function Get-ReviewerSeverityRank {
+  param([AllowNull()][string]$Severity)
+
+  switch ($Severity) {
+    'high' { return 3 }
+    'medium' { return 2 }
+    'low' { return 1 }
+    default { return 0 }
+  }
+}
+
+function Get-ReviewerSignalDescriptor {
+  param(
+    [AllowNull()][string]$Heading,
+    [int]$DetailCount,
+    [int]$SectionCount
+  )
+
+  $normalizedHeading = Normalize-ReviewerChangeDetailHeading -Heading (Get-OptionalString -Value $Heading)
+  switch -Regex ($normalizedHeading) {
+    '^Block diagram moves$' {
+      return [ordered]@{
+        signalKey = 'logic-movement'
+        label = 'Logic-affecting movement'
+        headlineLabel = 'logic-affecting movement'
+        severity = $(if ($DetailCount -ge 10 -or $SectionCount -ge 3) { 'high' } else { 'medium' })
+        sortOrder = 10
+      }
+    }
+    '^Block diagram resizing$' {
+      return [ordered]@{
+        signalKey = 'structure-resizing'
+        label = 'Structure resizing'
+        headlineLabel = 'structure resizing'
+        severity = $(if ($DetailCount -ge 5 -or $SectionCount -ge 2) { 'medium' } else { 'low' })
+        sortOrder = 20
+      }
+    }
+    '^(Added|Removed) block diagram objects$' {
+      return [ordered]@{
+        signalKey = 'object-topology'
+        label = 'Object additions or removals'
+        headlineLabel = 'object additions or removals'
+        severity = 'high'
+        sortOrder = 5
+      }
+    }
+    '^(Front panel layout moves|Front panel resizing|Front panel object changes|Added front panel objects|Removed front panel objects)$' {
+      return [ordered]@{
+        signalKey = 'layout-changes'
+        label = 'Layout changes'
+        headlineLabel = 'layout changes'
+        severity = $(if ($DetailCount -ge 8 -or $SectionCount -ge 3) { 'medium' } else { 'low' })
+        sortOrder = 40
+      }
+    }
+    '^Execution changes$' {
+      return [ordered]@{
+        signalKey = 'execution-behavior'
+        label = 'Execution behavior changes'
+        headlineLabel = 'execution behavior changes'
+        severity = 'high'
+        sortOrder = 15
+      }
+    }
+    '^VI version changes$' {
+      return [ordered]@{
+        signalKey = 'version-compatibility'
+        label = 'Version or compatibility changes'
+        headlineLabel = 'version or compatibility changes'
+        severity = 'medium'
+        sortOrder = 30
+      }
+    }
+    '^Icon changes$' {
+      return [ordered]@{
+        signalKey = 'visual-presentation'
+        label = 'Visual presentation changes'
+        headlineLabel = 'visual presentation changes'
+        severity = 'low'
+        sortOrder = 60
+      }
+    }
+    '^VI attribute changes$' {
+      return [ordered]@{
+        signalKey = 'metadata'
+        label = 'Metadata changes'
+        headlineLabel = 'metadata changes'
+        severity = 'low'
+        sortOrder = 50
+      }
+    }
+    default {
+      return [ordered]@{
+        signalKey = 'diagnostic-change'
+        label = 'Additional diagnostic changes'
+        headlineLabel = 'additional diagnostic changes'
+        severity = 'low'
+        sortOrder = 90
+      }
+    }
+  }
+}
+
+function New-ReviewerSummaryFromChangeDetails {
+  param(
+    [AllowNull()]
+    [object]$ChangeDetails
+  )
+
+  if ($null -eq $ChangeDetails) {
+    return $null
+  }
+
+  $signalMap = @{}
+  foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
+    $heading = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+    $detailCount = [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0)
+    $sectionCount = [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0)
+    $descriptor = Get-ReviewerSignalDescriptor -Heading $heading -DetailCount $detailCount -SectionCount $sectionCount
+    $signalKey = [string]$descriptor.signalKey
+    if (-not $signalMap.ContainsKey($signalKey)) {
+      $signalMap[$signalKey] = [ordered]@{
+        signalKey = $signalKey
+        label = [string]$descriptor.label
+        headlineLabel = [string]$descriptor.headlineLabel
+        severity = [string]$descriptor.severity
+        sortOrder = [int]$descriptor.sortOrder
+        detailCount = 0
+        sectionCount = 0
+        primaryReportHtmlRelativePath = $null
+        sectionLinks = New-Object System.Collections.Generic.List[object]
+        sectionLinkKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+      }
+    }
+
+    $signalRecord = $signalMap[$signalKey]
+    if ((Get-ReviewerSeverityRank -Severity ([string]$descriptor.severity)) -gt (Get-ReviewerSeverityRank -Severity ([string]$signalRecord.severity))) {
+      $signalRecord.severity = [string]$descriptor.severity
+    }
+    $signalRecord.detailCount = [int]$signalRecord.detailCount + $detailCount
+    $signalRecord.sectionCount = [int]$signalRecord.sectionCount + $sectionCount
+    if ([string]::IsNullOrWhiteSpace([string]$signalRecord.primaryReportHtmlRelativePath)) {
+      $signalRecord.primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
+    }
+
+    foreach ($sectionLink in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()))) {
+      $sectionPath = Get-OptionalString -Value (Get-NestedValue -Object $sectionLink -Path @('reportHtmlRelativePath'))
+      $sectionLabel = Get-OptionalString -Value (Get-NestedValue -Object $sectionLink -Path @('label'))
+      if ([string]::IsNullOrWhiteSpace($sectionPath) -or [string]::IsNullOrWhiteSpace($sectionLabel)) {
+        continue
+      }
+
+      if ($signalRecord.sectionLinkKeys.Add($sectionPath)) {
+        $signalRecord.sectionLinks.Add([ordered]@{
+            sectionOrdinal = [int](Get-NestedValue -Object $sectionLink -Path @('sectionOrdinal') -Default 0)
+            label = $sectionLabel
+            reportHtmlRelativePath = $sectionPath
+          }) | Out-Null
+      }
+    }
+  }
+
+  $orderedSignals = @(
+    $signalMap.Values |
+      Sort-Object `
+        @{ Expression = { -(Get-ReviewerSeverityRank -Severity ([string]$_.severity)) } }, `
+        @{ Expression = { [int]$_.sortOrder } }, `
+        @{ Expression = { [string]$_.label } }
+  )
+  if ($orderedSignals.Count -eq 0) {
+    return $null
+  }
+
+  $signalItems = New-Object System.Collections.Generic.List[object]
+  foreach ($signalRecord in @($orderedSignals | Select-Object -First $reviewerSummarySignalCap)) {
+    $signalItems.Add([ordered]@{
+        signalKey = [string]$signalRecord.signalKey
+        label = [string]$signalRecord.label
+        severity = [string]$signalRecord.severity
+        detailCount = [int]$signalRecord.detailCount
+        sectionCount = [int]$signalRecord.sectionCount
+        summary = ('{0} details across {1} sections' -f [int]$signalRecord.detailCount, [int]$signalRecord.sectionCount)
+        primaryReportHtmlRelativePath = Get-OptionalString -Value $signalRecord.primaryReportHtmlRelativePath
+        sectionLinks = @($signalRecord.sectionLinks | ForEach-Object { $_ })
+      }) | Out-Null
+  }
+
+  $overallSeverity = [string]$orderedSignals[0].severity
+  $headlineLabels = @(
+    $orderedSignals |
+      Select-Object -First 2 |
+      ForEach-Object { [string]$_.headlineLabel }
+  )
+  $headlineBody = switch ($headlineLabels.Count) {
+    0 { '' }
+    1 { $headlineLabels[0] }
+    2 { '{0} and {1}' -f $headlineLabels[0], $headlineLabels[1] }
+    default { '{0}, {1}, and more' -f $headlineLabels[0], $headlineLabels[1] }
+  }
+  $headlinePrefix = switch ($overallSeverity) {
+    'high' { 'High-change' }
+    'medium' { 'Material' }
+    'low' { 'Scoped' }
+    default { 'Observed' }
+  }
+
+  return [ordered]@{
+    label = 'Reviewer summary'
+    overallSeverity = $overallSeverity
+    headline = $(if ([string]::IsNullOrWhiteSpace($headlineBody)) { $headlinePrefix } else { '{0} {1}' -f $headlinePrefix, $headlineBody })
+    signalCount = $orderedSignals.Count
+    omittedSignalCount = [Math]::Max($orderedSignals.Count - $signalItems.Count, 0)
+    signals = @($signalItems | ForEach-Object { $_ })
+  }
+}
+
 function Get-ReviewerAnchoredReportPath {
   param(
     [Parameter(Mandatory = $true)]
@@ -1092,13 +1310,16 @@ function New-ReviewerPreviewCards {
       $surfaces.Add((New-ReviewerPreviewSurface -PreviewPair $selectedPreviewPair)) | Out-Null
     }
 
+    $changeDetails = Get-NestedValue -Object $changeDetailsByCardKey -Path @($cardKey)
+
     $cards.Add([ordered]@{
         targetId = [string]$selectedPreviewPair.targetId
         targetPath = [string]$selectedPreviewPair.targetPath
         comparison = $selectedPreviewPair.comparison
         sortKey = Get-OptionalString -Value $selectedPreviewPair.sortKey
         surfaces = @($surfaces | ForEach-Object { $_ })
-        changeDetails = Get-NestedValue -Object $changeDetailsByCardKey -Path @($cardKey)
+        reviewerSummary = New-ReviewerSummaryFromChangeDetails -ChangeDetails $changeDetails
+        changeDetails = $changeDetails
       }) | Out-Null
   }
 

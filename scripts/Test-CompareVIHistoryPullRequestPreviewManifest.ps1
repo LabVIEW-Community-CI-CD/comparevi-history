@@ -267,6 +267,21 @@ try {
     $receipt.commentPreviewCards[0].surfaces[1].baseImageRelativePath -ne 'targets/001-demo/history/block-diagram/Demo.vi-001-artifacts/compare-report_files/bd_1.png') {
     throw 'Reviewer cards should preserve both front-panel and block-diagram image paths for the same history pair.'
   }
+  if ([string]$receipt.commentPreviewCards[0].reviewerSummary.label -ne 'Reviewer summary' -or
+    [string]$receipt.commentPreviewCards[0].reviewerSummary.overallSeverity -ne 'medium' -or
+    [string]$receipt.commentPreviewCards[0].reviewerSummary.headline -ne 'Material logic-affecting movement and structure resizing' -or
+    [int]$receipt.commentPreviewCards[0].reviewerSummary.signalCount -ne 2 -or
+    [string]$receipt.commentPreviewCards[0].reviewerSummary.signals[0].label -ne 'Logic-affecting movement' -or
+    [string]$receipt.commentPreviewCards[0].reviewerSummary.signals[0].severity -ne 'medium' -or
+    [string]$receipt.commentPreviewCards[0].reviewerSummary.signals[1].label -ne 'Structure resizing' -or
+    [string]$receipt.commentPreviewCards[0].reviewerSummary.signals[1].severity -ne 'low') {
+    throw 'Reviewer cards should emit deterministic reviewer-summary buckets and severities.'
+  }
+  if ([string]$receipt.commentPreviewCards[1].reviewerSummary.overallSeverity -ne 'medium' -or
+    [string]$receipt.commentPreviewCards[1].reviewerSummary.headline -ne 'Material version or compatibility changes' -or
+    [string]$receipt.commentPreviewCards[1].reviewerSummary.signals[0].label -ne 'Version or compatibility changes') {
+    throw 'Reviewer cards should emit reviewer summaries for later history pairs as well.'
+  }
   if ([string]$receipt.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
     [string]$receipt.commentPreviewCards[0].changeDetails.sourceMode -ne 'attributes') {
     throw 'Reviewer cards should attach bounded change-detail summaries from the attributes compare report.'
