@@ -292,9 +292,12 @@ The evaluator consumes publication receipts and artifact contents only:
 - it downloads the publication artifact from `CompareVI History Pull Request Diagnostics Publish`
 - it resolves that publication artifact from the completed publisher run instead of requiring the consumer to predict a
   publisher-artifact name from the `workflow_run` payload
-- it reads `pr-comment-publication.json`, `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`
+- it reads `pr-comment-publication.json`, `pr-run.json`, `changed-vi-discovery.json`, `pr-preview-manifest.json`,
+  `pr-comment.md`, `index.md`, and `index.html`
 - it verifies the changed-VI count, selected-target count, canonical canary path, explicit public modes, raw
-  `noisePolicy = include`, sticky comment publication, and `artifact-index` reviewer surface
+  `noisePolicy = include`, sticky comment publication, preview publication, and `artifact-index` reviewer surface
+- the checked-in canary policy can also declare reviewer-surface invariants through `reviewerSurfaceContract`, including
+  required workspace sections, required reviewer surfaces, exact evidence links, and bounded comment preview cards
 - it emits `agent-canary-evaluation.json` (`comparevi-history/agent-canary-evaluation@v1`)
 - it fails closed for canary regressions and skips cleanly for non-canary PRs
 
@@ -406,6 +409,8 @@ Minimum viable pilot after the single-VI evidence model is stable:
   scraping
 - `tests/fixtures/corpus-pilot-v1` is the canonical pilot contract baseline for golden artifact tests against the
   released corpus receipts
+- `tests/fixtures/reviewer-workspace-v1` is the canonical reviewer workspace golden baseline for PR diagnostics against
+  the synthetic PR31-shaped fixture
 
 This keeps the first corpus pilot deterministic and unsuppressed without inventing repo-wide generation before the
 single-VI evidence contracts have stabilized.

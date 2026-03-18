@@ -2,6 +2,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $scriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryAutomaticPullRequestRun.ps1'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$reviewerWorkspaceFixtureRoot = Join-Path $repoRoot 'tests' 'fixtures' 'reviewer-workspace-v1'
+$reviewerWorkspaceFixtureReadmePath = Join-Path $reviewerWorkspaceFixtureRoot 'README.md'
+$reviewerWorkspaceProjectionPath = Join-Path $reviewerWorkspaceFixtureRoot 'reviewer-workspace-projection.json'
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('comparevi-history-auto-pr-run-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
@@ -166,7 +170,110 @@ function Get-OrdinalPositions {
   return @($positions | ForEach-Object { $_ })
 }
 
+function ConvertTo-Slug {
+  param(
+    [AllowNull()]
+    [string]$Value,
+    [string]$Fallback = 'item'
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $Fallback
+  }
+
+  $slug = $Value.ToLowerInvariant() -replace '[^a-z0-9]+', '-'
+  $slug = $slug.Trim('-')
+  if ([string]::IsNullOrWhiteSpace($slug)) {
+    return $Fallback
+  }
+
+  return $slug
+}
+
+function Get-ReviewerWorkspaceProjection {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Receipt,
+    [Parameter(Mandatory = $true)]
+    [string]$IndexMarkdown,
+    [Parameter(Mandatory = $true)]
+    [string]$IndexHtml,
+    [Parameter(Mandatory = $true)]
+    $PreviewManifest,
+    [Parameter(Mandatory = $true)]
+    [string]$CommentBody
+  )
+
+  $cards = @(
+    $PreviewManifest.indexPreviewCards |
+      ForEach-Object {
+        [ordered]@{
+          anchorId = ('history-pair-{0:D2}-{1}' -f [int]$_.comparison.index, (ConvertTo-Slug -Value ([string]$_.targetPath) -Fallback 'target'))
+          targetPath = [string]$_.targetPath
+          comparisonIndex = [int]$_.comparison.index
+          revisionContext = ('{0} -> {1}' -f [string]$_.comparison.baseShortRef, [string]$_.comparison.headShortRef)
+          overallSeverity = [string]$_.reviewerSummary.overallSeverity
+          headline = [string]$_.reviewerSummary.headline
+          signalLabels = @($_.reviewerSummary.signals | ForEach-Object { [string]$_.label })
+          changeDetailGroups = @($_.changeDetails.groups | ForEach-Object { [string]$_.heading })
+          surfaceKinds = @($_.surfaces | ForEach-Object { [string]$_.surfaceKind })
+        }
+      }
+  )
+
+  return [ordered]@{
+    schema = 'comparevi-history/reviewer-workspace-golden@v1'
+    source = [ordered]@{
+      scenario = 'synthetic-pr31-shaped-fixture'
+      script = 'Write-CompareVIHistoryAutomaticPullRequestRun.ps1'
+    }
+    workspace = [ordered]@{
+      title = 'comparevi-history PR diagnostics workspace'
+      markdownSections = @('Workspace summary', 'Workspace navigation', 'Review workspace', 'Raw evidence inventory')
+      htmlMarkers = @('workspace-shell', 'workspace-nav', 'workspace-summary', 'raw-evidence')
+      pairCount = [int]$PreviewManifest.summary.indexPreviewCardCount
+      targetCount = [int]$Receipt.summary.selectedTargetCount
+      severityMix = '0 high / 2 medium / 0 low'
+      navigation = @(
+        $cards | ForEach-Object {
+          [ordered]@{
+            anchorId = [string]$_.anchorId
+            severity = [string]$_.overallSeverity
+            headline = [string]$_.headline
+          }
+        }
+      )
+      cards = $cards
+      comment = [ordered]@{
+        reviewerPreviewGalleryLine = 'Reviewer preview gallery: `2` history pairs shown, `0` omitted, cap `4`'
+        rawCollapseLine = 'Raw preview surfaces collapsed for review: `4` raw -> `2` reviewer-canonical'
+      }
+    }
+  }
+}
+
 try {
+  if (-not (Test-Path -LiteralPath $reviewerWorkspaceFixtureReadmePath -PathType Leaf)) {
+    throw 'Reviewer workspace fixture README is missing.'
+  }
+  if (-not (Test-Path -LiteralPath $reviewerWorkspaceProjectionPath -PathType Leaf)) {
+    throw 'Reviewer workspace projection fixture is missing.'
+  }
+
+  $reviewerWorkspaceReadme = Get-Content -LiteralPath $reviewerWorkspaceFixtureReadmePath -Raw
+  foreach ($requiredPattern in @(
+      'canonical reviewer workspace golden baseline',
+      'synthetic PR31-shaped fixture',
+      'reviewer summary ordering and wording',
+      'workspace navigation',
+      'Raw evidence inventory',
+      'bounded comment summary'
+    )) {
+    if ($reviewerWorkspaceReadme -notmatch $requiredPattern) {
+      throw "Reviewer workspace fixture README is missing required contract text: $requiredPattern"
+    }
+  }
+
   $resultsDir = Join-Path $tempRoot 'results'
   New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
 
@@ -686,6 +793,19 @@ try {
   if ($previewManifest.indexPreviewCards.Count -ne 2 -or
     (@($previewManifest.indexPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
     throw 'Preview manifest should expose reviewer cards with both front-panel and block-diagram surfaces.'
+  }
+
+  $expectedReviewerWorkspaceProjection = Get-Content -LiteralPath $reviewerWorkspaceProjectionPath -Raw | ConvertFrom-Json -Depth 100
+  $actualReviewerWorkspaceProjection = Get-ReviewerWorkspaceProjection `
+    -Receipt $receipt `
+    -IndexMarkdown $indexMarkdown `
+    -IndexHtml $indexHtml `
+    -PreviewManifest $previewManifest `
+    -CommentBody $commentBody
+  $expectedProjectionJson = $expectedReviewerWorkspaceProjection | ConvertTo-Json -Depth 100 -Compress
+  $actualProjectionJson = $actualReviewerWorkspaceProjection | ConvertTo-Json -Depth 100 -Compress
+  if ($actualProjectionJson -ne $expectedProjectionJson) {
+    throw 'Reviewer workspace golden projection drifted.'
   }
 
   $stepSummary = Get-Content -LiteralPath $receipt.outputs.publicStepSummaryPath -Raw

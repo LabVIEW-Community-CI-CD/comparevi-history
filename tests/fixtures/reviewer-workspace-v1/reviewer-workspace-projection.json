@@ -1,0 +1,81 @@
+{
+  "schema": "comparevi-history/reviewer-workspace-golden@v1",
+  "source": {
+    "scenario": "synthetic-pr31-shaped-fixture",
+    "script": "Write-CompareVIHistoryAutomaticPullRequestRun.ps1"
+  },
+  "workspace": {
+    "title": "comparevi-history PR diagnostics workspace",
+    "markdownSections": [
+      "Workspace summary",
+      "Workspace navigation",
+      "Review workspace",
+      "Raw evidence inventory"
+    ],
+    "htmlMarkers": [
+      "workspace-shell",
+      "workspace-nav",
+      "workspace-summary",
+      "raw-evidence"
+    ],
+    "pairCount": 2,
+    "targetCount": 2,
+    "severityMix": "0 high / 2 medium / 0 low",
+    "navigation": [
+      {
+        "anchorId": "history-pair-01-tooling-deployment-vip-post-install-custom-action-vi",
+        "severity": "medium",
+        "headline": "Material logic-affecting movement and structure resizing"
+      },
+      {
+        "anchorId": "history-pair-02-tooling-deployment-vip-post-install-custom-action-vi",
+        "severity": "medium",
+        "headline": "Material version or compatibility changes"
+      }
+    ],
+    "cards": [
+      {
+        "anchorId": "history-pair-01-tooling-deployment-vip-post-install-custom-action-vi",
+        "targetPath": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+        "comparisonIndex": 1,
+        "revisionContext": "base-01 -> head-01",
+        "overallSeverity": "medium",
+        "headline": "Material logic-affecting movement and structure resizing",
+        "signalLabels": [
+          "Logic-affecting movement",
+          "Structure resizing"
+        ],
+        "changeDetailGroups": [
+          "Block diagram moves",
+          "Block diagram resizing"
+        ],
+        "surfaceKinds": [
+          "front-panel",
+          "block-diagram"
+        ]
+      },
+      {
+        "anchorId": "history-pair-02-tooling-deployment-vip-post-install-custom-action-vi",
+        "targetPath": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+        "comparisonIndex": 2,
+        "revisionContext": "base-02 -> head-02",
+        "overallSeverity": "medium",
+        "headline": "Material version or compatibility changes",
+        "signalLabels": [
+          "Version or compatibility changes"
+        ],
+        "changeDetailGroups": [
+          "VI version changes"
+        ],
+        "surfaceKinds": [
+          "front-panel",
+          "block-diagram"
+        ]
+      }
+    ],
+    "comment": {
+      "reviewerPreviewGalleryLine": "Reviewer preview gallery: `2` history pairs shown, `0` omitted, cap `4`",
+      "rawCollapseLine": "Raw preview surfaces collapsed for review: `4` raw -> `2` reviewer-canonical"
+    }
+  }
+}

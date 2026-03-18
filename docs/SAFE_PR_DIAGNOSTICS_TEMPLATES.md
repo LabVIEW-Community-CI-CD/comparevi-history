@@ -157,12 +157,16 @@ Consumer repositories should not contain:
 - The sticky comment stays bounded. The full unsuppressed evidence still lives in the execution artifact, while the
   publisher can surface a small preview gallery by writing selected images to a repo-owned preview branch.
 - The agent-canary evaluation template expects the publication artifact to contain `pr-comment-publication.json` plus
-  the expanded execution artifact with `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`.
+  the expanded execution artifact with `pr-run.json`, `changed-vi-discovery.json`, `pr-preview-manifest.json`,
+  `pr-comment.md`, `index.md`, and `index.html`.
 - The agent-canary evaluation template should not try to predict a publication artifact name from the publisher
   `workflow_run` id. The reusable evaluator resolves the publication artifact from the completed publisher run and treats
   `artifact_name` as an override only.
 - The agent-canary lane is same-repo only, uses branch prefix `agent-canary/`, requires the `agent-canary` label, and
   expects one long-lived draft PR instead of a stream of throwaway proof branches.
+- The checked-in canary policy can declare reviewer-surface invariants through `reviewerSurfaceContract`, so the canary
+  fails closed when workspace headings, exact evidence links, required surfaces, or bounded comment-preview behavior
+  drift.
 - The action owns reviewer-facing rendering. Consumers should publish PR comments from `public-comment-path` and append
   `public-step-summary-path` instead of rebuilding markdown inline.
 - The comment-gated template writes the action-owned step summary first, then attempts to publish the PR comment. If the
