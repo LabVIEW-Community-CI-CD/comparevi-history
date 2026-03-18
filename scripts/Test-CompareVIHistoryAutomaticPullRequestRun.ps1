@@ -370,9 +370,11 @@ try {
     throw 'Aggregate totals mismatch.'
   }
   if ($receipt.summary.previewPairCount -ne 6 -or
-    $receipt.summary.commentPreviewPairCount -ne 4 -or
-    $receipt.summary.commentPreviewPairOmittedCount -ne 2 -or
-    $receipt.summary.indexPreviewPairCount -ne 6 -or
+    $receipt.summary.rawPreviewPairCount -ne 6 -or
+    $receipt.summary.reviewerPreviewPairCount -ne 2 -or
+    $receipt.summary.commentPreviewPairCount -ne 2 -or
+    $receipt.summary.commentPreviewPairOmittedCount -ne 0 -or
+    $receipt.summary.indexPreviewPairCount -ne 2 -or
     $receipt.summary.indexPreviewPairOmittedCount -ne 0) {
     throw 'Aggregate preview pair summary mismatch.'
   }
@@ -407,8 +409,13 @@ try {
   if ($commentBody -notmatch [regex]::Escape('comparevi-history-pr-diagnostics-123456789')) {
     throw 'PR comment body should point reviewers at the artifact bundle.'
   }
-  if ($commentBody -notmatch [regex]::Escape('PR comment preview gallery: `4` shown, `2` omitted, cap `4`')) {
+  if ($commentBody -notmatch [regex]::Escape('Reviewer preview gallery: `2` shown, `0` omitted, cap `4`')) {
     throw 'PR comment body should surface the corrected preview pair counts.'
+  }
+  if ($commentBody -match [regex]::Escape('| front-panel |') -or
+    $commentBody -match [regex]::Escape('| block-diagram |') -or
+    $commentBody -match [regex]::Escape('| attributes |')) {
+    throw 'PR comment body should not surface execution modes in the reviewer-facing preview gallery.'
   }
 
   $indexMarkdown = Get-Content -LiteralPath $receipt.outputs.indexMarkdownPath -Raw
@@ -426,50 +433,56 @@ try {
       throw "Index markdown is missing '$requiredText'."
     }
   }
-  if ([regex]::Matches($indexMarkdown, [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi |')).Count -ne 6) {
-    throw 'Index markdown should render six preview entries for the PR31-shaped fixture.'
+  if ([regex]::Matches($indexMarkdown, [regex]::Escape('### `Tooling/deployment/VIP_Post-Install Custom Action.vi`')).Count -ne 2) {
+    throw 'Index markdown should render two reviewer-canonical preview entries for the PR31-shaped fixture.'
+  }
+  if ($indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | front-panel |') -or
+    $indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | block-diagram |') -or
+    $indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | attributes |')) {
+    throw 'Index markdown should not surface execution modes in reviewer-facing preview titles.'
   }
 
   $markdownPositions = Get-OrdinalPositions -Content $indexMarkdown -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
   )
-  if (-not ($markdownPositions[0] -lt $markdownPositions[1] -and $markdownPositions[1] -lt $markdownPositions[2] -and $markdownPositions[2] -lt $markdownPositions[3])) {
-    throw 'Index markdown should preserve the mode-balanced preview ordering.'
+  if (-not ($markdownPositions[0] -lt $markdownPositions[1])) {
+    throw 'Index markdown should preserve the reviewer-canonical comparison ordering.'
   }
 
   $indexHtml = Get-Content -LiteralPath $receipt.outputs.indexHtmlPath -Raw
   if ($indexHtml -notmatch [regex]::Escape('<section class="preview-gallery">')) {
     throw 'Index HTML should embed the preview gallery.'
   }
-  if ([regex]::Matches($indexHtml, [regex]::Escape('<article class="preview-card">')).Count -ne 6) {
-    throw 'Index HTML should render six preview cards for the PR31-shaped fixture.'
+  if ([regex]::Matches($indexHtml, [regex]::Escape('<article class="preview-card">')).Count -ne 2) {
+    throw 'Index HTML should render two reviewer-canonical preview cards for the PR31-shaped fixture.'
+  }
+  if ($indexHtml -match [regex]::Escape('<strong>Mode</strong>')) {
+    throw 'Index HTML should not surface execution modes in reviewer-facing preview cards.'
   }
 
   $htmlPositions = Get-OrdinalPositions -Content $indexHtml -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
   )
-  if (-not ($htmlPositions[0] -lt $htmlPositions[1] -and $htmlPositions[1] -lt $htmlPositions[2] -and $htmlPositions[2] -lt $htmlPositions[3])) {
-    throw 'Index HTML should preserve the mode-balanced preview ordering.'
+  if (-not ($htmlPositions[0] -lt $htmlPositions[1])) {
+    throw 'Index HTML should preserve the reviewer-canonical comparison ordering.'
   }
 
   $previewManifest = Get-Content -LiteralPath $receipt.outputs.previewManifestPath -Raw | ConvertFrom-Json -Depth 64
   if ($previewManifest.summary.previewPairCount -ne 6 -or
-    $previewManifest.summary.commentPreviewPairCount -ne 4 -or
-    $previewManifest.summary.indexPreviewPairCount -ne 6) {
+    $previewManifest.summary.rawPreviewPairCount -ne 6 -or
+    $previewManifest.summary.reviewerPreviewPairCount -ne 2 -or
+    $previewManifest.summary.commentPreviewPairCount -ne 2 -or
+    $previewManifest.summary.indexPreviewPairCount -ne 2) {
     throw 'Preview manifest summary mismatch.'
   }
 
   $stepSummary = Get-Content -LiteralPath $receipt.outputs.publicStepSummaryPath -Raw
   if ($stepSummary -notmatch 'automatic pull request run' -or
     $stepSummary -notmatch 'Final status: `failed`' -or
-    $stepSummary -notmatch 'Preview pairs: `6`' -or
-    $stepSummary -notmatch 'PR comment preview gallery: `4` shown, `2` omitted, cap `4`') {
+    $stepSummary -notmatch 'Reviewer preview gallery: `2` shown, `0` omitted, cap `4`' -or
+    $stepSummary -notmatch 'Raw preview surfaces collapsed for review: `6` raw -> `2` reviewer-canonical') {
     throw 'Public step summary content mismatch.'
   }
 
