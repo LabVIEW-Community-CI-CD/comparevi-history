@@ -21,15 +21,18 @@ on:
       - scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1
       - scripts/Invoke-CompareVIHistoryReviewBundleCompiler.ps1
       - scripts/Publish-CompareVIHistoryReviewCompilerArtifact.ps1
+      - scripts/Invoke-CompareVIHistoryReleaseProof.ps1
       - scripts/Test-CompareVIHistoryReviewBundleCompiler.ps1
       - scripts/Test-CompareVIHistoryReviewBundleGoldenContract.ps1
       - scripts/Test-CompareVIHistoryReviewCompilerArtifact.ps1
+      - scripts/Test-CompareVIHistoryReleaseProof.ps1
       - scripts/CompareVIHistoryReviewBundleFixture.psm1
       - scripts/Sync-CompareVIHistoryPublishedTemplates.ps1
       - scripts/Test-CompareVIHistoryTemplateContracts.ps1
       - src/CompareVIHistory.ReviewCompiler/**
       - docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md
       - docs/schemas/comparevi-history-review-compiler-release-v1.schema.json
+      - docs/schemas/comparevi-history-release-proof-v1.schema.json
       - docs/examples/comparevi-history-workflow-dispatch.yml
       - docs/examples/comparevi-history-comment-gated.yml
       - tests/fixtures/review-bundle-v1/**
@@ -436,6 +439,71 @@ jobs:
             labview-icon-editor/tests/results/_comparevi-history-release/published-evidence.json
           if-no-files-found: error
 
+  release-proof:
+    name: release-proof
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout facade repo
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Package staged review compiler assets
+        shell: pwsh
+        env:
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$PWD/scripts/Publish-CompareVIHistoryReviewCompilerArtifact.ps1" `
+            -Version $env:IMMUTABLE_TAG `
+            -OutputDir 'release-assets' `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+      - name: Validate staged review compiler release manifest schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath release-assets/comparevi-history-review-compiler-release.json `
+            -SchemaPath docs/schemas/comparevi-history-review-compiler-release-v1.schema.json
+
+      - name: Run release-proof against pinned NI Linux runtime
+        shell: pwsh
+        env:
+          COMPAREVI_NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$PWD/scripts/Invoke-CompareVIHistoryReleaseProof.ps1" `
+            -Version '${{ needs.validate.outputs.immutable_tag }}' `
+            -ReleaseAssetsDir 'release-assets' `
+            -RuntimeIdentifier 'linux-x64' `
+            -ContainerImage $env:COMPAREVI_NI_LINUX_IMAGE `
+            -ResultsDir 'tests/results/release-proof' `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
+      - name: Validate release-proof receipt schema
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
+            -JsonPath tests/results/release-proof/release-proof.json `
+            -SchemaPath docs/schemas/comparevi-history-release-proof-v1.schema.json
+
+      - name: Upload release-proof artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-release-proof-${{ github.run_id }}
+          path: |
+            release-assets/**
+            tests/results/release-proof/**
+          if-no-files-found: error
+
   publish:
     name: release-publish
     if: ${{ needs.validate.outputs.publish == 'true' }}
@@ -443,12 +511,19 @@ jobs:
       - validate
       - smoke-local
       - smoke-external
+      - release-proof
     runs-on: ubuntu-latest
     steps:
       - name: Checkout facade repo
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Download staged release-proof artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: comparevi-history-release-proof-${{ github.run_id }}
+          path: staged-release-proof
 
       - name: Verify publish content and create release notes
         id: prepare
@@ -497,6 +572,7 @@ jobs:
           - \`${IMMUTABLE_TAG}\` is the immutable facade tag for this already-reviewed backend mapping
           - \`${MAJOR_TAG}\` advances only after smoke and release publication succeed
           - Published comment-gated template already points at \`${IMMUTABLE_TAG}\`
+          - Staged release-proof already validated the packaged linux compiler asset inside \`nationalinstruments/labview:2026q1-linux\`
           EOF
 
           echo "target-sha=$target_sha" >> "$GITHUB_OUTPUT"
@@ -510,21 +586,6 @@ jobs:
           git tag "$IMMUTABLE_TAG" "${{ steps.prepare.outputs.target-sha }}"
           git push origin "refs/tags/$IMMUTABLE_TAG"
 
-      - name: Package review compiler release assets
-        id: compiler_assets
-        shell: pwsh
-        env:
-          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-
-          & "$PWD/scripts/Publish-CompareVIHistoryReviewCompilerArtifact.ps1" `
-            -Version $env:IMMUTABLE_TAG `
-            -OutputDir 'release-assets' `
-            -GitHubOutputPath $env:GITHUB_OUTPUT `
-            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
-
       - name: Create GitHub release
         shell: bash
         env:
@@ -533,9 +594,9 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$IMMUTABLE_TAG" \
-            release-assets/*.zip \
-            release-assets/comparevi-history-review-compiler-release.json \
-            release-assets/SHA256SUMS.txt \
+            staged-release-proof/release-assets/*.zip \
+            staged-release-proof/release-assets/comparevi-history-review-compiler-release.json \
+            staged-release-proof/release-assets/SHA256SUMS.txt \
             --title "comparevi-history $IMMUTABLE_TAG" \
             --notes-file release-notes.md
 
@@ -564,7 +625,7 @@ jobs:
             echo "- Major tag: \`${MAJOR_TAG}\`"
             echo "- Backend tag: \`${BACKEND_TAG}\`"
             echo "- Backend ref: \`${BACKEND_SHA}\`"
-            echo "- Review compiler assets: \`comparevi-history-review-compiler-${IMMUTABLE_TAG}-<rid>.zip\`, \`comparevi-history-review-compiler-release.json\`, \`SHA256SUMS.txt\`"
+            echo "- Review compiler assets were staged and proven via \`comparevi-history-release-proof-${GITHUB_RUN_ID}\` before publication"
           } >> "$GITHUB_STEP_SUMMARY"
 
   published-consumer:
