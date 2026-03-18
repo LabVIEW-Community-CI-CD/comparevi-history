@@ -22,9 +22,10 @@ function New-PreviewReportFixture {
   $artifactDir = Join-Path $ModeRoot ('{0}-{1:D3}-artifacts' -f $ArtifactPrefix, $ComparisonIndex)
   $reportFilesDir = Join-Path $artifactDir 'compare-report_files'
   New-Item -ItemType Directory -Path $reportFilesDir -Force | Out-Null
-  foreach ($imageName in @('fp_1.png', 'fp_2.png')) {
-    [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir $imageName), @(0xCA, 0xFE, 0xBA, 0xBE))
-  }
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'fp_1.png'), @(0xCA, 0xFE, 0xBA, 0xBE))
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'fp_2.png'), @(0xBE, 0xBA, 0xFE, 0xCA))
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'bd_1.png'), @(0x0B, 0xD1, 0xA6, 0x01))
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'bd_2.png'), @(0x10, 0x0C, 0xD1, 0xA6))
 
   $reportHtmlPath = Join-Path $artifactDir 'compare-report.html'
   @'
@@ -34,7 +35,9 @@ function New-PreviewReportFixture {
 <div class="compared-VIs">
 <details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/base/Base.vi</div><div class="dropdown-right">Second VI: /compare/head/Head.vi</div></summary>
 <table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
-<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr></table></details>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr>
+<tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Block Diagram Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_2.png"/></td></tr></table></details>
 </div>
 </body>
 </html>
@@ -375,8 +378,8 @@ try {
   if ($receipt.summary.totalProcessed -ne 5 -or $receipt.summary.totalDiffs -ne 2) {
     throw 'Aggregate totals mismatch.'
   }
-  if ($receipt.summary.previewPairCount -ne 6 -or
-    $receipt.summary.rawPreviewPairCount -ne 6 -or
+  if ($receipt.summary.previewPairCount -ne 4 -or
+    $receipt.summary.rawPreviewPairCount -ne 4 -or
     $receipt.summary.reviewerPreviewPairCount -ne 2 -or
     $receipt.summary.commentPreviewPairCount -ne 2 -or
     $receipt.summary.commentPreviewPairOmittedCount -ne 0 -or
@@ -415,7 +418,7 @@ try {
   if ($commentBody -notmatch [regex]::Escape('comparevi-history-pr-diagnostics-123456789')) {
     throw 'PR comment body should point reviewers at the artifact bundle.'
   }
-  if ($commentBody -notmatch [regex]::Escape('Reviewer preview gallery: `2` shown, `0` omitted, cap `4`')) {
+  if ($commentBody -notmatch [regex]::Escape('Reviewer preview gallery: `2` history pairs shown, `0` omitted, cap `4`')) {
     throw 'PR comment body should surface the corrected preview pair counts.'
   }
   if ($commentBody -match [regex]::Escape('| front-panel |') -or
@@ -462,9 +465,9 @@ try {
 
   $markdownPositions = Get-OrdinalPositions -Content $indexMarkdown -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png',
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_1.png'
   )
   if (-not ($markdownPositions[0] -lt $markdownPositions[1] -and
       $markdownPositions[1] -lt $markdownPositions[2] -and
@@ -496,9 +499,9 @@ try {
 
   $htmlPositions = Get-OrdinalPositions -Content $indexHtml -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png',
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_1.png'
   )
   if (-not ($htmlPositions[0] -lt $htmlPositions[1] -and
       $htmlPositions[1] -lt $htmlPositions[2] -and
@@ -507,8 +510,8 @@ try {
   }
 
   $previewManifest = Get-Content -LiteralPath $receipt.outputs.previewManifestPath -Raw | ConvertFrom-Json -Depth 64
-  if ($previewManifest.summary.previewPairCount -ne 6 -or
-    $previewManifest.summary.rawPreviewPairCount -ne 6 -or
+  if ($previewManifest.summary.previewPairCount -ne 4 -or
+    $previewManifest.summary.rawPreviewPairCount -ne 4 -or
     $previewManifest.summary.reviewerPreviewPairCount -ne 2 -or
     $previewManifest.summary.commentPreviewPairCount -ne 2 -or
     $previewManifest.summary.indexPreviewPairCount -ne 2 -or
@@ -526,8 +529,8 @@ try {
   $stepSummary = Get-Content -LiteralPath $receipt.outputs.publicStepSummaryPath -Raw
   if ($stepSummary -notmatch 'automatic pull request run' -or
     $stepSummary -notmatch 'Final status: `failed`' -or
-    $stepSummary -notmatch 'Reviewer preview gallery: `2` shown, `0` omitted, cap `4`' -or
-    $stepSummary -notmatch 'Raw preview surfaces collapsed for review: `6` raw -> `2` reviewer-canonical') {
+    $stepSummary -notmatch 'Reviewer preview gallery: `2` history pairs shown, `0` omitted, cap `4`' -or
+    $stepSummary -notmatch 'Raw preview surfaces collapsed for review: `4` raw -> `2` reviewer-canonical') {
     throw 'Public step summary content mismatch.'
   }
 

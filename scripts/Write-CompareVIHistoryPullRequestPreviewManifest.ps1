@@ -436,6 +436,112 @@ function Get-ReviewerPreviewSurfaceLabel {
   }
 }
 
+function New-PreviewSurfaceCandidate {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Label,
+    [Parameter(Mandatory = $true)]
+    [string]$BaseImagePath,
+    [Parameter(Mandatory = $true)]
+    [string]$HeadImagePath
+  )
+
+  return [ordered]@{
+    label = $Label
+    baseImagePath = $BaseImagePath
+    headImagePath = $HeadImagePath
+  }
+}
+
+function Get-ReportPreviewSurfaceCandidates {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$TableHtml,
+    [Parameter(Mandatory = $true)]
+    [string]$ReportDirectory
+  )
+
+  $candidates = New-Object System.Collections.Generic.List[object]
+  $surfacePattern = '(?is)<tr class="compared-vi-image-captions">.*?<td class="compared-vi-image-caption">(?<caption>.*?)</td>.*?</tr>\s*<tr class="compared-images">(?<images>.*?)</tr>'
+  foreach ($surfaceMatch in [regex]::Matches($TableHtml, $surfacePattern)) {
+    $caption = ConvertFrom-HtmlText -Value ([string]$surfaceMatch.Groups['caption'].Value)
+    $imageSources = @(
+      [regex]::Matches([string]$surfaceMatch.Groups['images'].Value, '(?is)<img[^>]+src="(?<src>[^"]+)"') |
+        ForEach-Object { Get-OptionalString -Value ([string]$_.Groups['src'].Value) } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($imageSources.Count -lt 2) {
+      continue
+    }
+
+    $baseImagePath = Resolve-ExistingPath -Path $imageSources[0] -BasePath $ReportDirectory -PathType Leaf
+    $headImagePath = Resolve-ExistingPath -Path $imageSources[1] -BasePath $ReportDirectory -PathType Leaf
+    if ($null -eq $baseImagePath -or $null -eq $headImagePath) {
+      continue
+    }
+
+    $candidates.Add((New-PreviewSurfaceCandidate -Label $caption -BaseImagePath $baseImagePath -HeadImagePath $headImagePath)) | Out-Null
+  }
+
+  return @($candidates | ForEach-Object { $_ })
+}
+
+function Test-PreviewSurfaceMatchesMode {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Candidate,
+    [Parameter(Mandatory = $true)]
+    [string]$Mode
+  )
+
+  $label = ([string]$Candidate.label).ToLowerInvariant()
+  $baseName = [System.IO.Path]::GetFileName([string]$Candidate.baseImagePath).ToLowerInvariant()
+  $headName = [System.IO.Path]::GetFileName([string]$Candidate.headImagePath).ToLowerInvariant()
+
+  switch ($Mode) {
+    'front-panel' {
+      return $label -match 'front panel' -or $baseName -like 'fp_*' -or $headName -like 'fp_*'
+    }
+    'block-diagram' {
+      return $label -match 'block diagram' -or $baseName -like 'bd_*' -or $headName -like 'bd_*'
+    }
+    'attributes' {
+      return $label -match 'attribute'
+    }
+    default {
+      return $false
+    }
+  }
+}
+
+function Select-PreviewSurfaceCandidateForMode {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$Candidates,
+    [Parameter(Mandatory = $true)]
+    [string]$Mode
+  )
+
+  if ($Candidates.Count -eq 0) {
+    return $null
+  }
+
+  $matchingCandidate = @(
+    $Candidates |
+      Where-Object { Test-PreviewSurfaceMatchesMode -Candidate $_ -Mode $Mode } |
+      Select-Object -First 1
+  )
+  if ($matchingCandidate.Count -gt 0) {
+    return $matchingCandidate[0]
+  }
+
+  if ($Mode -eq 'front-panel') {
+    return $Candidates[0]
+  }
+
+  return $null
+}
+
 function Get-ReviewerPreviewPairArray {
   param(
     [AllowNull()]
@@ -445,7 +551,7 @@ function Get-ReviewerPreviewPairArray {
   $selected = New-Object System.Collections.Generic.List[object]
   $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
   foreach ($previewPair in @(ConvertTo-PreviewPairArray -Value $Value)) {
-    $identityKey = Get-PreviewPairReviewerIdentityKey -PreviewPair $previewPair
+    $identityKey = Get-ReviewerPreviewCardKey -PreviewPair $previewPair
     if (-not $seen.Add($identityKey)) {
       continue
     }
@@ -609,34 +715,17 @@ function Get-ReportPreviewPairs {
     $summaryAttrs = [string]$match.Groups['summaryAttrs'].Value
     $summaryText = ConvertFrom-HtmlText -Value ([string]$match.Groups['summary'].Value)
     $tableHtml = [string]$match.Groups['table'].Value
-    $captionMatches = [regex]::Matches($tableHtml, '(?is)<td class="compared-vi-image-caption">(?<caption>.*?)</td>')
-    $captions = @(
-      $captionMatches |
-        ForEach-Object { ConvertFrom-HtmlText -Value ([string]$_.Groups['caption'].Value) } |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )
-    $imageSources = @(
-      [regex]::Matches($tableHtml, '(?is)<img[^>]+src="(?<src>[^"]+)"') |
-        ForEach-Object { Get-OptionalString -Value ([string]$_.Groups['src'].Value) } |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )
-    if ($imageSources.Count -lt 2) {
-      continue
-    }
-
-    $baseImagePath = Resolve-ExistingPath -Path $imageSources[0] -BasePath $reportDirectory -PathType Leaf
-    $headImagePath = Resolve-ExistingPath -Path $imageSources[1] -BasePath $reportDirectory -PathType Leaf
-    if ($null -eq $baseImagePath -or $null -eq $headImagePath) {
+    $surfaceCandidates = @(Get-ReportPreviewSurfaceCandidates -TableHtml $tableHtml -ReportDirectory $reportDirectory)
+    $selectedSurface = Select-PreviewSurfaceCandidateForMode -Candidates $surfaceCandidates -Mode $Mode
+    if ($null -eq $selectedSurface) {
       continue
     }
 
     $sectionKind = if ($summaryAttrs -match 'difference-heading') { 'overview' } else { 'detail' }
-    $label = if ($sectionKind -eq 'overview' -and $captions.Count -gt 0) {
-      $captions[0]
+    $label = if (-not [string]::IsNullOrWhiteSpace([string]$selectedSurface.label)) {
+      [string]$selectedSurface.label
     } elseif (-not [string]::IsNullOrWhiteSpace($summaryText)) {
       $summaryText
-    } elseif ($captions.Count -gt 0) {
-      $captions[0]
     } else {
       'Preview'
     }
@@ -660,12 +749,12 @@ function Get-ReportPreviewPairs {
         sectionOrdinal = $sectionOrdinal
         label = $label
         reportHtmlRelativePath = $reportHtmlRelativePath
-        baseImageRelativePath = Resolve-RelativePath -Path $baseImagePath -ResultsRoot $ResultsRoot
-        headImageRelativePath = Resolve-RelativePath -Path $headImagePath -ResultsRoot $ResultsRoot
-        baseByteLength = [int64](Get-Item -LiteralPath $baseImagePath).Length
-        headByteLength = [int64](Get-Item -LiteralPath $headImagePath).Length
-        baseImageSha256 = Get-FileSha256Hex -Path $baseImagePath
-        headImageSha256 = Get-FileSha256Hex -Path $headImagePath
+        baseImageRelativePath = Resolve-RelativePath -Path ([string]$selectedSurface.baseImagePath) -ResultsRoot $ResultsRoot
+        headImageRelativePath = Resolve-RelativePath -Path ([string]$selectedSurface.headImagePath) -ResultsRoot $ResultsRoot
+        baseByteLength = [int64](Get-Item -LiteralPath ([string]$selectedSurface.baseImagePath)).Length
+        headByteLength = [int64](Get-Item -LiteralPath ([string]$selectedSurface.headImagePath)).Length
+        baseImageSha256 = Get-FileSha256Hex -Path ([string]$selectedSurface.baseImagePath)
+        headImageSha256 = Get-FileSha256Hex -Path ([string]$selectedSurface.headImagePath)
         sortKey = $sortKey
       }) | Out-Null
 

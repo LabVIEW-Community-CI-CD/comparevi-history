@@ -20,9 +20,10 @@ function New-PreviewReportFixture {
   $artifactDir = Join-Path $ModeRoot ('Demo.vi-{0:D3}-artifacts' -f $ComparisonIndex)
   $reportFilesDir = Join-Path $artifactDir 'compare-report_files'
   New-Item -ItemType Directory -Path $reportFilesDir -Force | Out-Null
-  foreach ($imageName in @('fp_1.png', 'fp_2.png')) {
-    [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir $imageName), @(0xCA, 0xFE, 0xBA, 0xBE))
-  }
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'fp_1.png'), @(0xCA, 0xFE, 0xBA, 0xBE))
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'fp_2.png'), @(0xBE, 0xBA, 0xFE, 0xCA))
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'bd_1.png'), @(0x0B, 0xD1, 0xA6, 0x01))
+  [System.IO.File]::WriteAllBytes((Join-Path $reportFilesDir 'bd_2.png'), @(0x10, 0x0C, 0xD1, 0xA6))
 
   $reportHtmlPath = Join-Path $artifactDir 'compare-report.html'
   @'
@@ -32,7 +33,9 @@ function New-PreviewReportFixture {
 <div class="compared-VIs">
 <details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/base/Base.vi</div><div class="dropdown-right">Second VI: /compare/head/Head.vi</div></summary>
 <table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
-<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr></table></details>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr>
+<tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Block Diagram Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/bd_2.png"/></td></tr></table></details>
 </div>
 </body>
 </html>
@@ -128,10 +131,10 @@ try {
   if ($receipt.schema -ne 'comparevi-history/pr-preview-manifest@v1') {
     throw 'Preview manifest schema mismatch.'
   }
-  if ($receipt.summary.previewPairCount -ne 6) {
-    throw 'Expected six preview pairs from the PR31-shaped fixture.'
+  if ($receipt.summary.previewPairCount -ne 4) {
+    throw 'Expected four raw preview pairs from the PR31-shaped fixture.'
   }
-  if ($receipt.summary.rawPreviewPairCount -ne 6 -or $receipt.summary.reviewerPreviewPairCount -ne 2) {
+  if ($receipt.summary.rawPreviewPairCount -ne 4 -or $receipt.summary.reviewerPreviewPairCount -ne 2) {
     throw 'Expected explicit raw and reviewer preview pair counts in the preview manifest summary.'
   }
   if ($receipt.summary.reviewerPreviewCardCount -ne 2 -or
@@ -157,7 +160,7 @@ try {
     $receipt.summary.indexCardSelectionPolicy -ne 'reviewer-multisurface@v1') {
     throw 'Index preview card summary mismatch.'
   }
-  if ($receipt.targets.Count -ne 1 -or $receipt.targets[0].previewPairCount -ne 6) {
+  if ($receipt.targets.Count -ne 1 -or $receipt.targets[0].previewPairCount -ne 4) {
     throw 'Target preview pair count mismatch.'
   }
 
@@ -206,7 +209,7 @@ try {
     throw 'Reviewer cards should use reviewer-facing surface labels.'
   }
   if ($receipt.commentPreviewCards[0].surfaces[0].baseImageRelativePath -ne 'targets/001-demo/history/front-panel/Demo.vi-001-artifacts/compare-report_files/fp_1.png' -or
-    $receipt.commentPreviewCards[0].surfaces[1].baseImageRelativePath -ne 'targets/001-demo/history/block-diagram/Demo.vi-001-artifacts/compare-report_files/fp_1.png') {
+    $receipt.commentPreviewCards[0].surfaces[1].baseImageRelativePath -ne 'targets/001-demo/history/block-diagram/Demo.vi-001-artifacts/compare-report_files/bd_1.png') {
     throw 'Reviewer cards should preserve both front-panel and block-diagram image paths for the same history pair.'
   }
 
@@ -214,7 +217,7 @@ try {
   foreach ($requiredKey in @(
       'preview-manifest-path=',
       'preview-pair-count=2',
-      'raw-preview-pair-count=6',
+      'raw-preview-pair-count=4',
       'reviewer-preview-pair-count=2',
       'comment-preview-pair-count=2',
       'comment-preview-pair-omitted-count=0',

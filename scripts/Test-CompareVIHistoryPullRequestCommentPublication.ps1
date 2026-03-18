@@ -28,13 +28,13 @@ function New-PreviewPair {
     }
     sectionKind = 'overview'
     sectionOrdinal = 0
-    label = 'Front Panel Overview'
+    label = if ($Mode -eq 'block-diagram') { 'Block Diagram Overview' } else { 'Front Panel Overview' }
     reportHtmlRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report.html' -f $Mode, $ComparisonIndex)
-    baseImageRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report_files/fp_1.png' -f $Mode, $ComparisonIndex)
-    headImageRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report_files/fp_2.png' -f $Mode, $ComparisonIndex)
+    baseImageRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report_files/{2}_1.png' -f $Mode, $ComparisonIndex, $(if ($Mode -eq 'block-diagram') { 'bd' } else { 'fp' }))
+    headImageRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report_files/{2}_2.png' -f $Mode, $ComparisonIndex, $(if ($Mode -eq 'block-diagram') { 'bd' } else { 'fp' }))
     baseByteLength = 4
     headByteLength = 4
-    sortKey = ('Tooling/demo/Demo.vi|{0}|{1:D4}|00|0000|front-panel-overview' -f $Mode, $ComparisonIndex)
+    sortKey = ('Tooling/demo/Demo.vi|{0}|{1:D4}|00|0000|{2}' -f $Mode, $ComparisonIndex, $(if ($Mode -eq 'block-diagram') { 'block-diagram-overview' } else { 'front-panel-overview' }))
   }
 }
 
@@ -97,12 +97,9 @@ function New-PublicationArtifactZip {
   $previewPairs = @(
     (New-PreviewPair -Mode 'front-panel' -ComparisonIndex 1),
     (New-PreviewPair -Mode 'block-diagram' -ComparisonIndex 1),
-    (New-PreviewPair -Mode 'attributes' -ComparisonIndex 1),
     (New-PreviewPair -Mode 'front-panel' -ComparisonIndex 2),
-    (New-PreviewPair -Mode 'block-diagram' -ComparisonIndex 2),
-    (New-PreviewPair -Mode 'attributes' -ComparisonIndex 2)
+    (New-PreviewPair -Mode 'block-diagram' -ComparisonIndex 2)
   )
-  $commentPreviewPairs = @($previewPairs | Select-Object -First 4)
   $commentPreviewCards = @(
     (New-PreviewCard -PreviewPairs $previewPairs -ComparisonIndex 1),
     (New-PreviewCard -PreviewPairs $previewPairs -ComparisonIndex 2)
@@ -160,9 +157,9 @@ function New-PublicationArtifactZip {
         workflowRunUrl = 'https://github.com/example/repo/actions/runs/321'
         artifactName = 'comparevi-history-pr-diagnostics-321'
       }
-      summary = [ordered]@{
-        finalStatus = $FinalStatus
-        finalReason = 'completed'
+        summary = [ordered]@{
+          finalStatus = $FinalStatus
+          finalReason = 'completed'
         changedViCount = 1
         eligibleChangedViCount = 1
         excludedViCount = 0
@@ -173,8 +170,8 @@ function New-PublicationArtifactZip {
         failedTargetCount = 0
         totalProcessed = 5
         totalDiffs = 2
-        previewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 6 } else { 0 })
-        rawPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 6 } else { 0 })
+        previewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
+        rawPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
         reviewerPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
         reviewerPreviewCardCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
         reviewerPreviewSurfaceCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
@@ -212,8 +209,8 @@ function New-PublicationArtifactZip {
         resultsDir = 'C:/results'
         summary = [ordered]@{
           targetCount = 1
-          previewPairCount = 6
-          rawPreviewPairCount = 6
+          previewPairCount = 4
+          rawPreviewPairCount = 4
           reviewerPreviewPairCount = 2
           reviewerPreviewCardCount = 2
           reviewerPreviewSurfaceCount = 4
@@ -238,7 +235,7 @@ function New-PublicationArtifactZip {
             targetPath = 'Tooling/demo/Demo.vi'
             finalStatus = 'succeeded'
             finalReason = 'completed'
-            previewPairCount = 6
+            previewPairCount = 4
             previewPairs = $previewPairs
           }
         )
