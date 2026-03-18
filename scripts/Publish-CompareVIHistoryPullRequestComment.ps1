@@ -8,6 +8,8 @@ param(
   [string]$ArtifactName,
   [string]$ResultsDir = 'tests/results/pr-diagnostics/publish',
   [string]$StickyMarker = '<!-- comparevi-history:pull-request-diagnostics -->',
+  [string]$PreviewBranch = 'comparevi-history-pr-previews',
+  [string]$PreviewRoot = '.comparevi-history/pr-diagnostics/previews',
   [string]$GitHubOutputPath,
   [string]$StepSummaryPath
 )
@@ -72,6 +74,37 @@ function Read-JsonFile {
   return $raw | ConvertFrom-Json -Depth 100
 }
 
+function Get-NestedValue {
+  param(
+    [AllowNull()]
+    [object]$Object,
+    [Parameter(Mandatory = $true)]
+    [string[]]$Path,
+    [AllowNull()]
+    $Default = $null
+  )
+
+  $current = $Object
+  foreach ($segment in $Path) {
+    if ($null -eq $current) {
+      return $Default
+    }
+
+    $property = $current.PSObject.Properties[$segment]
+    if ($null -eq $property) {
+      return $Default
+    }
+
+    $current = $property.Value
+  }
+
+  if ($null -eq $current) {
+    return $Default
+  }
+
+  return $current
+}
+
 function Get-GitHubHeaders {
   return @{
     Accept = 'application/vnd.github+json'
@@ -104,6 +137,29 @@ function Invoke-GitHubJson {
   return Invoke-RestMethod @invokeArgs
 }
 
+function Invoke-GitHubJsonOptional {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Method,
+    [Parameter(Mandatory = $true)]
+    [string]$Uri,
+    [AllowNull()]
+    $Body = $null
+  )
+
+  try {
+    return Invoke-GitHubJson -Method $Method -Uri $Uri -Body $Body
+  } catch {
+    $responseProperty = $_.Exception.PSObject.Properties['Response']
+    $response = if ($null -eq $responseProperty) { $null } else { $responseProperty.Value }
+    if ($null -ne $response -and [int]$response.StatusCode -eq 404) {
+      return $null
+    }
+
+    throw
+  }
+}
+
 function Find-Artifact {
   param(
     [Parameter(Mandatory = $true)]
@@ -123,6 +179,339 @@ function Find-Artifact {
   }
 
   return @($artifacts | Where-Object { [string]$_.name -like "$RequestedArtifactName*" } | Select-Object -First 1)
+}
+
+function ConvertTo-ObjectArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [string] -or $Value -isnot [System.Collections.IEnumerable]) {
+    return @($Value)
+  }
+
+  $items = New-Object System.Collections.Generic.List[object]
+  foreach ($item in ([System.Collections.IEnumerable]$Value)) {
+    $items.Add($item) | Out-Null
+  }
+
+  return @($items | ForEach-Object { $_ })
+}
+
+function ConvertTo-Slug {
+  param(
+    [AllowNull()]
+    [string]$Value,
+    [string]$Fallback = 'preview'
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $Fallback
+  }
+
+  $slug = $Value.ToLowerInvariant() -replace '[^a-z0-9]+', '-'
+  $slug = $slug.Trim('-')
+  if ([string]::IsNullOrWhiteSpace($slug)) {
+    return $Fallback
+  }
+
+  return $slug
+}
+
+function ConvertTo-HtmlText {
+  param([AllowNull()][string]$Value)
+
+  if ($null -eq $Value) {
+    return ''
+  }
+
+  return [System.Net.WebUtility]::HtmlEncode($Value)
+}
+
+function ConvertTo-GitHubContentPath {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  return (($Path -split '[\\/]' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) | ForEach-Object {
+      [uri]::EscapeDataString($_)
+    }) -join '/'
+}
+
+function Get-RepositoryInfo {
+  param([Parameter(Mandatory = $true)][string]$RepositorySlug)
+
+  return Invoke-GitHubJson -Method Get -Uri "https://api.github.com/repos/$RepositorySlug"
+}
+
+function Get-GitRef {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName
+  )
+
+  $encodedRef = ConvertTo-GitHubContentPath -Path ("heads/$BranchName")
+  return Invoke-GitHubJsonOptional -Method Get -Uri "https://api.github.com/repos/$RepositorySlug/git/ref/$encodedRef"
+}
+
+function Ensure-PreviewBranch {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName
+  )
+
+  $existing = Get-GitRef -RepositorySlug $RepositorySlug -BranchName $BranchName
+  if ($null -ne $existing) {
+    return [string]$existing.object.sha
+  }
+
+  $repositoryInfo = Get-RepositoryInfo -RepositorySlug $RepositorySlug
+  $defaultBranch = [string]$repositoryInfo.default_branch
+  if ([string]::IsNullOrWhiteSpace($defaultBranch)) {
+    throw "Repository '$RepositorySlug' did not declare a default branch."
+  }
+
+  $defaultRef = Get-GitRef -RepositorySlug $RepositorySlug -BranchName $defaultBranch
+  if ($null -eq $defaultRef) {
+    throw "Failed to resolve default branch '$defaultBranch' for repository '$RepositorySlug'."
+  }
+
+  $created = Invoke-GitHubJson -Method Post -Uri "https://api.github.com/repos/$RepositorySlug/git/refs" -Body @{
+    ref = "refs/heads/$BranchName"
+    sha = [string]$defaultRef.object.sha
+  }
+
+  return [string]$created.object.sha
+}
+
+function Get-RepositoryContent {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName,
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $encodedPath = ConvertTo-GitHubContentPath -Path $Path
+  $uri = "https://api.github.com/repos/$RepositorySlug/contents/${encodedPath}?ref=$([uri]::EscapeDataString($BranchName))"
+  return Invoke-GitHubJsonOptional -Method Get -Uri $uri
+}
+
+function Set-RepositoryContent {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName,
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [byte[]]$Bytes,
+    [Parameter(Mandatory = $true)]
+    [string]$Message
+  )
+
+  $existing = Get-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $Path
+  $encodedPath = ConvertTo-GitHubContentPath -Path $Path
+  $body = [ordered]@{
+    message = $Message
+    content = [Convert]::ToBase64String($Bytes)
+    branch = $BranchName
+  }
+  if ($null -ne $existing) {
+    $body.sha = [string]$existing.sha
+  }
+
+  return Invoke-GitHubJson -Method Put -Uri "https://api.github.com/repos/$RepositorySlug/contents/$encodedPath" -Body $body
+}
+
+function ConvertTo-RawGitHubUrl {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName,
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  return 'https://raw.githubusercontent.com/{0}/{1}/{2}' -f $RepositorySlug, $BranchName, ($Path -replace '\\', '/')
+}
+
+function ConvertTo-BlobGitHubUrl {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName,
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  return 'https://github.com/{0}/blob/{1}/{2}' -f $RepositorySlug, $BranchName, ($Path -replace '\\', '/')
+}
+
+function New-CommentPreviewMarkdown {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$PreviewPairs,
+    [AllowNull()]
+    [string]$RunUrl
+  )
+
+  if ($PreviewPairs.Count -eq 0) {
+    return ''
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('### Preview gallery') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($previewPair in $PreviewPairs) {
+    $title = '{0} | {1} | {2}' -f [string]$previewPair.targetPath, [string]$previewPair.mode, [string]$previewPair.label
+    $baseUrl = [string]$previewPair.baseImageUrl
+    $headUrl = [string]$previewPair.headImageUrl
+    $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
+    $lines.Add(('#### `{0}`' -f $title)) | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('| Base | Head |') | Out-Null
+    $lines.Add('| --- | --- |') | Out-Null
+    $lines.Add(('| [![{0} base]({1})]({3}) | [![{0} head]({2})]({3}) |' -f $title, $baseUrl, $headUrl, $linkUrl)) | Out-Null
+    $lines.Add('') | Out-Null
+  }
+
+  return $lines -join "`n"
+}
+
+function Insert-PreviewGallery {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$CommentBody,
+    [Parameter(Mandatory = $true)]
+    [string]$PreviewMarkdown
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PreviewMarkdown)) {
+    return $CommentBody
+  }
+
+  $footer = 'The full unsuppressed history suite lives in the uploaded artifact bundle. Use the workflow run entry above, download the artifact, and start at `index.html` or `index.md`.'
+  if ($CommentBody.Contains($footer)) {
+    return $CommentBody.Replace($footer, ($PreviewMarkdown + "`n`n" + $footer))
+  }
+
+  return ($CommentBody.TrimEnd() + "`n`n" + $PreviewMarkdown + "`n")
+}
+
+function Publish-CommentPreviewSurface {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug,
+    [Parameter(Mandatory = $true)]
+    [string]$BranchName,
+    [Parameter(Mandatory = $true)]
+    [string]$RootPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ExecutionRunId,
+    [Parameter(Mandatory = $true)]
+    [string]$ArtifactRoot,
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewManifest
+  )
+
+  Ensure-PreviewBranch -RepositorySlug $RepositorySlug -BranchName $BranchName | Out-Null
+
+  $prNumber = [int](Get-OptionalString -Value (Get-NestedValue -Object $PreviewManifest -Path @('pullRequest', 'number') -Default 0))
+  $previewPairs = @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $PreviewManifest -Path @('commentPreviewPairs') -Default @()))
+  if ($previewPairs.Count -eq 0) {
+    return [ordered]@{
+      status = 'not-required'
+      reason = 'no-comment-preview-pairs'
+      branch = $BranchName
+      root = $RootPath
+      manifestPath = $null
+      manifestUrl = $null
+      previewPairCount = 0
+      publishedImageCount = 0
+      commentPreviewPairs = @()
+    }
+  }
+
+  $runRoot = '{0}/pull-request-{1}/workflow-run-{2}' -f $RootPath.TrimEnd('/'), ('{0:D5}' -f $prNumber), $ExecutionRunId
+  $publishedPreviewPairs = New-Object System.Collections.Generic.List[object]
+  $publishedImageCount = 0
+  $pairOrdinal = 1
+  foreach ($previewPair in $previewPairs) {
+    $pairRoot = '{0}/{1}-{2}' -f $runRoot, ('{0:D3}' -f $pairOrdinal), (ConvertTo-Slug -Value ([string]$previewPair.label) -Fallback 'preview')
+    $baseRelativePath = [string]$previewPair.baseImageRelativePath
+    $headRelativePath = [string]$previewPair.headImageRelativePath
+    $baseImagePath = Join-Path $ArtifactRoot ($baseRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $headImagePath = Join-Path $ArtifactRoot ($headRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $baseImagePath -PathType Leaf)) {
+      throw "Preview base image was missing from the downloaded artifact: $baseRelativePath"
+    }
+    if (-not (Test-Path -LiteralPath $headImagePath -PathType Leaf)) {
+      throw "Preview head image was missing from the downloaded artifact: $headRelativePath"
+    }
+
+    $baseExtension = [System.IO.Path]::GetExtension($baseImagePath)
+    $headExtension = [System.IO.Path]::GetExtension($headImagePath)
+    $basePublishPath = '{0}/base{1}' -f $pairRoot, $baseExtension
+    $headPublishPath = '{0}/head{1}' -f $pairRoot, $headExtension
+
+    $messageBase = 'comparevi-history: publish PR preview images for run {0}' -f $ExecutionRunId
+    Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath -Bytes ([System.IO.File]::ReadAllBytes($baseImagePath)) -Message $messageBase | Out-Null
+    Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $headPublishPath -Bytes ([System.IO.File]::ReadAllBytes($headImagePath)) -Message $messageBase | Out-Null
+    $publishedImageCount += 2
+
+    $publishedPreviewPairs.Add([ordered]@{
+        targetId = [string]$previewPair.targetId
+        targetPath = [string]$previewPair.targetPath
+        mode = [string]$previewPair.mode
+        label = [string]$previewPair.label
+        sectionKind = [string]$previewPair.sectionKind
+        comparison = $previewPair.comparison
+        reportHtmlRelativePath = Get-OptionalString -Value $previewPair.reportHtmlRelativePath
+        baseImagePath = $basePublishPath
+        baseImageUrl = ConvertTo-RawGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath
+        headImagePath = $headPublishPath
+        headImageUrl = ConvertTo-RawGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $headPublishPath
+      }) | Out-Null
+
+    $pairOrdinal += 1
+  }
+
+  $publishedManifestPath = "$runRoot/preview-manifest.json"
+  $publishedManifest = [ordered]@{
+    schema = 'comparevi-history/pr-comment-preview-publication@v1'
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    repository = $RepositorySlug
+    branch = $BranchName
+    root = $runRoot
+    previewPairs = @($publishedPreviewPairs | ForEach-Object { $_ })
+  }
+  $publishedManifestBytes = [System.Text.Encoding]::UTF8.GetBytes(($publishedManifest | ConvertTo-Json -Depth 32))
+  Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $publishedManifestPath -Bytes $publishedManifestBytes -Message ('comparevi-history: publish PR preview manifest for run {0}' -f $ExecutionRunId) | Out-Null
+
+  return [ordered]@{
+    status = 'succeeded'
+    reason = 'preview-images-published'
+    branch = $BranchName
+    root = $runRoot
+    manifestPath = $publishedManifestPath
+    manifestUrl = ConvertTo-BlobGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $publishedManifestPath
+    previewPairCount = $publishedPreviewPairs.Count
+    publishedImageCount = $publishedImageCount
+    commentPreviewPairs = @($publishedPreviewPairs | ForEach-Object { $_ })
+  }
 }
 
 function Get-CommentPages {
@@ -180,6 +569,17 @@ $prRunPath = $null
 $commentBodyPath = $null
 $pullRequestNumber = $null
 $workflowRunUrl = $null
+$previewPublication = [ordered]@{
+  status = 'not-required'
+  reason = 'preview-manifest-not-present'
+  branch = $PreviewBranch
+  root = $PreviewRoot
+  manifestPath = $null
+  manifestUrl = $null
+  previewPairCount = 0
+  publishedImageCount = 0
+  commentPreviewPairs = @()
+}
 
 try {
   $artifact = Find-Artifact -RepositorySlug $Repository -RunId $WorkflowRunId -RequestedArtifactName $effectiveArtifactName
@@ -218,6 +618,34 @@ try {
     throw 'PR run receipt did not declare pullRequest.number.'
   }
   $workflowRunUrl = Get-OptionalString -Value $prRun.outputs.workflowRunUrl
+
+  $previewManifestFile = Get-ChildItem -LiteralPath $artifactRoot -Recurse -Filter 'pr-preview-manifest.json' | Select-Object -First 1
+  if ($previewManifestFile) {
+      $previewManifest = Read-JsonFile -Path $previewManifestFile.FullName
+      if ([string]$previewManifest.schema -ne 'comparevi-history/pr-preview-manifest@v1') {
+        throw "Unsupported preview manifest schema in '$($previewManifestFile.FullName)': $($previewManifest.schema)"
+      }
+
+      $previewManifest | Add-Member -NotePropertyName pullRequest -NotePropertyValue $prRun.pullRequest -Force
+      if ([int](Get-NestedValue -Object $previewManifest -Path @('summary', 'commentPreviewPairCount') -Default 0) -gt 0) {
+        $previewPublication = Publish-CommentPreviewSurface -RepositorySlug $Repository -BranchName $PreviewBranch -RootPath $PreviewRoot -ExecutionRunId $WorkflowRunId -ArtifactRoot $artifactRoot -PreviewManifest $previewManifest
+        $previewMarkdown = New-CommentPreviewMarkdown -PreviewPairs @($previewPublication.commentPreviewPairs | ForEach-Object { $_ }) -RunUrl $workflowRunUrl
+        $commentBody = Insert-PreviewGallery -CommentBody $commentBody -PreviewMarkdown $previewMarkdown
+        $commentBody | Set-Content -LiteralPath $commentBodyPath -Encoding utf8
+      } else {
+        $previewPublication = [ordered]@{
+        status = 'not-required'
+        reason = 'no-comment-preview-pairs'
+        branch = $PreviewBranch
+        root = $PreviewRoot
+        manifestPath = $null
+        manifestUrl = $null
+        previewPairCount = 0
+        publishedImageCount = 0
+        commentPreviewPairs = @()
+      }
+    }
+  }
 
   $existingComments = Get-CommentPages -RepositorySlug $Repository -PullRequestNumber $pullRequestNumber
   $existingComment = @(
@@ -268,6 +696,7 @@ $receipt = [ordered]@{
   commentBodyPath = $commentBodyPath
   pullRequestNumber = if ([string]::IsNullOrWhiteSpace($pullRequestNumber)) { $null } else { [int]$pullRequestNumber }
   workflowRunUrl = if ([string]::IsNullOrWhiteSpace($workflowRunUrl)) { $null } else { $workflowRunUrl }
+  previewPublication = $previewPublication
   summary = [ordered]@{
     status = $status
     reason = $reason
@@ -284,6 +713,11 @@ Write-ActionOutput -Key 'publication-reason' -Value $reason
 Write-ActionOutput -Key 'comment-id' -Value $(if ([string]::IsNullOrWhiteSpace($commentId)) { '' } else { $commentId })
 Write-ActionOutput -Key 'comment-url' -Value $(if ([string]::IsNullOrWhiteSpace($commentUrl)) { '' } else { $commentUrl })
 Write-ActionOutput -Key 'artifact-name' -Value $effectiveArtifactName
+Write-ActionOutput -Key 'preview-publication-status' -Value ([string]$previewPublication.status)
+Write-ActionOutput -Key 'preview-publication-reason' -Value ([string]$previewPublication.reason)
+Write-ActionOutput -Key 'preview-manifest-url' -Value $(if ([string]::IsNullOrWhiteSpace([string]$previewPublication.manifestUrl)) { '' } else { [string]$previewPublication.manifestUrl })
+Write-ActionOutput -Key 'preview-pair-count' -Value ([string]$previewPublication.previewPairCount)
+Write-ActionOutput -Key 'published-image-count' -Value ([string]$previewPublication.publishedImageCount)
 
 if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
   @(
@@ -296,6 +730,11 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Comment action: `{0}`' -f $commentAction)
     ('- Comment id: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($commentId)) { 'n/a' } else { $commentId }))
     ('- Comment URL: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($commentUrl)) { 'n/a' } else { $commentUrl }))
+    ('- Preview publication status: `{0}`' -f [string]$previewPublication.status)
+    ('- Preview publication reason: `{0}`' -f [string]$previewPublication.reason)
+    ('- Preview publication manifest: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$previewPublication.manifestUrl)) { 'n/a' } else { [string]$previewPublication.manifestUrl }))
+    ('- Published preview pairs: `{0}`' -f [string]$previewPublication.previewPairCount)
+    ('- Published preview images: `{0}`' -f [string]$previewPublication.publishedImageCount)
     ('- Receipt: `{0}`' -f $receiptPath)
   ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append
 }

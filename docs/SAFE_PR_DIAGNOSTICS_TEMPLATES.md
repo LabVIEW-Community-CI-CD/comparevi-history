@@ -68,6 +68,8 @@ Consumer repositories should not contain:
 - The standard dynamic PR policy uses `discovery.selectionMode = dynamic-paths`.
 - Pair that execution template with the automatic changed-VI publication template so a privileged `workflow_run`
   publisher can create or update one sticky comment from the prepared `pr-comment.md` artifact.
+- The publication template also needs `contents: write` because it publishes a bounded preview-image surface to a
+  repo-owned branch before updating the sticky comment.
 - Add the agent-canary evaluation template only when you want one long-lived draft PR to keep proving the full
   execution plus publication surface through a dedicated same-repo canary lane.
 - Use the legacy automatic PR discovery template when you still want catalog-matched target ids to gate the automatic PR
@@ -124,7 +126,7 @@ Consumer repositories should not contain:
   standard public PR surface for repos that want dynamic-path changed-VI execution.
 - The automatic changed-VI publication template uses the reusable workflow surface
   `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-publish.yml@v1`. It exists so
-  `workflow_run` can publish the sticky comment with `actions: read`, `contents: read`, and `pull-requests: write`
+  `workflow_run` can publish the sticky comment with `actions: read`, `contents: write`, and `pull-requests: write`
   without widening the execution workflow token.
 - The agent-canary evaluation template uses the reusable workflow surface
   `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-canary-evaluate.yml@v1`. It
@@ -149,8 +151,11 @@ Consumer repositories should not contain:
   `comparevi-history/pr-policy@v2` when a repo wants dynamic-path discovery, `hosted-auto` fork execution, and the
   standard `artifact-index` reviewer surface under source control.
 - The automatic changed-VI publication template expects the execution artifact to contain `pr-run.json` and
-  `pr-comment.md`, then updates one sticky comment identified by the stable marker
+  `pr-comment.md`, plus `pr-preview-manifest.json` when preview images exist, then updates one sticky comment
+  identified by the stable marker
   `<!-- comparevi-history:pull-request-diagnostics -->`.
+- The sticky comment stays bounded. The full unsuppressed evidence still lives in the execution artifact, while the
+  publisher can surface a small preview gallery by writing selected images to a repo-owned preview branch.
 - The agent-canary evaluation template expects the publication artifact to contain `pr-comment-publication.json` plus
   the expanded execution artifact with `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`.
 - The agent-canary evaluation template should not try to predict a publication artifact name from the publisher

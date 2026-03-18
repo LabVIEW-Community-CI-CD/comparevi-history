@@ -28,7 +28,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
   pull-requests: write
 
 concurrency:
@@ -46,6 +46,11 @@ jobs:
       comment-id: ${{ steps.publish.outputs['comment-id'] }}
       comment-url: ${{ steps.publish.outputs['comment-url'] }}
       artifact-name: ${{ steps.publish.outputs['artifact-name'] }}
+      preview-publication-status: ${{ steps.publish.outputs['preview-publication-status'] }}
+      preview-publication-reason: ${{ steps.publish.outputs['preview-publication-reason'] }}
+      preview-manifest-url: ${{ steps.publish.outputs['preview-manifest-url'] }}
+      preview-pair-count: ${{ steps.publish.outputs['preview-pair-count'] }}
+      published-image-count: ${{ steps.publish.outputs['published-image-count'] }}
     steps:
       - name: Resolve workflow defaults
         id: defaults

@@ -43,6 +43,8 @@ Legacy direct invocation remains available for maintainers:
   diagnostics that operate on raw repo-relative paths without a checked-in target catalog.
 - Emits `comparevi-history/pr-run@v2` as the aggregate pull-request diagnostics receipt for the dynamic changed-VI PR
   surface, including `selectedTargets`, artifact index paths, and sticky-comment publication inputs.
+- Emits `comparevi-history/pr-preview-manifest@v1` as the normalized preview-image manifest for dynamic PR diagnostics,
+  index galleries, and sticky-comment preview publication.
 - Emits `comparevi-history/pr-comment-publication@v1` as the `workflow_run` publication receipt for sticky PR comments.
 - Emits `comparevi-history/agent-canary-policy@v1` as the repo-owned governance contract for same-repo canary proof
   lanes that exercise the PR diagnostics surface without touching production VIs.
@@ -161,6 +163,7 @@ Automatic pull-request diagnostics workflows emit additive PR-scope receipts alo
 - `changed-vi-discovery.json` (`comparevi-history/changed-vi-discovery@v1`)
 - `pr-target-runs-manifest.json`
 - `pr-run.json` (`comparevi-history/pr-run@v1`)
+- `pr-preview-manifest.json` (`comparevi-history/pr-preview-manifest@v1`)
 - `pr-comment.md`
 - `pr-step-summary.md`
 
@@ -243,10 +246,14 @@ The standard changed-VI PR surface is intentionally policy-driven and consumer-t
 - the execution workflow keeps `NoisePolicy=include` so artifact-hosted evidence is unsuppressed
 - each selected target reuses the existing `request.json`, `public-run.json`, `shared-evidence.json`, and
   reviewer-facing artifact paths without inventing a second backend execution contract
-- the execution workflow aggregates those per-target runs into `pr-run.json`, `pr-comment.md`, `pr-step-summary.md`,
-  `index.md`, and `index.html`
+- the execution workflow aggregates those per-target runs into `pr-run.json`, `pr-preview-manifest.json`,
+  `pr-comment.md`, `pr-step-summary.md`, `index.md`, and `index.html`
+- the aggregate index surfaces are image-first and can show bounded base/head previews from the real compare-report
+  PNGs already produced by the backend
 - the publication workflow runs on `workflow_run`, downloads the execution artifact bundle, and creates or updates one
   sticky PR comment without checking out or executing candidate PR code
+- when preview pairs exist, the publication workflow writes a bounded preview-image surface to a repo-owned branch and
+  embeds those previews in the sticky PR comment as the reviewer-facing entrypoint
 - same-repo pull requests can auto-run immediately
 - fork pull requests can auto-run on the read-only `pull_request` execution workflow and then publish the sticky PR
   comment from the privileged `workflow_run` publisher
@@ -254,6 +261,7 @@ The standard changed-VI PR surface is intentionally policy-driven and consumer-t
 This keeps consumer repositories thin while giving reviewers one stable entrypoint:
 
 - the PR comment is the sticky entrypoint
+- the sticky PR comment can include a bounded base/head preview gallery for selected comparisons
 - the full unsuppressed review surface stays in the artifact-hosted `index.md` and `index.html`
 - execution remains bundle-backed and platform-owned
 - consumer repositories own only the checked-in policy file, branch trigger wiring, and permissions policy
@@ -467,8 +475,9 @@ policy there:
 - The standard dynamic changed-VI PR surface splits execution and publication:
   - `pull_request` execution runs with read-only permissions, resolves the trusted base checkout plus candidate head
     checkout, and uploads the full artifact-hosted review surface
-  - `workflow_run` publication runs with `actions: read`, `contents: read`, and `pull-requests: write`, downloads the
-    execution artifact, and updates one sticky PR comment without checking out or executing candidate PR code
+  - `workflow_run` publication runs with `actions: read`, `contents: write`, and `pull-requests: write`, downloads the
+    execution artifact, publishes bounded preview images to a repo-owned branch, and updates one sticky PR comment
+    without checking out or executing candidate PR code
 - That split keeps fork PR support compatible with GitHub's read-only `pull_request` token model while preserving a
   reviewer-facing sticky PR comment through the privileged publisher.
 - Public reviewer surfaces accept only explicit scoped modes: `attributes`, `front-panel`, and `block-diagram`.

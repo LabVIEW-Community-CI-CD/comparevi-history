@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-pr-preview-manifest-v1.schema.json",
+  "title": "comparevi-history pull request preview manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "targetRunsManifestPath",
+    "resultsDir",
+    "summary",
+    "targets",
+    "previewPairs",
+    "commentPreviewPairs",
+    "indexPreviewPairs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/pr-preview-manifest@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "targetRunsManifestPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetCount",
+        "previewPairCount",
+        "commentPreviewPairCap",
+        "commentPreviewPairCount",
+        "commentPreviewPairOmittedCount",
+        "indexPreviewPairCap",
+        "indexPreviewPairCount",
+        "indexPreviewPairOmittedCount"
+      ],
+      "properties": {
+        "targetCount": { "type": "integer", "minimum": 0 },
+        "previewPairCount": { "type": "integer", "minimum": 0 },
+        "commentPreviewPairCap": { "type": "integer", "minimum": 0 },
+        "commentPreviewPairCount": { "type": "integer", "minimum": 0 },
+        "commentPreviewPairOmittedCount": { "type": "integer", "minimum": 0 },
+        "indexPreviewPairCap": { "type": "integer", "minimum": 0 },
+        "indexPreviewPairCount": { "type": "integer", "minimum": 0 },
+        "indexPreviewPairOmittedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/target" }
+    },
+    "previewPairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewPair" }
+    },
+    "commentPreviewPairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewPair" }
+    },
+    "indexPreviewPairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewPair" }
+    }
+  },
+  "$defs": {
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "baseRef",
+        "headRef"
+      ],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "baseRef": { "type": ["string", "null"] },
+        "headRef": { "type": ["string", "null"] }
+      }
+    },
+    "previewPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "targetPath",
+        "mode",
+        "comparison",
+        "sectionKind",
+        "sectionOrdinal",
+        "label",
+        "reportHtmlRelativePath",
+        "baseImageRelativePath",
+        "headImageRelativePath",
+        "baseByteLength",
+        "headByteLength",
+        "sortKey"
+      ],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "mode": {
+          "type": "string",
+          "enum": ["attributes", "front-panel", "block-diagram"]
+        },
+        "comparison": { "$ref": "#/$defs/comparison" },
+        "sectionKind": {
+          "type": "string",
+          "enum": ["overview", "detail"]
+        },
+        "sectionOrdinal": { "type": "integer", "minimum": 0 },
+        "label": { "type": "string", "minLength": 1 },
+        "reportHtmlRelativePath": { "type": ["string", "null"] },
+        "baseImageRelativePath": { "type": "string", "minLength": 1 },
+        "headImageRelativePath": { "type": "string", "minLength": 1 },
+        "baseByteLength": { "type": "integer", "minimum": 0 },
+        "headByteLength": { "type": "integer", "minimum": 0 },
+        "sortKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "targetPath",
+        "finalStatus",
+        "finalReason",
+        "previewPairCount",
+        "previewPairs"
+      ],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "finalStatus": { "type": "string", "minLength": 1 },
+        "finalReason": { "type": "string", "minLength": 1 },
+        "previewPairCount": { "type": "integer", "minimum": 0 },
+        "previewPairs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/previewPair" }
+        }
+      }
+    }
+  }
+}
