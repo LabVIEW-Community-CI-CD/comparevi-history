@@ -282,24 +282,151 @@ function ConvertTo-PreviewPairArray {
   )
 }
 
+function Get-ReviewerPreviewSurfaceLabel {
+  param(
+    [AllowNull()]
+    [string]$SurfaceKind,
+    [AllowNull()]
+    [string]$FallbackLabel
+  )
+
+  switch ($SurfaceKind) {
+    'front-panel' { return 'Front panel' }
+    'block-diagram' { return 'Block diagram' }
+    default {
+      if (-not [string]::IsNullOrWhiteSpace($FallbackLabel)) {
+        return $FallbackLabel
+      }
+
+      return 'Preview'
+    }
+  }
+}
+
+function New-ReviewerPreviewSurface {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  $surfaceKind = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('surfaceKind'))
+  if ([string]::IsNullOrWhiteSpace($surfaceKind)) {
+    switch ([string]$PreviewPair.mode) {
+      'front-panel' { $surfaceKind = 'front-panel' }
+      'block-diagram' { $surfaceKind = 'block-diagram' }
+      default { $surfaceKind = 'preview' }
+    }
+  }
+
+  return [ordered]@{
+    surfaceKind = $surfaceKind
+    surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind $surfaceKind -FallbackLabel (Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('surfaceLabel') -Default $PreviewPair.label))
+    reportHtmlRelativePath = Get-OptionalString -Value $PreviewPair.reportHtmlRelativePath
+    baseImageRelativePath = Get-OptionalString -Value $PreviewPair.baseImageRelativePath
+    headImageRelativePath = Get-OptionalString -Value $PreviewPair.headImageRelativePath
+  }
+}
+
+function Get-ReviewerPreviewCardKey {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  return '{0}|{1}' -f `
+    [string]$PreviewPair.targetId, `
+    [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
+}
+
+function New-ReviewerPreviewCards {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$SelectedPreviewPairs = @(),
+    [AllowEmptyCollection()]
+    [object[]]$AllPreviewPairs = @(),
+    [AllowEmptyCollection()]
+    [object[]]$ExistingCards = @()
+  )
+
+  if ($ExistingCards.Count -gt 0) {
+    return @(
+      ConvertTo-ObjectArray -Value $ExistingCards |
+        Sort-Object {
+          $comparisonIndex = [int](Get-NestedValue -Object $_ -Path @('comparison', 'index') -Default 0)
+          '{0}|{1:D4}' -f [string]$_.targetPath, $comparisonIndex
+        }
+    )
+  }
+
+  $orderedAllPreviewPairs = @(ConvertTo-PreviewPairArray -Value $AllPreviewPairs)
+  if ($orderedAllPreviewPairs.Count -eq 0) {
+    $orderedAllPreviewPairs = @(ConvertTo-PreviewPairArray -Value $SelectedPreviewPairs)
+  }
+
+  $cards = New-Object System.Collections.Generic.List[object]
+  $seenCards = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($selectedPreviewPair in @(ConvertTo-PreviewPairArray -Value $SelectedPreviewPairs)) {
+    $cardKey = Get-ReviewerPreviewCardKey -PreviewPair $selectedPreviewPair
+    if (-not $seenCards.Add($cardKey)) {
+      continue
+    }
+
+    $matchingPairs = @(
+      $orderedAllPreviewPairs |
+        Where-Object { (Get-ReviewerPreviewCardKey -PreviewPair $_) -eq $cardKey }
+    )
+    if ($matchingPairs.Count -eq 0) {
+      $matchingPairs = @($selectedPreviewPair)
+    }
+
+    $surfaces = New-Object System.Collections.Generic.List[object]
+    $seenSurfaces = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($matchingPair in $matchingPairs) {
+      $surface = New-ReviewerPreviewSurface -PreviewPair $matchingPair
+      if ([string]::IsNullOrWhiteSpace([string]$surface.surfaceKind)) {
+        continue
+      }
+
+      if (-not $seenSurfaces.Add([string]$surface.surfaceKind)) {
+        continue
+      }
+
+      $surfaces.Add($surface) | Out-Null
+    }
+
+    if ($surfaces.Count -eq 0) {
+      $surfaces.Add((New-ReviewerPreviewSurface -PreviewPair $selectedPreviewPair)) | Out-Null
+    }
+
+    $cards.Add([ordered]@{
+        targetId = [string]$selectedPreviewPair.targetId
+        targetPath = [string]$selectedPreviewPair.targetPath
+        comparison = $selectedPreviewPair.comparison
+        surfaces = @($surfaces | ForEach-Object { $_ })
+      }) | Out-Null
+  }
+
+  return @($cards | ForEach-Object { $_ })
+}
+
 function New-MarkdownPreviewGallery {
   param(
     [AllowEmptyCollection()]
-    [object[]]$PreviewPairs
+    [object[]]$PreviewCards
   )
 
-  if ($PreviewPairs.Count -eq 0) {
+  if ($PreviewCards.Count -eq 0) {
     return ''
   }
 
   $lines = New-Object System.Collections.Generic.List[string]
   $lines.Add('## Preview gallery') | Out-Null
   $lines.Add('') | Out-Null
-  foreach ($previewPair in @(ConvertTo-ObjectArray -Value $PreviewPairs)) {
-    $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
-    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
-    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewPair
-    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewPair)
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $title = Get-ReviewerPreviewTitle -PreviewPair $previewCard
+    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
+    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewCard
+    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewCard)
     $lines.Add(('### `{0}`' -f $title)) | Out-Null
     $lines.Add('') | Out-Null
     $lines.Add($subtitle) | Out-Null
@@ -314,23 +441,28 @@ function New-MarkdownPreviewGallery {
     if ($detailLines.Count -gt 0) {
       $lines.Add('') | Out-Null
     }
-    $lines.Add('**Base**') | Out-Null
-    $lines.Add((
-        '![{0}]({1})' -f
-          ('{0} base' -f $subtitle),
-          [string]$previewPair.baseImageRelativePath
-      )) | Out-Null
-    $lines.Add('') | Out-Null
-    $lines.Add('**Head**') | Out-Null
-    $lines.Add((
-        '![{0}]({1})' -f
-          ('{0} head' -f $subtitle),
-          [string]$previewPair.headImageRelativePath
-      )) | Out-Null
-    if (-not [string]::IsNullOrWhiteSpace([string]$previewPair.reportHtmlRelativePath)) {
-      $lines.Add(('- Report: [{0}]({0})' -f [string]$previewPair.reportHtmlRelativePath)) | Out-Null
+    foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
+      $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+      $lines.Add(('#### {0}' -f $surfaceLabel)) | Out-Null
+      $lines.Add('') | Out-Null
+      $lines.Add('**Base**') | Out-Null
+      $lines.Add((
+          '![{0}]({1})' -f
+            ('{0} base' -f $surfaceLabel),
+            [string]$surface.baseImageRelativePath
+        )) | Out-Null
+      $lines.Add('') | Out-Null
+      $lines.Add('**Head**') | Out-Null
+      $lines.Add((
+          '![{0}]({1})' -f
+            ('{0} head' -f $surfaceLabel),
+            [string]$surface.headImageRelativePath
+        )) | Out-Null
+      if (-not [string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
+        $lines.Add(('- Report: [{0}]({0})' -f [string]$surface.reportHtmlRelativePath)) | Out-Null
+      }
+      $lines.Add('') | Out-Null
     }
-    $lines.Add('') | Out-Null
   }
 
   return $lines -join "`n"
@@ -339,29 +471,49 @@ function New-MarkdownPreviewGallery {
 function New-HtmlPreviewGallery {
   param(
     [AllowEmptyCollection()]
-    [object[]]$PreviewPairs
+    [object[]]$PreviewCards
   )
 
-  if ($PreviewPairs.Count -eq 0) {
+  if ($PreviewCards.Count -eq 0) {
     return ''
   }
 
   $cards = New-Object System.Collections.Generic.List[string]
-  foreach ($previewPair in @(ConvertTo-ObjectArray -Value $PreviewPairs)) {
-    $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
-    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
-    $comparisonIndex = Get-ReviewerPreviewComparisonIndex -PreviewPair $previewPair
-    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewPair
-    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewPair)
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $title = Get-ReviewerPreviewTitle -PreviewPair $previewCard
+    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
+    $comparisonIndex = Get-ReviewerPreviewComparisonIndex -PreviewPair $previewCard
+    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewCard
+    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewCard)
     $detailHtml = if ($detailLines.Count -eq 0) {
       ''
     } else {
       '<div class="preview-card-history">' + (($detailLines | ForEach-Object { '<p>' + (Escape-Html $_) + '</p>' }) -join '') + '</div>'
     }
-    $reportLink = if ([string]::IsNullOrWhiteSpace([string]$previewPair.reportHtmlRelativePath)) {
-      ''
-    } else {
-      '<p><a href="' + (Escape-Html ([string]$previewPair.reportHtmlRelativePath)) + '">open report</a></p>'
+    $surfaceBlocks = New-Object System.Collections.Generic.List[string]
+    foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
+      $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+      $reportLink = if ([string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
+        ''
+      } else {
+        '<p><a href="' + (Escape-Html ([string]$surface.reportHtmlRelativePath)) + '">open ' + (Escape-Html $surfaceLabel.ToLowerInvariant()) + ' report</a></p>'
+      }
+      $surfaceBlocks.Add(@"
+  <section class="preview-surface">
+    <h4>$(Escape-Html $surfaceLabel)</h4>
+    <div class="preview-image-grid">
+      <figure>
+        <img alt="$(Escape-Html ($surfaceLabel + ' base'))" src="$(Escape-Html ([string]$surface.baseImageRelativePath))">
+        <figcaption>Base</figcaption>
+      </figure>
+      <figure>
+        <img alt="$(Escape-Html ($surfaceLabel + ' head'))" src="$(Escape-Html ([string]$surface.headImageRelativePath))">
+        <figcaption>Head</figcaption>
+      </figure>
+    </div>
+    $reportLink
+  </section>
+"@) | Out-Null
     }
     $cards.Add(@"
 <article class="preview-card">
@@ -372,17 +524,7 @@ function New-HtmlPreviewGallery {
     <strong>Revisions</strong><span><code>$(Escape-Html $revisionContext)</code></span>
   </div>
   $detailHtml
-  <div class="preview-image-grid">
-    <figure>
-      <img alt="$(Escape-Html ($subtitle + ' base'))" src="$(Escape-Html ([string]$previewPair.baseImageRelativePath))">
-      <figcaption>Base</figcaption>
-    </figure>
-    <figure>
-      <img alt="$(Escape-Html ($subtitle + ' head'))" src="$(Escape-Html ([string]$previewPair.headImageRelativePath))">
-      <figcaption>Head</figcaption>
-    </figure>
-  </div>
-  $reportLink
+  $($surfaceBlocks -join "`n  ")
 </article>
 "@) | Out-Null
   }
@@ -459,7 +601,7 @@ $indexPreviewPairCount = 0
 $indexPreviewPairOmittedCount = 0
 $commentPreviewPairCap = 0
 $indexPreviewPairCap = 0
-$indexPreviewPairs = @()
+$indexPreviewCards = @()
 $previewTargetPairCountById = @{}
 if ($null -ne $targetManifest) {
   $targets = @($targetManifest.targets | ForEach-Object { $_ })
@@ -491,7 +633,10 @@ if ($null -ne $targetManifest) {
   $indexPreviewPairCap = [int]$previewManifest.summary.indexPreviewPairCap
   $indexPreviewPairCount = [int]$previewManifest.summary.indexPreviewPairCount
   $indexPreviewPairOmittedCount = [int]$previewManifest.summary.indexPreviewPairOmittedCount
-  $indexPreviewPairs = @($previewManifest.indexPreviewPairs | ForEach-Object { $_ })
+  $indexPreviewCards = @(New-ReviewerPreviewCards `
+      -SelectedPreviewPairs @($previewManifest.indexPreviewPairs | ForEach-Object { $_ }) `
+      -AllPreviewPairs @($previewManifest.previewPairs | ForEach-Object { $_ }) `
+      -ExistingCards @($previewManifest.indexPreviewCards | ForEach-Object { $_ }))
   foreach ($previewTarget in @($previewManifest.targets | ForEach-Object { $_ })) {
     $previewTargetPairCountById[[string]$previewTarget.targetId] = [int]$previewTarget.previewPairCount
   }
@@ -601,7 +746,7 @@ if ($reviewerPreviewPairCount -gt 0) {
   }
 }
 $indexLines.Add('') | Out-Null
-$previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewPairs $indexPreviewPairs
+$previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewCards $indexPreviewCards
 if (-not [string]::IsNullOrWhiteSpace($previewGalleryMarkdown)) {
   $indexLines.Add($previewGalleryMarkdown) | Out-Null
   $indexLines.Add('') | Out-Null
@@ -684,6 +829,8 @@ $indexHtml = @"
     .preview-card { background: #ffffff; border: 1px solid #cbd5e1; padding: 1rem; }
     .preview-card-subtitle { color: #334155; margin-top: -0.35rem; margin-bottom: 1rem; }
     .preview-card-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; margin-bottom: 1rem; }
+    .preview-surface + .preview-surface { margin-top: 1rem; }
+    .preview-surface h4 { margin-bottom: 0.75rem; }
     .preview-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
     .preview-image-grid figure { margin: 0; }
     .preview-image-grid img { max-width: 100%; height: auto; border: 1px solid #cbd5e1; background: #ffffff; }
@@ -703,7 +850,7 @@ $indexHtml = @"
     $(if ($reviewerPreviewPairCount -gt 0) { '<li>Reviewer preview gallery: <code>' + $indexPreviewPairCount + '</code> shown, <code>' + $indexPreviewPairOmittedCount + '</code> omitted, cap <code>' + $indexPreviewPairCap + '</code></li>' } else { '' })
     $(if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) { '<li>Raw preview surfaces collapsed for review: <code>' + $rawPreviewPairCount + '</code> raw -> <code>' + $reviewerPreviewPairCount + '</code> reviewer-canonical</li>' } else { '' })
   </ul>
-  $(New-HtmlPreviewGallery -PreviewPairs $indexPreviewPairs)
+  $(New-HtmlPreviewGallery -PreviewCards $indexPreviewCards)
   <table>
     <thead>
       <tr>

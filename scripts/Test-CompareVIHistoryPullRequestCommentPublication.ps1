@@ -38,6 +38,45 @@ function New-PreviewPair {
   }
 }
 
+function New-PreviewCard {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$PreviewPairs,
+    [Parameter(Mandatory = $true)]
+    [int]$ComparisonIndex
+  )
+
+  $matchingPairs = @(
+    $PreviewPairs |
+      Where-Object { [int]$_.comparison.index -eq $ComparisonIndex -and [string]$_.mode -in @('front-panel', 'block-diagram') } |
+      Sort-Object {
+        switch ([string]$_.mode) {
+          'front-panel' { 0 }
+          'block-diagram' { 1 }
+          default { 99 }
+        }
+      }
+  )
+
+  return [ordered]@{
+    targetId = 'dynamic-demo-target'
+    targetPath = 'Tooling/demo/Demo.vi'
+    comparison = $matchingPairs[0].comparison
+    surfaces = @(
+      $matchingPairs |
+        ForEach-Object {
+          [ordered]@{
+            surfaceKind = [string]$_.mode
+            surfaceLabel = if ([string]$_.mode -eq 'front-panel') { 'Front panel' } else { 'Block diagram' }
+            reportHtmlRelativePath = [string]$_.reportHtmlRelativePath
+            baseImageRelativePath = [string]$_.baseImageRelativePath
+            headImageRelativePath = [string]$_.headImageRelativePath
+          }
+        }
+    )
+  }
+}
+
 function New-PublicationArtifactZip {
   param(
     [Parameter(Mandatory = $true)]
@@ -64,6 +103,10 @@ function New-PublicationArtifactZip {
     (New-PreviewPair -Mode 'attributes' -ComparisonIndex 2)
   )
   $commentPreviewPairs = @($previewPairs | Select-Object -First 4)
+  $commentPreviewCards = @(
+    (New-PreviewCard -PreviewPairs $previewPairs -ComparisonIndex 1),
+    (New-PreviewCard -PreviewPairs $previewPairs -ComparisonIndex 2)
+  )
 
   ([ordered]@{
       schema = 'comparevi-history/pr-run@v2'
@@ -133,12 +176,20 @@ function New-PublicationArtifactZip {
         previewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 6 } else { 0 })
         rawPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 6 } else { 0 })
         reviewerPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
+        reviewerPreviewCardCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
+        reviewerPreviewSurfaceCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
         commentPreviewPairCap = 4
         commentPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
         commentPreviewPairOmittedCount = 0
+        commentPreviewCardCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
+        commentPreviewSurfaceCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
+        commentCardSelectionPolicy = 'reviewer-multisurface@v1'
         indexPreviewPairCap = 12
         indexPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
         indexPreviewPairOmittedCount = 0
+        indexPreviewCardCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
+        indexPreviewSurfaceCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
+        indexCardSelectionPolicy = 'reviewer-multisurface@v1'
       }
       excludedViFiles = @()
       targets = @()
@@ -164,14 +215,22 @@ function New-PublicationArtifactZip {
           previewPairCount = 6
           rawPreviewPairCount = 6
           reviewerPreviewPairCount = 2
+          reviewerPreviewCardCount = 2
+          reviewerPreviewSurfaceCount = 4
           commentPreviewPairCap = 4
           commentSelectionPolicy = 'reviewer-canonical@v1'
           commentPreviewPairCount = 2
           commentPreviewPairOmittedCount = 0
+          commentPreviewCardCount = 2
+          commentPreviewSurfaceCount = 4
+          commentCardSelectionPolicy = 'reviewer-multisurface@v1'
           indexPreviewPairCap = 12
           indexSelectionPolicy = 'reviewer-canonical@v1'
           indexPreviewPairCount = 2
           indexPreviewPairOmittedCount = 0
+          indexPreviewCardCount = 2
+          indexPreviewSurfaceCount = 4
+          indexCardSelectionPolicy = 'reviewer-multisurface@v1'
         }
         targets = @(
           [ordered]@{
@@ -186,6 +245,9 @@ function New-PublicationArtifactZip {
         previewPairs = $previewPairs
         commentPreviewPairs = @($previewPairs | Where-Object { [int]$_.comparison.index -in @(1, 2) -and [string]$_.mode -eq 'front-panel' })
         indexPreviewPairs = @($previewPairs | Where-Object { [int]$_.comparison.index -in @(1, 2) -and [string]$_.mode -eq 'front-panel' })
+        reviewerPreviewCards = $commentPreviewCards
+        commentPreviewCards = $commentPreviewCards
+        indexPreviewCards = $commentPreviewCards
       } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-preview-manifest.json') -Encoding utf8
   }
 
@@ -353,7 +415,9 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ([string]$createReceipt.previewPublication.status -ne 'succeeded') {
     throw 'Expected preview publication to succeed for the first path.'
   }
-  if ([int]$createReceipt.previewPublication.previewPairCount -ne 2 -or [int]$createReceipt.previewPublication.publishedImageCount -ne 4) {
+  if ([int]$createReceipt.previewPublication.previewPairCount -ne 2 -or
+    [int]$createReceipt.previewPublication.publishedSurfaceCount -ne 4 -or
+    [int]$createReceipt.previewPublication.publishedImageCount -ne 8) {
     throw 'Preview publication counts mismatch for the first path.'
   }
   if ($global:RecordedPosts.Count -ne 1) {
@@ -374,9 +438,13 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('Head subject 1')) {
     throw 'Created PR comment body should surface revision refs and commit-subject context.'
   }
-  if ([regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/base\.png').Count -ne 2 -or
-    [regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/head\.png').Count -ne 2) {
-    throw 'Created PR comment body should embed four preview image URLs.'
+  if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Front panel</strong></p>')).Count -ne 2 -or
+    [regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Block diagram</strong></p>')).Count -ne 2) {
+    throw 'Created PR comment body should render both front-panel and block-diagram surfaces for each history pair.'
+  }
+  if ([regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/base\.png').Count -ne 4 -or
+    [regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/head\.png').Count -ne 4) {
+    throw 'Created PR comment body should embed eight preview image URLs.'
   }
   if ($global:RecordedPosts[0].body -match [regex]::Escape('| front-panel |') -or
     $global:RecordedPosts[0].body -match [regex]::Escape('| block-diagram |') -or
@@ -387,8 +455,8 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ($global:RecordedRefCreates.Count -ne 1) {
     throw 'Expected one preview branch creation request.'
   }
-  if ($global:RecordedContentWrites.Count -ne 5) {
-    throw 'Expected preview publication to write four images and one manifest.'
+  if ($global:RecordedContentWrites.Count -ne 9) {
+    throw 'Expected preview publication to write eight images and one manifest.'
   }
 
   $publishedPairOrder = @(
@@ -398,18 +466,26 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ($publishedPairOrder -ne 'front-panel:1,front-panel:2') {
     throw "Preview publication order mismatch: $publishedPairOrder"
   }
+  if ($createReceipt.previewPublication.commentPreviewCards.Count -ne 2 -or
+    (@($createReceipt.previewPublication.commentPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
+    throw 'Preview publication should retain reviewer cards with both front-panel and block-diagram surfaces.'
+  }
 
   $writeOrder = @(
     $global:RecordedContentWrites |
       ForEach-Object { [string]$_.path }
   )
   $expectedImagePrefixes = @(
-    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-front-panel-overview/base.png',
-    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-front-panel-overview/head.png',
-    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-front-panel-overview/base.png',
-    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-front-panel-overview/head.png'
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/02-block-diagram/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/02-block-diagram/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/01-front-panel/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/01-front-panel/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/02-block-diagram/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/02-block-diagram/head.png'
   )
-  foreach ($index in 0..3) {
+  foreach ($index in 0..7) {
     if ([string]$writeOrder[$index] -ne $expectedImagePrefixes[$index]) {
       throw "Published preview write order mismatch at position $index."
     }
@@ -425,7 +501,8 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
       'preview-publication-status=succeeded',
       'preview-publication-reason=preview-images-published',
       'preview-pair-count=2',
-      'published-image-count=4'
+      'published-image-count=8',
+      'published-surface-count=4'
     )) {
     if ($createOutputText -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."

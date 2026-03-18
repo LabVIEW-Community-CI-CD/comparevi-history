@@ -49,6 +49,8 @@
         "previewPairCount": { "type": "integer", "minimum": 0 },
         "rawPreviewPairCount": { "type": "integer", "minimum": 0 },
         "reviewerPreviewPairCount": { "type": "integer", "minimum": 0 },
+        "reviewerPreviewCardCount": { "type": "integer", "minimum": 0 },
+        "reviewerPreviewSurfaceCount": { "type": "integer", "minimum": 0 },
         "commentPreviewPairCap": { "type": "integer", "minimum": 0 },
         "commentSelectionPolicy": {
           "type": "string",
@@ -56,13 +58,19 @@
         },
         "commentPreviewPairCount": { "type": "integer", "minimum": 0 },
         "commentPreviewPairOmittedCount": { "type": "integer", "minimum": 0 },
+        "commentPreviewCardCount": { "type": "integer", "minimum": 0 },
+        "commentPreviewSurfaceCount": { "type": "integer", "minimum": 0 },
+        "commentCardSelectionPolicy": { "type": "string", "minLength": 1 },
         "indexPreviewPairCap": { "type": "integer", "minimum": 0 },
         "indexSelectionPolicy": {
           "type": "string",
           "enum": ["mode-balanced@v1", "reviewer-canonical@v1"]
         },
         "indexPreviewPairCount": { "type": "integer", "minimum": 0 },
-        "indexPreviewPairOmittedCount": { "type": "integer", "minimum": 0 }
+        "indexPreviewPairOmittedCount": { "type": "integer", "minimum": 0 },
+        "indexPreviewCardCount": { "type": "integer", "minimum": 0 },
+        "indexPreviewSurfaceCount": { "type": "integer", "minimum": 0 },
+        "indexCardSelectionPolicy": { "type": "string", "minLength": 1 }
       }
     },
     "targets": {
@@ -80,6 +88,18 @@
     "indexPreviewPairs": {
       "type": "array",
       "items": { "$ref": "#/$defs/previewPair" }
+    },
+    "reviewerPreviewCards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewCard" }
+    },
+    "commentPreviewCards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewCard" }
+    },
+    "indexPreviewCards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewCard" }
     }
   },
   "$defs": {
@@ -147,6 +167,57 @@
           "pattern": "^[a-f0-9]{64}$"
         },
         "sortKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "previewSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "surfaceKind",
+        "surfaceLabel",
+        "reportHtmlRelativePath",
+        "baseImageRelativePath",
+        "headImageRelativePath"
+      ],
+      "properties": {
+        "surfaceKind": { "type": "string", "minLength": 1 },
+        "surfaceLabel": { "type": "string", "minLength": 1 },
+        "mode": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] },
+        "reportHtmlRelativePath": { "type": ["string", "null"] },
+        "baseImageRelativePath": { "type": "string", "minLength": 1 },
+        "headImageRelativePath": { "type": "string", "minLength": 1 },
+        "baseByteLength": { "type": "integer", "minimum": 0 },
+        "headByteLength": { "type": "integer", "minimum": 0 },
+        "baseImageSha256": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "headImageSha256": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sortKey": { "type": ["string", "null"] }
+      }
+    },
+    "previewCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "targetPath",
+        "comparison",
+        "surfaces"
+      ],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "comparison": { "$ref": "#/$defs/comparison" },
+        "sortKey": { "type": ["string", "null"] },
+        "surfaces": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/previewSurface" }
+        }
       }
     },
     "target": {

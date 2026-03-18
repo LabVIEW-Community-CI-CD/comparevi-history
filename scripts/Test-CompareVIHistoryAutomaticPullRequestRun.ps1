@@ -455,13 +455,21 @@ try {
     $indexMarkdown -notmatch [regex]::Escape('`base-02 -> head-02`')) {
     throw 'Index markdown should surface stable history-pair subtitles and revision refs.'
   }
+  if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Front panel')).Count -ne 2 -or
+    [regex]::Matches($indexMarkdown, [regex]::Escape('#### Block diagram')).Count -ne 2) {
+    throw 'Index markdown should render both front-panel and block-diagram surfaces for each reviewer card.'
+  }
 
   $markdownPositions = Get-OrdinalPositions -Content $indexMarkdown -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
   )
-  if (-not ($markdownPositions[0] -lt $markdownPositions[1])) {
-    throw 'Index markdown should preserve the reviewer-canonical comparison ordering.'
+  if (-not ($markdownPositions[0] -lt $markdownPositions[1] -and
+      $markdownPositions[1] -lt $markdownPositions[2] -and
+      $markdownPositions[2] -lt $markdownPositions[3])) {
+    throw 'Index markdown should preserve history-pair ordering while surfacing both front-panel and block-diagram previews.'
   }
 
   $indexHtml = Get-Content -LiteralPath $receipt.outputs.indexHtmlPath -Raw
@@ -481,13 +489,21 @@ try {
     $indexHtml -notmatch [regex]::Escape('base-02 -&gt; head-02')) {
     throw 'Index HTML should surface stable history-pair subtitles and revision refs.'
   }
+  if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Front panel</h4>')).Count -ne 2 -or
+    [regex]::Matches($indexHtml, [regex]::Escape('<h4>Block diagram</h4>')).Count -ne 2) {
+    throw 'Index HTML should render both front-panel and block-diagram surfaces for each reviewer card.'
+  }
 
   $htmlPositions = Get-OrdinalPositions -Content $indexHtml -Needles @(
     'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
-    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png',
+    'targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_1.png'
   )
-  if (-not ($htmlPositions[0] -lt $htmlPositions[1])) {
-    throw 'Index HTML should preserve the reviewer-canonical comparison ordering.'
+  if (-not ($htmlPositions[0] -lt $htmlPositions[1] -and
+      $htmlPositions[1] -lt $htmlPositions[2] -and
+      $htmlPositions[2] -lt $htmlPositions[3])) {
+    throw 'Index HTML should preserve history-pair ordering while surfacing both front-panel and block-diagram previews.'
   }
 
   $previewManifest = Get-Content -LiteralPath $receipt.outputs.previewManifestPath -Raw | ConvertFrom-Json -Depth 64
@@ -495,8 +511,16 @@ try {
     $previewManifest.summary.rawPreviewPairCount -ne 6 -or
     $previewManifest.summary.reviewerPreviewPairCount -ne 2 -or
     $previewManifest.summary.commentPreviewPairCount -ne 2 -or
-    $previewManifest.summary.indexPreviewPairCount -ne 2) {
+    $previewManifest.summary.indexPreviewPairCount -ne 2 -or
+    $previewManifest.summary.commentPreviewCardCount -ne 2 -or
+    $previewManifest.summary.commentPreviewSurfaceCount -ne 4 -or
+    $previewManifest.summary.indexPreviewCardCount -ne 2 -or
+    $previewManifest.summary.indexPreviewSurfaceCount -ne 4) {
     throw 'Preview manifest summary mismatch.'
+  }
+  if ($previewManifest.indexPreviewCards.Count -ne 2 -or
+    (@($previewManifest.indexPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
+    throw 'Preview manifest should expose reviewer cards with both front-panel and block-diagram surfaces.'
   }
 
   $stepSummary = Get-Content -LiteralPath $receipt.outputs.publicStepSummaryPath -Raw
