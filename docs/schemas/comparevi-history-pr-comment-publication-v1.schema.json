@@ -69,6 +69,95 @@
         "null"
       ]
     },
+    "previewPublication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "branch",
+        "root",
+        "manifestPath",
+        "manifestUrl",
+        "previewPairCount",
+        "publishedImageCount",
+        "commentPreviewPairs"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "not-required"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manifestUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previewPairCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "publishedImageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commentPreviewPairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "targetId",
+              "targetPath",
+              "mode",
+              "label",
+              "sectionKind",
+              "comparison",
+              "reportHtmlRelativePath",
+              "baseImagePath",
+              "baseImageUrl",
+              "headImagePath",
+              "headImageUrl"
+            ],
+            "properties": {
+              "targetId": { "type": "string", "minLength": 1 },
+              "targetPath": { "type": "string", "minLength": 1 },
+              "mode": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "minLength": 1 },
+              "sectionKind": { "type": "string", "minLength": 1 },
+              "comparison": { "type": "object" },
+              "reportHtmlRelativePath": { "type": ["string", "null"] },
+              "baseImagePath": { "type": "string", "minLength": 1 },
+              "baseImageUrl": { "type": "string", "minLength": 1 },
+              "headImagePath": { "type": "string", "minLength": 1 },
+              "headImageUrl": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,

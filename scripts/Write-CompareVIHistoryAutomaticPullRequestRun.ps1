@@ -161,6 +161,105 @@ function Escape-Html {
   return [System.Net.WebUtility]::HtmlEncode($Value)
 }
 
+function ConvertTo-PreviewPairArray {
+  param(
+    [AllowNull()]
+    $Value
+  )
+
+  return @(
+    ConvertTo-ObjectArray -Value $Value |
+      Sort-Object {
+        $sortKey = Get-OptionalString -Value $_.sortKey
+        if ([string]::IsNullOrWhiteSpace($sortKey)) {
+          [string]$_.label
+        } else {
+          $sortKey
+        }
+      }
+  )
+}
+
+function New-MarkdownPreviewGallery {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewPairs
+  )
+
+  if ($PreviewPairs.Count -eq 0) {
+    return ''
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('## Preview gallery') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($previewPair in @(ConvertTo-PreviewPairArray -Value $PreviewPairs)) {
+    $title = '{0} | {1} | {2}' -f [string]$previewPair.targetPath, [string]$previewPair.mode, [string]$previewPair.label
+    $lines.Add(('### {0}' -f $title)) | Out-Null
+    $lines.Add('') | Out-Null
+    $lines.Add('| Base | Head |') | Out-Null
+    $lines.Add('| --- | --- |') | Out-Null
+    $lines.Add(('| ![{0} base]({1}) | ![{0} head]({2}) |' -f $title, [string]$previewPair.baseImageRelativePath, [string]$previewPair.headImageRelativePath)) | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace([string]$previewPair.reportHtmlRelativePath)) {
+      $lines.Add(('- Report: [{0}]({0})' -f [string]$previewPair.reportHtmlRelativePath)) | Out-Null
+    }
+    $lines.Add('') | Out-Null
+  }
+
+  return $lines -join "`n"
+}
+
+function New-HtmlPreviewGallery {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewPairs
+  )
+
+  if ($PreviewPairs.Count -eq 0) {
+    return ''
+  }
+
+  $cards = New-Object System.Collections.Generic.List[string]
+  foreach ($previewPair in @(ConvertTo-PreviewPairArray -Value $PreviewPairs)) {
+    $title = '{0} | {1} | {2}' -f [string]$previewPair.targetPath, [string]$previewPair.mode, [string]$previewPair.label
+    $reportLink = if ([string]::IsNullOrWhiteSpace([string]$previewPair.reportHtmlRelativePath)) {
+      ''
+    } else {
+      '<p><a href="' + (Escape-Html ([string]$previewPair.reportHtmlRelativePath)) + '">open report</a></p>'
+    }
+    $cards.Add(@"
+<article class="preview-card">
+  <h3>$(Escape-Html $title)</h3>
+  <div class="preview-card-meta">
+    <strong>Target</strong><span><code>$(Escape-Html ([string]$previewPair.targetPath))</code></span>
+    <strong>Mode</strong><span><code>$(Escape-Html ([string]$previewPair.mode))</code></span>
+    <strong>Section</strong><span><code>$(Escape-Html ([string]$previewPair.label))</code></span>
+  </div>
+  <div class="preview-image-grid">
+    <figure>
+      <img alt="$(Escape-Html ($title + ' base'))" src="$(Escape-Html ([string]$previewPair.baseImageRelativePath))">
+      <figcaption>Base</figcaption>
+    </figure>
+    <figure>
+      <img alt="$(Escape-Html ($title + ' head'))" src="$(Escape-Html ([string]$previewPair.headImageRelativePath))">
+      <figcaption>Head</figcaption>
+    </figure>
+  </div>
+  $reportLink
+</article>
+"@) | Out-Null
+  }
+
+  return @"
+  <section class="preview-gallery">
+    <h2>Preview gallery</h2>
+    <div class="preview-grid">
+      $($cards -join "`n      ")
+    </div>
+  </section>
+"@
+}
+
 $basePath = (Get-Location).Path
 $discoveryPathResolved = Resolve-AbsolutePath -Path $DiscoveryPath -BasePath $basePath
 $resultsDirResolved = Resolve-AbsolutePath -Path $ResultsDir -BasePath $basePath
@@ -213,6 +312,17 @@ $executedTargetCount = 0
 $failedTargetCount = 0
 $totalProcessed = 0
 $totalDiffs = 0
+$previewManifest = $null
+$previewManifestPathResolved = $null
+$previewPairCount = 0
+$commentPreviewPairCount = 0
+$commentPreviewPairOmittedCount = 0
+$indexPreviewPairCount = 0
+$indexPreviewPairOmittedCount = 0
+$commentPreviewPairCap = 0
+$indexPreviewPairCap = 0
+$indexPreviewPairs = @()
+$previewTargetPairCountById = @{}
 if ($null -ne $targetManifest) {
   $targets = @($targetManifest.targets | ForEach-Object { $_ })
   $executedTargetCount = [int]$targetManifest.summary.executedTargetCount
@@ -224,6 +334,27 @@ if ($null -ne $targetManifest) {
     if ($null -ne $target.totalDiffs) {
       $totalDiffs += [int]$target.totalDiffs
     }
+  }
+
+  $previewManifestPathResolved = Join-Path $resultsDirResolved 'pr-preview-manifest.json'
+  & (Join-Path $PSScriptRoot 'Write-CompareVIHistoryPullRequestPreviewManifest.ps1') `
+    -TargetRunsManifestPath $targetRunsManifestPathResolved `
+    -ResultsDir $resultsDirResolved `
+    -OutputPath $previewManifestPathResolved | Out-Null
+  $previewManifest = Read-JsonFile -Path $previewManifestPathResolved
+  if ([string]$previewManifest.schema -ne 'comparevi-history/pr-preview-manifest@v1') {
+    throw "Unsupported preview manifest schema in '$previewManifestPathResolved': $($previewManifest.schema)"
+  }
+  $previewPairCount = [int]$previewManifest.summary.previewPairCount
+  $commentPreviewPairCap = [int]$previewManifest.summary.commentPreviewPairCap
+  $commentPreviewPairCount = [int]$previewManifest.summary.commentPreviewPairCount
+  $commentPreviewPairOmittedCount = [int]$previewManifest.summary.commentPreviewPairOmittedCount
+  $indexPreviewPairCap = [int]$previewManifest.summary.indexPreviewPairCap
+  $indexPreviewPairCount = [int]$previewManifest.summary.indexPreviewPairCount
+  $indexPreviewPairOmittedCount = [int]$previewManifest.summary.indexPreviewPairOmittedCount
+  $indexPreviewPairs = @($previewManifest.indexPreviewPairs | ForEach-Object { $_ })
+  foreach ($previewTarget in @($previewManifest.targets | ForEach-Object { $_ })) {
+    $previewTargetPairCountById[[string]$previewTarget.targetId] = [int]$previewTarget.previewPairCount
   }
 }
 
@@ -266,6 +397,10 @@ $commentLines.Add(('- Executed targets: `{0}`' -f $executedTargetCount)) | Out-N
 $commentLines.Add(('- Failed targets: `{0}`' -f $failedTargetCount)) | Out-Null
 $commentLines.Add(('- Total processed pairs: `{0}`' -f $totalProcessed)) | Out-Null
 $commentLines.Add(('- Total diffs: `{0}`' -f $totalDiffs)) | Out-Null
+if ($previewPairCount -gt 0) {
+  $commentLines.Add(('- Preview pairs: `{0}`' -f $previewPairCount)) | Out-Null
+  $commentLines.Add(('- PR comment preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $commentPreviewPairCount, $commentPreviewPairOmittedCount, $commentPreviewPairCap)) | Out-Null
+}
 if (-not [string]::IsNullOrWhiteSpace($RunUrl)) {
   $commentLines.Add(('- Workflow run: [view run]({0})' -f $RunUrl)) | Out-Null
 }
@@ -315,7 +450,19 @@ if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) {
 }
 $indexLines.Add(('- Discovery receipt: [changed-vi-discovery.json](changed-vi-discovery.json)')) | Out-Null
 $indexLines.Add(('- Aggregate receipt: [pr-run.json](pr-run.json)')) | Out-Null
+if ($null -ne $previewManifestPathResolved -and (Test-Path -LiteralPath $previewManifestPathResolved -PathType Leaf)) {
+  $indexLines.Add(('- Preview manifest: [pr-preview-manifest.json](pr-preview-manifest.json)')) | Out-Null
+}
+$indexLines.Add(('- Preview pairs: `{0}`' -f $previewPairCount)) | Out-Null
+if ($previewPairCount -gt 0) {
+  $indexLines.Add(('- Index preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $indexPreviewPairCount, $indexPreviewPairOmittedCount, $indexPreviewPairCap)) | Out-Null
+}
 $indexLines.Add('') | Out-Null
+$previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewPairs $indexPreviewPairs
+if (-not [string]::IsNullOrWhiteSpace($previewGalleryMarkdown)) {
+  $indexLines.Add($previewGalleryMarkdown) | Out-Null
+  $indexLines.Add('') | Out-Null
+}
 $indexLines.Add('| VI path | Status | Public run | Shared evidence | History report | Indexable surfaces |') | Out-Null
 $indexLines.Add('| --- | --- | --- | --- | --- | --- |') | Out-Null
 foreach ($target in @($targets | Sort-Object { [string]$_.targetPath }, { [string]$_.targetId })) {
@@ -390,6 +537,13 @@ $indexHtml = @"
     th { background: #e2e8f0; }
     h1 { margin-top: 0; }
     ul { padding-left: 1.2rem; }
+    .preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .preview-card { background: #ffffff; border: 1px solid #cbd5e1; padding: 1rem; }
+    .preview-card-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; margin-bottom: 1rem; }
+    .preview-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+    .preview-image-grid figure { margin: 0; }
+    .preview-image-grid img { max-width: 100%; height: auto; border: 1px solid #cbd5e1; background: #ffffff; }
+    .preview-image-grid figcaption { font-size: 0.85rem; color: #52606d; margin-top: 0.35rem; }
   </style>
 </head>
 <body>
@@ -401,7 +555,11 @@ $indexHtml = @"
     $(if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) { '<li>Artifact bundle: <code>' + (Escape-Html $ArtifactName.Trim()) + '</code></li>' } else { '' })
     <li>Discovery receipt: <a href="changed-vi-discovery.json">changed-vi-discovery.json</a></li>
     <li>Aggregate receipt: <a href="pr-run.json">pr-run.json</a></li>
+    $(if ($null -ne $previewManifestPathResolved -and (Test-Path -LiteralPath $previewManifestPathResolved -PathType Leaf)) { '<li>Preview manifest: <a href="pr-preview-manifest.json">pr-preview-manifest.json</a></li>' } else { '' })
+    <li>Preview pairs: <code>$previewPairCount</code></li>
+    $(if ($previewPairCount -gt 0) { '<li>Index preview gallery: <code>' + $indexPreviewPairCount + '</code> shown, <code>' + $indexPreviewPairOmittedCount + '</code> omitted, cap <code>' + $indexPreviewPairCap + '</code></li>' } else { '' })
   </ul>
+  $(New-HtmlPreviewGallery -PreviewPairs $indexPreviewPairs)
   <table>
     <thead>
       <tr>
@@ -431,6 +589,10 @@ $stepSummaryLines.Add(('- Discovery receipt: `{0}`' -f $discoveryPathResolved)) 
 $stepSummaryLines.Add(('- Aggregate receipt: `{0}`' -f $prRunPath)) | Out-Null
 $stepSummaryLines.Add(('- Index markdown: `{0}`' -f $indexMdPath)) | Out-Null
 $stepSummaryLines.Add(('- Index HTML: `{0}`' -f $indexHtmlPath)) | Out-Null
+$stepSummaryLines.Add(('- Preview manifest: `{0}`' -f $(if ($null -eq $previewManifestPathResolved) { 'n/a' } else { $previewManifestPathResolved }))) | Out-Null
+$stepSummaryLines.Add(('- Preview pairs: `{0}`' -f $previewPairCount)) | Out-Null
+$stepSummaryLines.Add(('- PR comment preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $commentPreviewPairCount, $commentPreviewPairOmittedCount, $commentPreviewPairCap)) | Out-Null
+$stepSummaryLines.Add(('- Index preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $indexPreviewPairCount, $indexPreviewPairOmittedCount, $indexPreviewPairCap)) | Out-Null
 $stepSummaryLines.Add(('- Public comment body enabled: `{0}`' -f $emitCommentBody.ToString().ToLowerInvariant())) | Out-Null
 $stepSummaryLines.Add(('- Public step summary enabled: `{0}`' -f $emitStepSummary.ToString().ToLowerInvariant())) | Out-Null
 $stepSummaryLines.Add('') | Out-Null
@@ -467,8 +629,10 @@ foreach ($target in @($targets)) {
       historyReportHtmlPath = Get-OptionalString -Value $target.historyReportHtmlPath
       modeSummaryJsonPath = Get-OptionalString -Value $target.modeSummaryJsonPath
       modeSummaryPath = Get-OptionalString -Value $target.modeSummaryPath
+      manifestPath = Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('manifestPath'))
       totalProcessed = if ($null -eq $target.totalProcessed) { $null } else { [int]$target.totalProcessed }
       totalDiffs = if ($null -eq $target.totalDiffs) { $null } else { [int]$target.totalDiffs }
+      previewPairCount = if ($previewTargetPairCountById.ContainsKey([string]$target.targetId)) { [int]$previewTargetPairCountById[[string]$target.targetId] } else { 0 }
     }) | Out-Null
 }
 
@@ -510,6 +674,7 @@ $receipt = [ordered]@{
     publicCommentPath = if ($emitCommentBody) { $publicCommentPath } else { $null }
     publicStepSummaryPath = if ($emitStepSummary) { $publicStepSummaryPath } else { $null }
     targetRunsManifestPath = if ($null -eq $targetManifest) { $null } else { $targetRunsManifestPathResolved }
+    previewManifestPath = if ($null -eq $previewManifestPathResolved) { $null } else { $previewManifestPathResolved }
     indexMarkdownPath = $indexMdPath
     indexHtmlPath = $indexHtmlPath
     workflowRunUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $null } else { $RunUrl }
@@ -528,6 +693,13 @@ $receipt = [ordered]@{
     failedTargetCount = $failedTargetCount
     totalProcessed = $totalProcessed
     totalDiffs = $totalDiffs
+    previewPairCount = $previewPairCount
+    commentPreviewPairCap = $commentPreviewPairCap
+    commentPreviewPairCount = $commentPreviewPairCount
+    commentPreviewPairOmittedCount = $commentPreviewPairOmittedCount
+    indexPreviewPairCap = $indexPreviewPairCap
+    indexPreviewPairCount = $indexPreviewPairCount
+    indexPreviewPairOmittedCount = $indexPreviewPairOmittedCount
   }
   excludedViFiles = @(
     $excludedViFiles |
@@ -548,6 +720,7 @@ $receipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $prRunPath -Encod
 Write-ActionOutput -Key 'pr-run-path' -Value $prRunPath
 Write-ActionOutput -Key 'public-comment-path' -Value $(if ($emitCommentBody) { $publicCommentPath } else { '' })
 Write-ActionOutput -Key 'public-step-summary-path' -Value $(if ($emitStepSummary) { $publicStepSummaryPath } else { '' })
+Write-ActionOutput -Key 'preview-manifest-path' -Value $(if ($null -eq $previewManifestPathResolved) { '' } else { $previewManifestPathResolved })
 Write-ActionOutput -Key 'index-markdown-path' -Value $indexMdPath
 Write-ActionOutput -Key 'index-html-path' -Value $indexHtmlPath
 Write-ActionOutput -Key 'results-dir' -Value $resultsDirResolved

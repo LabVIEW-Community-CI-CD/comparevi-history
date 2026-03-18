@@ -145,6 +145,66 @@ try {
     New-Item -ItemType Directory -Path $path -Force | Out-Null
   }
 
+  $targetOneHistoryRoot = Split-Path -Parent $targetOneRoot
+  $targetOneModeRoot = Join-Path $targetOneHistoryRoot 'front-panel'
+  $targetOneArtifactDir = Join-Path $targetOneModeRoot 'VIP_Post-Install_Custom_Action.vi-001-artifacts'
+  $targetOneReportFilesDir = Join-Path $targetOneArtifactDir 'compare-report_files'
+  New-Item -ItemType Directory -Path $targetOneReportFilesDir -Force | Out-Null
+  foreach ($imageName in @('fp_1.png', 'fp_2.png', '0_0_11_11_1.png', '0_0_11_11_2.png')) {
+    [System.IO.File]::WriteAllBytes((Join-Path $targetOneReportFilesDir $imageName), @(0xCA, 0xFE, 0xBA, 0xBE))
+  }
+
+  $targetOneReportHtmlPath = Join-Path $targetOneArtifactDir 'compare-report.html'
+  @'
+<!DOCTYPE html>
+<html>
+<body>
+<div class="compared-VIs">
+<details><summary class="difference-heading"><div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div></summary>
+<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">Front Panel Overview</td></tr>
+<tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_1.png"/></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/fp_2.png"/></td></tr></table></details>
+</div>
+<details class="cosmetic" closed>
+<summary class="difference-cosmetic-heading">1. Front Panel - Variant</summary>
+<table class="difference"><tr class="compared-vi-image-captions"><td class="compared-vi-image-caption">/compare/m0/Base.vi</td><td class="difference-divider"></td><td class="compared-vi-image-caption">/compare/m0/Head.vi</td></tr><tr class="compared-images"><td class="diff-image"><img class="difference-image" src="compare-report_files/0_0_11_11_1.png" alt="compare-report_files/0_0_11_11_1.png"></td><td class="difference-divider"></td><td class="diff-image"><img class="difference-image" src="compare-report_files/0_0_11_11_2.png" alt="compare-report_files/0_0_11_11_2.png"></td></tr></table>
+</details>
+</body>
+</html>
+'@ | Set-Content -LiteralPath $targetOneReportHtmlPath -Encoding utf8
+
+  $targetOneModeManifestPath = Join-Path $targetOneModeRoot 'manifest.json'
+  @"
+{
+  "schema": "vi-compare/history@v1",
+  "generatedAt": "2026-03-17T00:00:30Z",
+  "mode": "front-panel",
+  "comparisons": [
+    {
+      "index": 1,
+      "base": { "ref": "base-sha" },
+      "head": { "ref": "head-sha" },
+      "result": {
+        "reportHtml": "$($targetOneReportHtmlPath.Replace('\', '\\'))"
+      }
+    }
+  ]
+}
+"@ | Set-Content -LiteralPath $targetOneModeManifestPath -Encoding utf8
+
+  $targetOneSuiteManifestPath = Join-Path $targetOneHistoryRoot 'manifest.json'
+  @"
+{
+  "schema": "vi-compare/history-suite@v1",
+  "generatedAt": "2026-03-17T00:00:30Z",
+  "modes": [
+    {
+      "name": "front-panel",
+      "manifestPath": "$($targetOneModeManifestPath.Replace('\', '\\'))"
+    }
+  ]
+}
+"@ | Set-Content -LiteralPath $targetOneSuiteManifestPath -Encoding utf8
+
   foreach ($path in @(
       (Join-Path $targetOneRoot 'request.json'),
       (Join-Path $targetOneRoot 'public-run.json'),
@@ -195,6 +255,7 @@ try {
       "publicRunPath": "$((Join-Path $targetOneRoot 'public-run.json').Replace('\', '\\'))",
       "sharedEvidencePath": "$((Join-Path $targetOneRoot 'shared-evidence.json').Replace('\', '\\'))",
       "historySummaryJsonPath": null,
+      "manifestPath": "$($targetOneSuiteManifestPath.Replace('\', '\\'))",
       "historyReportMdPath": "$((Join-Path $targetOneRoot 'history-report.md').Replace('\', '\\'))",
       "historyReportHtmlPath": "$((Join-Path $targetOneRoot 'history-report.html').Replace('\', '\\'))",
       "modeSummaryJsonPath": "$((Join-Path $targetOneRoot 'mode-summary.json').Replace('\', '\\'))",
@@ -258,6 +319,9 @@ try {
   if ($receipt.summary.totalProcessed -ne 5 -or $receipt.summary.totalDiffs -ne 2) {
     throw 'Aggregate totals mismatch.'
   }
+  if ($receipt.summary.previewPairCount -ne 2 -or $receipt.summary.commentPreviewPairCount -ne 2 -or $receipt.summary.indexPreviewPairCount -ne 2) {
+    throw 'Aggregate preview pair summary mismatch.'
+  }
   if ($receipt.outputs.workflowRunUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/actions/runs/123456789') {
     throw 'Workflow run URL mismatch.'
   }
@@ -271,6 +335,9 @@ try {
   if (-not (Test-Path -LiteralPath $receipt.outputs.publicCommentPath -PathType Leaf) -or
     -not (Test-Path -LiteralPath $receipt.outputs.publicStepSummaryPath -PathType Leaf)) {
     throw 'Aggregate reviewer surfaces were not written.'
+  }
+  if (-not (Test-Path -LiteralPath $receipt.outputs.previewManifestPath -PathType Leaf)) {
+    throw 'Aggregate preview manifest was not written.'
   }
   if ($receipt.excludedViFiles.Count -ne 1 -or [string]$receipt.excludedViFiles[0].exclusionReason -ne 'deleted-vi-not-executable') {
     throw 'Excluded VI state should flow into the aggregate PR run receipt.'
@@ -286,11 +353,15 @@ try {
   if ($commentBody -notmatch [regex]::Escape('comparevi-history-pr-diagnostics-123456789')) {
     throw 'PR comment body should point reviewers at the artifact bundle.'
   }
+  if ($commentBody -notmatch [regex]::Escape('PR comment preview gallery: `2` shown, `0` omitted, cap `4`')) {
+    throw 'PR comment body should surface preview pair counts.'
+  }
 
   $indexMarkdown = Get-Content -LiteralPath $receipt.outputs.indexMarkdownPath -Raw
   foreach ($requiredText in @(
       '[changed-vi-discovery.json](changed-vi-discovery.json)',
       '[pr-run.json](pr-run.json)',
+      '[pr-preview-manifest.json](pr-preview-manifest.json)',
       '[public run](',
       '[shared evidence](',
       '[history report](',
@@ -301,9 +372,26 @@ try {
       throw "Index markdown is missing '$requiredText'."
     }
   }
+  if ($indexMarkdown -notmatch [regex]::Escape('![Tooling/deployment/VIP_Post-Install Custom Action.vi | front-panel | Front Panel Overview base](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png)')) {
+    throw 'Index markdown should embed the preview base image.'
+  }
+  if ($indexMarkdown -notmatch [regex]::Escape('![Tooling/deployment/VIP_Post-Install Custom Action.vi | front-panel | Front Panel Overview head](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_2.png)')) {
+    throw 'Index markdown should embed the preview head image.'
+  }
+
+  $indexHtml = Get-Content -LiteralPath $receipt.outputs.indexHtmlPath -Raw
+  if ($indexHtml -notmatch [regex]::Escape('<section class="preview-gallery">') -or
+    $indexHtml -notmatch [regex]::Escape('targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png')) {
+    throw 'Index HTML should embed the preview gallery.'
+  }
+
+  $previewManifest = Get-Content -LiteralPath $receipt.outputs.previewManifestPath -Raw | ConvertFrom-Json -Depth 64
+  if ($previewManifest.summary.previewPairCount -ne 2) {
+    throw 'Preview manifest summary mismatch.'
+  }
 
   $stepSummary = Get-Content -LiteralPath $receipt.outputs.publicStepSummaryPath -Raw
-  if ($stepSummary -notmatch 'automatic pull request run' -or $stepSummary -notmatch 'Final status: `failed`') {
+  if ($stepSummary -notmatch 'automatic pull request run' -or $stepSummary -notmatch 'Final status: `failed`' -or $stepSummary -notmatch 'Preview pairs: `2`') {
     throw 'Public step summary content mismatch.'
   }
 
@@ -312,6 +400,7 @@ try {
       'pr-run-path=',
       'public-comment-path=',
       'public-step-summary-path=',
+      'preview-manifest-path=',
       'index-markdown-path=',
       'index-html-path=',
       'final-status=failed',
