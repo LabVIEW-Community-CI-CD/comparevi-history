@@ -185,6 +185,131 @@ function New-PreviewCard {
   }
 }
 
+function Convert-PreviewCardToReviewPair {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard
+  )
+
+  $surfaces = @(
+    $PreviewCard.surfaces |
+      ForEach-Object {
+        [ordered]@{
+          surfaceKind = [string]$_.surfaceKind
+          surfaceLabel = [string]$_.surfaceLabel
+          mode = [string]$_.surfaceKind
+          label = [string]$_.surfaceLabel
+          primaryReviewerRelativePath = [string]$_.reportHtmlRelativePath
+          debugReportHtmlRelativePath = ('debug/' + ([string]$_.surfaceKind) + '.html')
+          baseImageRelativePath = [string]$_.baseImageRelativePath
+          headImageRelativePath = [string]$_.headImageRelativePath
+          baseByteLength = 4
+          headByteLength = 4
+          baseImageSha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          headImageSha256 = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+          sortKey = ('Tooling/demo/Demo.vi|{0}|{1}' -f [int]$PreviewCard.comparison.index, [string]$_.surfaceKind)
+        }
+      }
+  )
+
+  $reviewerSummary = $null
+  if ($null -ne $PreviewCard.reviewerSummary) {
+    $reviewerSummary = [ordered]@{
+      label = [string]$PreviewCard.reviewerSummary.label
+      overallSeverity = [string]$PreviewCard.reviewerSummary.overallSeverity
+      headline = [string]$PreviewCard.reviewerSummary.headline
+      signalCount = [int]$PreviewCard.reviewerSummary.signalCount
+      omittedSignalCount = [int]$PreviewCard.reviewerSummary.omittedSignalCount
+      signals = @(
+        $PreviewCard.reviewerSummary.signals |
+          ForEach-Object {
+            [ordered]@{
+              signalKey = [string]$_.signalKey
+              label = [string]$_.label
+              severity = [string]$_.severity
+              detailCount = [int]$_.detailCount
+              sectionCount = [int]$_.sectionCount
+              summary = [string]$_.summary
+              primaryReviewerRelativePath = [string]$_.primaryReportHtmlRelativePath
+              primaryDebugReportHtmlRelativePath = ('debug/summary-' + [string]$_.signalKey + '.html')
+              sectionLinks = @(
+                $_.sectionLinks |
+                  ForEach-Object {
+                    [ordered]@{
+                      sectionOrdinal = [int]$_.sectionOrdinal
+                      label = [string]$_.label
+                      reviewerRelativePath = [string]$_.reportHtmlRelativePath
+                      debugReportHtmlRelativePath = ('debug/section-' + [int]$_.sectionOrdinal + '.html')
+                    }
+                  }
+              )
+            }
+          }
+      )
+    }
+  }
+
+  $changeDetails = $null
+  if ($null -ne $PreviewCard.changeDetails) {
+    $changeDetails = [ordered]@{
+      label = [string]$PreviewCard.changeDetails.label
+      sourceMode = [string]$PreviewCard.changeDetails.sourceMode
+      primaryReviewerRelativePath = [string]$PreviewCard.changeDetails.reportHtmlRelativePath
+      debugReportHtmlRelativePath = 'debug/change-details.html'
+      includedCategories = @($PreviewCard.changeDetails.includedCategories | ForEach-Object { [string]$_ })
+      groupCount = [int]$PreviewCard.changeDetails.groupCount
+      omittedGroupCount = [int]$PreviewCard.changeDetails.omittedGroupCount
+      sectionCount = [int]$PreviewCard.changeDetails.sectionCount
+      detailCount = [int]$PreviewCard.changeDetails.detailCount
+      groups = @(
+        $PreviewCard.changeDetails.groups |
+          ForEach-Object {
+            [ordered]@{
+              heading = [string]$_.heading
+              sectionCount = [int]$_.sectionCount
+              detailCount = [int]$_.detailCount
+              sampleDetails = @($_.sampleDetails | ForEach-Object { [string]$_ })
+              omittedDetailCount = [int]$_.omittedDetailCount
+              primaryReviewerRelativePath = [string]$_.primaryReportHtmlRelativePath
+              primaryDebugReportHtmlRelativePath = ('debug/group-' + ([string]$_.heading -replace '[^a-z0-9]+', '-').Trim('-') + '.html')
+              sectionLinks = @(
+                $_.sectionLinks |
+                  ForEach-Object {
+                    [ordered]@{
+                      sectionOrdinal = [int]$_.sectionOrdinal
+                      label = [string]$_.label
+                      reviewerRelativePath = [string]$_.reportHtmlRelativePath
+                      debugReportHtmlRelativePath = ('debug/section-' + [int]$_.sectionOrdinal + '.html')
+                    }
+                  }
+              )
+            }
+          }
+      )
+    }
+  }
+
+  return [ordered]@{
+    reviewPairKey = ('dynamic-demo-target|{0}' -f [int]$PreviewCard.comparison.index)
+    targetId = 'dynamic-demo-target'
+    targetPath = 'Tooling/demo/Demo.vi'
+    comparison = $PreviewCard.comparison
+    sortKey = ('Tooling/demo/Demo.vi|{0:D4}' -f [int]$PreviewCard.comparison.index)
+    primaryReviewerDestination = @{
+      kind = 'history-pair-review-page'
+      relativePath = $null
+    }
+    debugDestinations = @{
+      frontPanelReportHtmlRelativePath = 'debug/front-panel.html'
+      blockDiagramReportHtmlRelativePath = 'debug/block-diagram.html'
+      changeDetailsReportHtmlRelativePath = 'debug/change-details.html'
+    }
+    surfaces = $surfaces
+    reviewerSummary = $reviewerSummary
+    changeDetails = $changeDetails
+  }
+}
+
 function New-PublicationArtifactZip {
   param(
     [Parameter(Mandatory = $true)]
@@ -212,6 +337,19 @@ function New-PublicationArtifactZip {
     (New-PreviewCard -PreviewPairs $previewPairs -ComparisonIndex 1),
     (New-PreviewCard -PreviewPairs $previewPairs -ComparisonIndex 2)
   )
+  $reviewBundle = [ordered]@{
+    schema = 'comparevi-history/review-bundle@v1'
+    reviewPairs = @(
+      $commentPreviewCards |
+        ForEach-Object { Convert-PreviewCardToReviewPair -PreviewCard $_ }
+    )
+  }
+  $stalePreviewCards = @(
+    ($commentPreviewCards | ConvertTo-Json -Depth 64 | ConvertFrom-Json -Depth 64) |
+      ForEach-Object { $_ }
+  )
+  $stalePreviewCards[0].reviewerSummary.headline = 'STALE manifest headline'
+  $stalePreviewCards[0].surfaces[0].surfaceLabel = 'STALE manifest surface'
 
   ([ordered]@{
       schema = 'comparevi-history/pr-run@v2'
@@ -300,6 +438,7 @@ function New-PublicationArtifactZip {
       targets = @()
     } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-run.json') -Encoding utf8
   $CommentBody | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-comment.md') -Encoding utf8
+  ($reviewBundle | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $artifactRoot 'review-bundle.json') -Encoding utf8
 
   if ($IncludePreviewManifest.IsPresent) {
     foreach ($previewPair in $previewPairs) {
@@ -350,9 +489,9 @@ function New-PublicationArtifactZip {
         previewPairs = $previewPairs
         commentPreviewPairs = @($previewPairs | Where-Object { [int]$_.comparison.index -in @(1, 2) -and [string]$_.mode -eq 'front-panel' })
         indexPreviewPairs = @($previewPairs | Where-Object { [int]$_.comparison.index -in @(1, 2) -and [string]$_.mode -eq 'front-panel' })
-        reviewerPreviewCards = $commentPreviewCards
-        commentPreviewCards = $commentPreviewCards
-        indexPreviewCards = $commentPreviewCards
+        reviewerPreviewCards = $stalePreviewCards
+        commentPreviewCards = $stalePreviewCards
+        indexPreviewCards = $stalePreviewCards
       } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-preview-manifest.json') -Encoding utf8
   }
 
@@ -618,6 +757,10 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].debugPrimaryReportUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-001-block-diagram-objects' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].primaryReportUrl -ne ($pair1Url + '#comparevi-change-001-block-diagram-objects')) {
     throw 'Preview publication should route reviewer-summary links to the pair page and preserve debug evidence links.'
+  }
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.headline -eq 'STALE manifest headline' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].surfaces[0].surfaceLabel -eq 'STALE manifest surface') {
+    throw 'Preview publication should rebuild comment cards from review-bundle.json instead of trusting stale manifest cards.'
   }
   if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block diagram moves' -or

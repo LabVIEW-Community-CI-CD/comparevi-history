@@ -13,6 +13,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'CompareVIHistoryReviewBundleProjection.psm1') -Force
+
 $stickyMarker = '<!-- comparevi-history:pull-request-diagnostics -->'
 
 function Write-ActionOutput {
@@ -1847,6 +1849,7 @@ $totalProcessed = 0
 $totalDiffs = 0
 $previewManifest = $null
 $previewManifestPathResolved = $null
+$reviewBundle = $null
 $rawPreviewPairCount = 0
 $reviewerPreviewPairCount = 0
 $commentPreviewPairCount = 0
@@ -1882,6 +1885,14 @@ if ($null -ne $targetManifest) {
   if ([string]$previewManifest.schema -ne 'comparevi-history/pr-preview-manifest@v1') {
     throw "Unsupported preview manifest schema in '$previewManifestPathResolved': $($previewManifest.schema)"
   }
+  $reviewBundlePathResolved = Join-Path $resultsDirResolved 'review-bundle.json'
+  if (-not (Test-Path -LiteralPath $reviewBundlePathResolved -PathType Leaf)) {
+    throw "Compiled review bundle was missing from '$resultsDirResolved'."
+  }
+  $reviewBundle = Read-JsonFile -Path $reviewBundlePathResolved
+  if ([string]$reviewBundle.schema -ne 'comparevi-history/review-bundle@v1') {
+    throw "Unsupported review bundle schema in '$reviewBundlePathResolved': $($reviewBundle.schema)"
+  }
   $rawPreviewPairCount = [int](Get-NestedValue -Object $previewManifest -Path @('summary', 'rawPreviewPairCount') -Default $previewManifest.summary.previewPairCount)
   $reviewerPreviewPairCount = [int](Get-NestedValue -Object $previewManifest -Path @('summary', 'reviewerPreviewPairCount') -Default $previewManifest.summary.previewPairCount)
   $commentPreviewPairCap = [int]$previewManifest.summary.commentPreviewPairCap
@@ -1892,14 +1903,14 @@ if ($null -ne $targetManifest) {
   $indexPreviewPairCount = [int]$previewManifest.summary.indexPreviewPairCount
   $indexPreviewPairOmittedCount = [int]$previewManifest.summary.indexPreviewPairOmittedCount
   $indexPreviewCardCount = [int](Get-NestedValue -Object $previewManifest -Path @('summary', 'indexPreviewCardCount') -Default 0)
-  $indexPreviewCards = @(New-ReviewerPreviewCards `
+  $indexPreviewCards = @(Get-CompareVIHistoryReviewBundleCards `
+      -ReviewBundle $reviewBundle `
       -SelectedPreviewPairs @($previewManifest.indexPreviewPairs | ForEach-Object { $_ }) `
-      -AllPreviewPairs @($previewManifest.previewPairs | ForEach-Object { $_ }) `
-      -ExistingCards @($previewManifest.indexPreviewCards | ForEach-Object { $_ }))
-  $commentPreviewCards = @(New-ReviewerPreviewCards `
+      -UseSelectedPreviewPairs)
+  $commentPreviewCards = @(Get-CompareVIHistoryReviewBundleCards `
+      -ReviewBundle $reviewBundle `
       -SelectedPreviewPairs @($previewManifest.commentPreviewPairs | ForEach-Object { $_ }) `
-      -AllPreviewPairs @($previewManifest.previewPairs | ForEach-Object { $_ }) `
-      -ExistingCards @($previewManifest.commentPreviewCards | ForEach-Object { $_ }))
+      -UseSelectedPreviewPairs)
   $indexPreviewCards = @(New-WorkspacePrimaryPreviewCards -PreviewCards $indexPreviewCards)
   $commentPreviewCards = @(New-WorkspacePrimaryPreviewCards -PreviewCards $commentPreviewCards)
   Write-WorkspacePairPages -PreviewCards $indexPreviewCards -Targets $targets -ResultsRoot $resultsDirResolved

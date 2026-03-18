@@ -17,6 +17,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'CompareVIHistoryReviewBundleProjection.psm1') -Force
+
 function Write-ActionOutput {
   param(
     [Parameter(Mandatory = $true)]
@@ -1294,16 +1296,15 @@ function Publish-CommentPreviewSurface {
     [Parameter(Mandatory = $true)]
     [string]$ArtifactRoot,
     [Parameter(Mandatory = $true)]
-    [object]$PreviewManifest
+    [object]$PreviewManifest,
+    [AllowEmptyCollection()]
+    [object[]]$ReviewCards = @()
   )
 
   Ensure-PreviewBranch -RepositorySlug $RepositorySlug -BranchName $BranchName | Out-Null
 
   $prNumber = [int](Get-OptionalString -Value (Get-NestedValue -Object $PreviewManifest -Path @('pullRequest', 'number') -Default 0))
-  $previewCards = @(New-ReviewerPreviewCards `
-      -SelectedPreviewPairs @($PreviewManifest.commentPreviewPairs | ForEach-Object { $_ }) `
-      -AllPreviewPairs @($PreviewManifest.previewPairs | ForEach-Object { $_ }) `
-      -ExistingCards @($PreviewManifest.commentPreviewCards | ForEach-Object { $_ }))
+  $previewCards = @($ReviewCards | ForEach-Object { $_ })
   if ($previewCards.Count -eq 0) {
     return [ordered]@{
       status = 'not-required'
@@ -1580,7 +1581,27 @@ try {
 
       $previewManifest | Add-Member -NotePropertyName pullRequest -NotePropertyValue $prRun.pullRequest -Force
       if ([int](Get-NestedValue -Object $previewManifest -Path @('summary', 'commentPreviewPairCount') -Default 0) -gt 0) {
-        $previewPublication = Publish-CommentPreviewSurface -RepositorySlug $Repository -BranchName $PreviewBranch -RootPath $PreviewRoot -ExecutionRunId $WorkflowRunId -ArtifactRoot $artifactRoot -PreviewManifest $previewManifest
+        $reviewBundleFile = Get-ChildItem -LiteralPath $artifactRoot -Recurse -Filter 'review-bundle.json' | Select-Object -First 1
+        if (-not $reviewBundleFile) {
+          throw 'Downloaded artifact did not contain review-bundle.json.'
+        }
+        $reviewBundle = Read-JsonFile -Path $reviewBundleFile.FullName
+        if ([string]$reviewBundle.schema -ne 'comparevi-history/review-bundle@v1') {
+          throw "Unsupported review bundle schema in '$($reviewBundleFile.FullName)': $($reviewBundle.schema)"
+        }
+
+        $commentPreviewCards = @(Get-CompareVIHistoryReviewBundleCards `
+            -ReviewBundle $reviewBundle `
+            -SelectedPreviewPairs @($previewManifest.commentPreviewPairs | ForEach-Object { $_ }) `
+            -UseSelectedPreviewPairs)
+        $previewPublication = Publish-CommentPreviewSurface `
+          -RepositorySlug $Repository `
+          -BranchName $PreviewBranch `
+          -RootPath $PreviewRoot `
+          -ExecutionRunId $WorkflowRunId `
+          -ArtifactRoot $artifactRoot `
+          -PreviewManifest $previewManifest `
+          -ReviewCards $commentPreviewCards
         $previewMarkdown = New-CommentPreviewMarkdown -PreviewCards @($previewPublication.commentPreviewCards | ForEach-Object { $_ }) -RunUrl $workflowRunUrl
         $commentBody = Insert-PreviewGallery -CommentBody $commentBody -PreviewMarkdown $previewMarkdown
         $commentBody | Set-Content -LiteralPath $commentBodyPath -Encoding utf8
