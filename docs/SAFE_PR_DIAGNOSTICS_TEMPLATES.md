@@ -14,6 +14,8 @@ of repo-local inline comment renderers.
   [comparevi-history-pull-request-diagnostics-auto.yml](examples/comparevi-history-pull-request-diagnostics-auto.yml)
 - Automatic changed-VI publication template:
   [comparevi-history-pull-request-diagnostics-publish.yml](examples/comparevi-history-pull-request-diagnostics-publish.yml)
+- Agent-canary evaluation template:
+  [comparevi-history-agent-canary-evaluate.yml](examples/comparevi-history-agent-canary-evaluate.yml)
 - Comment-gated template:
   [comparevi-history-comment-gated.yml](examples/comparevi-history-comment-gated.yml)
 - Example consumer target catalog source:
@@ -22,6 +24,8 @@ of repo-local inline comment renderers.
   [comparevi-history-pr-policy.json](examples/comparevi-history-pr-policy.json)
 - Example dynamic consumer PR policy source:
   [comparevi-history-pr-policy-v2.json](examples/comparevi-history-pr-policy-v2.json)
+- Example agent-canary policy source:
+  [comparevi-history-agent-canary-policy.json](examples/comparevi-history-agent-canary-policy.json)
 
 ## Public Mode Contract
 
@@ -64,6 +68,8 @@ Consumer repositories should not contain:
 - The standard dynamic PR policy uses `discovery.selectionMode = dynamic-paths`.
 - Pair that execution template with the automatic changed-VI publication template so a privileged `workflow_run`
   publisher can create or update one sticky comment from the prepared `pr-comment.md` artifact.
+- Add the agent-canary evaluation template only when you want one long-lived draft PR to keep proving the full
+  execution plus publication surface through a dedicated same-repo canary lane.
 - Use the legacy automatic PR discovery template when you still want catalog-matched target ids to gate the automatic PR
   surface.
 - Use the comment-gated template when you want a slash command such as
@@ -72,6 +78,8 @@ Consumer repositories should not contain:
 - Run both patterns on trusted maintainer-controlled workflows that pre-pull the hosted NI Linux image serially and use
   a repo-local adapter such as `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1`.
 - Keep the target catalog checked in under `.github/comparevi-history-targets.json` and the automatic PR policy checked in under `.github/comparevi-history-pr-policy.json` so the consumer repo owns inspection policy without owning execution logic.
+- Keep the agent-canary policy checked in under `.github/comparevi-history-agent-canary.json` so the repo-owned canary
+  lane stays deterministic and machine-readable.
 
 ## Fork Adoption and Upstream Alignment
 
@@ -118,6 +126,10 @@ Consumer repositories should not contain:
   `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-publish.yml@v1`. It exists so
   `workflow_run` can publish the sticky comment with `actions: read`, `contents: read`, and `pull-requests: write`
   without widening the execution workflow token.
+- The agent-canary evaluation template uses the reusable workflow surface
+  `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-canary-evaluate.yml@v1`. It
+  exists so a same-repo `workflow_run` can evaluate the publication artifact, confirm the PR is an `agent-canary`
+  draft lane, and fail closed without re-running execution or checking out candidate PR code.
 - The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.9`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
   immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
@@ -139,6 +151,10 @@ Consumer repositories should not contain:
 - The automatic changed-VI publication template expects the execution artifact to contain `pr-run.json` and
   `pr-comment.md`, then updates one sticky comment identified by the stable marker
   `<!-- comparevi-history:pull-request-diagnostics -->`.
+- The agent-canary evaluation template expects the publication artifact to contain `pr-comment-publication.json` plus
+  the expanded execution artifact with `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`.
+- The agent-canary lane is same-repo only, uses branch prefix `agent-canary/`, requires the `agent-canary` label, and
+  expects one long-lived draft PR instead of a stream of throwaway proof branches.
 - The action owns reviewer-facing rendering. Consumers should publish PR comments from `public-comment-path` and append
   `public-step-summary-path` instead of rebuilding markdown inline.
 - The comment-gated template writes the action-owned step summary first, then attempts to publish the PR comment. If the
@@ -155,9 +171,11 @@ Consumer repositories should not contain:
 2. Start with the maintainer-dispatched template when your project is new to VI History diagnostics.
 3. Add the automatic changed-VI execution template plus the `workflow_run` publication template when you want pull
    requests to run automatically for every changed `.vi`.
-4. Keep the default explicit public mode bundle unless you have a documented reason to narrow it.
-5. Add the legacy catalog-matched automatic PR template only if your repo still needs target-id allowlists for
+4. Add the agent-canary evaluation template plus `.github/comparevi-history-agent-canary.json` when you want one
+   governed same-repo canary PR to keep proving the automatic review surface.
+5. Keep the default explicit public mode bundle unless you have a documented reason to narrow it.
+6. Add the legacy catalog-matched automatic PR template only if your repo still needs target-id allowlists for
    automatic PR execution.
-6. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
+7. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
-7. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
+8. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.

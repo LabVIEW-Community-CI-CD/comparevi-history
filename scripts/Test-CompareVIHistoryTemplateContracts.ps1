@@ -6,6 +6,7 @@ $manualTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-workf
 $pullRequestTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics.yml'
 $pullRequestAutoTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics-auto.yml'
 $pullRequestPublishTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-pull-request-diagnostics-publish.yml'
+$agentCanaryTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-agent-canary-evaluate.yml'
 $commentTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-comment-gated.yml'
 $manualExplorationTemplatePath = Join-Path $repoRoot 'docs/examples/comparevi-history-manual-vi-exploration.yml'
 $safeTemplatesPath = Join-Path $repoRoot 'docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md'
@@ -13,6 +14,7 @@ $publishedValidationWorkflowPath = Join-Path $repoRoot '.github/workflows/publis
 $pullRequestWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics.yml'
 $pullRequestAutoWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics-auto.yml'
 $pullRequestPublishWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics-publish.yml'
+$agentCanaryWorkflowPath = Join-Path $repoRoot '.github/workflows/pull-request-diagnostics-canary-evaluate.yml'
 $manualExplorationWorkflowPath = Join-Path $repoRoot '.github/workflows/manual-vi-exploration.yml'
 $smokeWorkflowPath = Join-Path $repoRoot '.github/workflows/smoke.yml'
 $releaseWorkflowPath = Join-Path $repoRoot '.github/workflows/release.yml'
@@ -21,6 +23,7 @@ $readmePath = Join-Path $repoRoot 'README.md'
 $exampleTargetsPath = Join-Path $repoRoot 'docs/examples/comparevi-history-consumer-targets.json'
 $examplePrPolicyPath = Join-Path $repoRoot 'docs/examples/comparevi-history-pr-policy.json'
 $examplePrPolicyV2Path = Join-Path $repoRoot 'docs/examples/comparevi-history-pr-policy-v2.json'
+$exampleAgentCanaryPolicyPath = Join-Path $repoRoot 'docs/examples/comparevi-history-agent-canary-policy.json'
 $actionPath = Join-Path $repoRoot 'action.yml'
 
 function Assert-Match {
@@ -90,6 +93,7 @@ $manualTemplate = Get-Content -LiteralPath $manualTemplatePath -Raw
 $pullRequestTemplate = Get-Content -LiteralPath $pullRequestTemplatePath -Raw
 $pullRequestAutoTemplate = Get-Content -LiteralPath $pullRequestAutoTemplatePath -Raw
 $pullRequestPublishTemplate = Get-Content -LiteralPath $pullRequestPublishTemplatePath -Raw
+$agentCanaryTemplate = Get-Content -LiteralPath $agentCanaryTemplatePath -Raw
 $commentTemplate = Get-Content -LiteralPath $commentTemplatePath -Raw
 $manualExplorationTemplate = Get-Content -LiteralPath $manualExplorationTemplatePath -Raw
 $safeTemplates = Get-Content -LiteralPath $safeTemplatesPath -Raw
@@ -97,6 +101,7 @@ $publishedValidationWorkflow = Get-Content -LiteralPath $publishedValidationWork
 $pullRequestWorkflow = Get-Content -LiteralPath $pullRequestWorkflowPath -Raw
 $pullRequestAutoWorkflow = Get-Content -LiteralPath $pullRequestAutoWorkflowPath -Raw
 $pullRequestPublishWorkflow = Get-Content -LiteralPath $pullRequestPublishWorkflowPath -Raw
+$agentCanaryWorkflow = Get-Content -LiteralPath $agentCanaryWorkflowPath -Raw
 $manualExplorationWorkflow = Get-Content -LiteralPath $manualExplorationWorkflowPath -Raw
 $smokeWorkflow = Get-Content -LiteralPath $smokeWorkflowPath -Raw
 $releaseWorkflow = Get-Content -LiteralPath $releaseWorkflowPath -Raw
@@ -105,6 +110,7 @@ $readme = Get-Content -LiteralPath $readmePath -Raw
 $exampleTargets = Get-Content -LiteralPath $exampleTargetsPath -Raw
 $examplePrPolicy = Get-Content -LiteralPath $examplePrPolicyPath -Raw
 $examplePrPolicyV2 = Get-Content -LiteralPath $examplePrPolicyV2Path -Raw
+$exampleAgentCanaryPolicy = Get-Content -LiteralPath $exampleAgentCanaryPolicyPath -Raw
 $actionYaml = Get-Content -LiteralPath $actionPath -Raw
 
 Assert-Match -Content $manualTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Manual template must use ubuntu-latest.'
@@ -140,6 +146,16 @@ Assert-Match -Content $pullRequestPublishTemplate -Pattern '(?m)^\s*actions:\s+r
 Assert-Match -Content $pullRequestPublishTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Publication template must request pull-requests: write.'
 Assert-Match -Content $pullRequestPublishTemplate -Pattern 'workflow_run_id:\s+\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Publication template must route workflow_run.id into the reusable workflow.'
 Assert-Match -Content $pullRequestPublishTemplate -Pattern 'artifact_name:\s+comparevi-history-pr-diagnostics-\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Publication template must resolve the deterministic execution artifact name.'
+
+Assert-Match -Content $agentCanaryTemplate -Pattern 'LabVIEW-Community-CI-CD/comparevi-history/\.github/workflows/pull-request-diagnostics-canary-evaluate\.yml@v1' -Message 'Agent canary template must call the reusable evaluation workflow surface.'
+Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*workflow_run:\s*$' -Message 'Agent canary template must trigger on workflow_run.'
+Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*actions:\s+read\s*$' -Message 'Agent canary template must request actions: read.'
+Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*contents:\s+read\s*$' -Message 'Agent canary template must request contents: read.'
+Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*pull-requests:\s+read\s*$' -Message 'Agent canary template must request pull-requests: read so labels and draft state can be evaluated deterministically.'
+Assert-Match -Content $agentCanaryTemplate -Pattern 'workflow_run_id:\s+\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Agent canary template must route workflow_run.id into the reusable evaluator.'
+Assert-Match -Content $agentCanaryTemplate -Pattern 'artifact_name:\s+comparevi-history-pr-diagnostics-publish-\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Agent canary template must resolve the deterministic publication artifact name.'
+Assert-Match -Content $agentCanaryTemplate -Pattern 'canary_policy_path:\s+\.github/comparevi-history-agent-canary\.json' -Message 'Agent canary template must consume the checked-in agent-canary policy.'
+Assert-Match -Content $agentCanaryTemplate -Pattern 'platform_ref:\s+v1' -Message 'Agent canary template must keep platform_ref aligned with the workflow pin.'
 
 Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*vi_path:\s*$' -Message 'Manual exploration template must accept vi_path.'
 Assert-Match -Content $manualExplorationTemplate -Pattern '(?m)^\s*default:\s+develop\s*$' -Message 'Manual exploration template must default the consumer ref to develop.'
@@ -227,6 +243,17 @@ Assert-Match -Content $pullRequestPublishWorkflow -Pattern 'comparevi-history-pr
 Assert-Match -Content $pullRequestPublishWorkflow -Pattern "steps\.publish\.outcome == 'failure'" -Message 'Publication workflow must fail closed on publish failures after receipts upload.'
 Assert-NotMatch -Content $pullRequestPublishWorkflow -Pattern 'candidate-consumer' -Message 'Publication workflow must not check out or execute candidate PR code.'
 
+Assert-Match -Content $agentCanaryWorkflow -Pattern '(?m)^\s*workflow_call:\s*$' -Message 'Agent canary workflow must be reusable.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern '(?m)^\s*workflow_run_id:\s*$' -Message 'Agent canary workflow must accept workflow_run_id.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern '(?m)^\s*artifact_name:\s*$' -Message 'Agent canary workflow must accept artifact_name.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern '(?m)^\s*canary_policy_path:\s*$' -Message 'Agent canary workflow must accept canary_policy_path.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern '(?m)^\s*actions:\s+read\s*$' -Message 'Agent canary workflow must request actions: read.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern '(?m)^\s*pull-requests:\s+read\s*$' -Message 'Agent canary workflow must request pull-requests: read.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern 'Write-CompareVIHistoryAgentCanaryEvaluation\.ps1' -Message 'Agent canary workflow must use the agent canary evaluator script.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern 'comparevi-history-pr-diagnostics-canary-' -Message 'Agent canary workflow must upload canary evaluation receipts.'
+Assert-Match -Content $agentCanaryWorkflow -Pattern "steps\.evaluate\.outcome == 'failure'" -Message 'Agent canary workflow must fail closed on evaluator failures after receipts upload.'
+Assert-NotMatch -Content $agentCanaryWorkflow -Pattern 'candidate-consumer' -Message 'Agent canary workflow must not check out or execute candidate PR code.'
+
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*runs-on:\s+ubuntu-latest\s*$' -Message 'Comment-gated template must use ubuntu-latest.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*pull-requests:\s+write\s*$' -Message 'Comment-gated template must request pull-requests: write.'
 Assert-Match -Content $commentTemplate -Pattern '(?m)^\s*DEFAULT_COMPARE_MODES:\s+attributes,front-panel,block-diagram\s*$' -Message 'Comment-gated template must default to explicit public modes only.'
@@ -255,6 +282,11 @@ Assert-Match -Content $examplePrPolicyV2 -Pattern '"includePaths"\s*:\s*\[\s*"\*
 Assert-Match -Content $examplePrPolicyV2 -Pattern '"maxChangedViCount"\s*:\s*10' -Message 'Example dynamic PR policy file must fail closed at ten changed VIs.'
 Assert-Match -Content $examplePrPolicyV2 -Pattern '"noisePolicy"\s*:\s*"include"' -Message 'Example dynamic PR policy file must default to unsuppressed noise handling.'
 Assert-Match -Content $examplePrPolicyV2 -Pattern '"forkBehavior"\s*:\s*"hosted-auto"' -Message 'Example dynamic PR policy file must allow hosted automatic fork execution.'
+Assert-Match -Content $exampleAgentCanaryPolicy -Pattern 'comparevi-history/agent-canary-policy@v1' -Message 'Example agent canary policy file must declare the agent-canary policy schema.'
+Assert-Match -Content $exampleAgentCanaryPolicy -Pattern '"branchPrefix"\s*:\s*"agent-canary/' -Message 'Example agent canary policy file must declare the canary branch prefix.'
+Assert-Match -Content $exampleAgentCanaryPolicy -Pattern '"requiredLabels"\s*:\s*\[\s*"agent-canary"' -Message 'Example agent canary policy file must declare the required canary label.'
+Assert-Match -Content $exampleAgentCanaryPolicy -Pattern '"canonicalPath"\s*:\s*"Tooling/comparevi-history-canary/CanaryProbe\.vi"' -Message 'Example agent canary policy file must bind the dedicated canary VI path.'
+Assert-Match -Content $exampleAgentCanaryPolicy -Pattern '"prMode"\s*:\s*"draft"' -Message 'Example agent canary policy file must require a draft canary PR.'
 Assert-Match -Content $safeTemplates -Pattern 'attributes,front-panel,block-diagram' -Message 'Safe template docs must document the explicit public mode contract.'
 Assert-Match -Content $safeTemplates -Pattern '\.github/comparevi-history-targets\.json' -Message 'Safe template docs must document the checked-in target catalog path.'
 Assert-Match -Content $safeTemplates -Pattern '\.github/comparevi-history-pr-policy\.json' -Message 'Safe template docs must document the checked-in PR policy path.'
@@ -262,10 +294,13 @@ Assert-Match -Content $safeTemplates -Pattern 'public-comment-path' -Message 'Sa
 Assert-Match -Content $safeTemplates -Pattern 'public-step-summary-path' -Message 'Safe template docs must point consumers at the action-owned step summary output.'
 Assert-Match -Content $safeTemplates -Pattern 'comparevi-history-pull-request-diagnostics-auto\.yml' -Message 'Safe template docs must document the dynamic changed-VI execution template.'
 Assert-Match -Content $safeTemplates -Pattern 'comparevi-history-pull-request-diagnostics-publish\.yml' -Message 'Safe template docs must document the workflow_run publication template.'
+Assert-Match -Content $safeTemplates -Pattern 'comparevi-history-agent-canary-evaluate\.yml' -Message 'Safe template docs must document the agent canary evaluation template.'
+Assert-Match -Content $safeTemplates -Pattern 'comparevi-history-agent-canary-policy\.json' -Message 'Safe template docs must document the agent canary policy example.'
 Assert-Match -Content $safeTemplates -Pattern 'dynamic-paths' -Message 'Safe template docs must document dynamic-path discovery.'
 Assert-Match -Content $safeTemplates -Pattern 'workflow_run' -Message 'Safe template docs must document workflow_run publication.'
 Assert-Match -Content $safeTemplates -Pattern 'hosted-auto' -Message 'Safe template docs must document hosted automatic fork execution.'
 Assert-Match -Content $safeTemplates -Pattern 'sticky comment' -Message 'Safe template docs must document the sticky-comment publication surface.'
+Assert-Match -Content $safeTemplates -Pattern 'agent-canary' -Message 'Safe template docs must document the dedicated agent-canary proof lane.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern '\.github/comparevi-history-targets\.json' -Message 'Published validation must synthesize a checked-in-style target catalog path.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_spec_path:\s+\.github/comparevi-history-targets\.json' -Message 'Published validation must route target_spec_path into the action.'
 Assert-Match -Content $publishedValidationWorkflow -Pattern 'target_id:\s+published-consumer-target' -Message 'Published validation must route a stable target id into the action.'
@@ -299,6 +334,8 @@ Assert-Match -Content $readme -Pattern 'comparevi-history/changed-vi-discovery@v
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-policy@v2' -Message 'README must document the dynamic PR policy contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-run@v2' -Message 'README must document the dynamic aggregate pull-request run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-comment-publication@v1' -Message 'README must document the PR comment publication contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/agent-canary-policy@v1' -Message 'README must document the agent-canary policy contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/agent-canary-evaluation@v1' -Message 'README must document the agent-canary evaluation contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/revision-catalog@v1' -Message 'README must document the revision catalog contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/exploration-run@v1' -Message 'README must document the exploration run contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/evidence-graph@v1' -Message 'README must document the canonical evidence graph contract.'
@@ -329,8 +366,10 @@ Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-manual-v
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics\.yml' -Message 'README must point to the pull request diagnostics wrapper example.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics-auto\.yml' -Message 'README must point to the automatic changed-VI execution wrapper example.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pull-request-diagnostics-publish\.yml' -Message 'README must point to the PR comment publication wrapper example.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-agent-canary-evaluate\.yml' -Message 'README must point to the agent canary evaluation wrapper example.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pr-policy\.json' -Message 'README must point to the PR policy example.'
 Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-pr-policy-v2\.json' -Message 'README must point to the dynamic PR policy example.'
+Assert-Match -Content $readme -Pattern 'docs/examples/comparevi-history-agent-canary-policy\.json' -Message 'README must point to the agent canary policy example.'
 Assert-Match -Content $readme -Pattern 'hosted NI Linux container path wired by a repo-local adapter' -Message 'README must document the hosted NI Linux adapter path.'
 Assert-Match -Content $readme -Pattern 'public-comment-path' -Message 'README must document the action-owned public comment output.'
 Assert-Match -Content $readme -Pattern 'shared-evidence\.json' -Message 'README must document the shared evidence output.'
@@ -341,6 +380,10 @@ Assert-Match -Content $readme -Pattern 'cross-repository and fork pull requests 
 Assert-Match -Content $readme -Pattern 'dynamic-paths' -Message 'README must document dynamic-path discovery for changed VIs.'
 Assert-Match -Content $readme -Pattern 'sticky PR comment' -Message 'README must document sticky PR comment publication.'
 Assert-Match -Content $readme -Pattern 'workflow_run' -Message 'README must document workflow_run-based publication.'
+Assert-Match -Content $readme -Pattern 'long-lived draft PR' -Message 'README must document the long-lived draft PR canary operating model.'
+Assert-Match -Content $readme -Pattern 'same-repo only' -Message 'README must document the same-repo-only canary pilot boundary.'
+Assert-Match -Content $readme -Pattern 'agent-canary/' -Message 'README must document the canary branch prefix.'
+Assert-Match -Content $readme -Pattern 'CompareVI History Pull Request Diagnostics Publish' -Message 'README must document the publish workflow dependency for canary evaluation.'
 Assert-Match -Content $readme -Pattern 'selectedTargets' -Message 'README must document selectedTargets in the v2 discovery receipt.'
 Assert-Match -Content $readme -Pattern 'maxChangedViCount = 10' -Message 'README must document the ten-VI overflow contract for the dynamic PR surface.'
 Assert-Match -Content $readme -Pattern 'attributes`, `front-panel`, and `block-diagram' -Message 'README must document explicit public modes only.'
