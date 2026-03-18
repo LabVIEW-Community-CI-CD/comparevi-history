@@ -518,10 +518,10 @@ try {
     throw 'Index markdown should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
   if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Change details')).Count -ne 2 -or
-    $indexMarkdown -notmatch [regex]::Escape('[`Block diagram moves`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects): `3` details across `1` sections') -or
-    $indexMarkdown -notmatch [regex]::Escape('[`Block diagram resizing`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects): `2` details across `1` sections') -or
-    $indexMarkdown -notmatch [regex]::Escape('Exact sections: [section 1](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects)') -or
-    $indexMarkdown -notmatch [regex]::Escape('[`VI version changes`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous): `1` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('[`Block diagram moves`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects): `3` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('[`Block diagram resizing`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects): `2` details across `1` sections') -or
+    $indexMarkdown -notmatch [regex]::Escape('Exact sections: [section 1](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects)') -or
+    $indexMarkdown -notmatch [regex]::Escape('[`VI version changes`](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous): `1` details across `1` sections') -or
     $indexMarkdown -notmatch [regex]::Escape('Included categories: `Block Diagram Functional`, `VI Attribute`')) {
     throw 'Index markdown should render bounded change-detail summaries from the attributes compare report.'
   }
@@ -560,10 +560,10 @@ try {
     throw 'Index HTML should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
   if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Change details</h4>')).Count -ne 2 -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
-    $indexHtml -notmatch [regex]::Escape('<strong>Exact sections:</strong> <a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">section 1</a>') -or
-    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
+    $indexHtml -notmatch [regex]::Escape('<strong>Exact sections:</strong> <a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects">section 1</a>') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>') -or
     $indexHtml -notmatch [regex]::Escape('open change details report')) {
     throw 'Index HTML should render bounded change-detail summaries from the attributes compare report.'
   }
@@ -598,8 +598,8 @@ try {
     [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].heading -ne 'VI version changes') {
     throw 'Preview manifest should carry reviewer-facing change-detail summaries into the aggregate PR run.'
   }
-  if ([string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
-    [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous') {
+  if ([string]$previewManifest.indexPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$previewManifest.indexPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous') {
     throw 'Preview manifest should carry exact attribute-section links into the aggregate PR run.'
   }
   if ($previewManifest.indexPreviewCards.Count -ne 2 -or

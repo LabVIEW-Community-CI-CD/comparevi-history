@@ -286,24 +286,35 @@ try {
   }
   if ([string]$receipt.commentPreviewCards[0].changeDetails.groups[1].heading -ne 'Block diagram resizing' -or
     [int]$receipt.commentPreviewCards[0].changeDetails.groups[1].detailCount -ne 2 -or
-    [string]$receipt.commentPreviewCards[0].changeDetails.groups[1].primaryReportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects') {
+    [string]$receipt.commentPreviewCards[0].changeDetails.groups[1].primaryReportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-002-block-diagram-objects') {
     throw 'Reviewer cards should surface semantic resize groups with exact section anchors.'
   }
   if ($receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks.Count -ne 1 -or
-    [string]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-001-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-block-diagram-objects' -or
     [string]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].label -ne 'section 1') {
     throw 'Reviewer cards should expose exact section links for semantic groups.'
   }
   if ([string]$receipt.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI version changes' -or
-    [string]$receipt.commentPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous' -or
+    [string]$receipt.commentPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-002-artifacts/compare-report.reviewer-anchors.html#comparevi-change-001-vi-attribute-miscellaneous' -or
     $receipt.commentPreviewCards[1].changeDetails.groups[0].sampleDetails[0] -notmatch 'VI Version : changed from "21\.0" to "20\.0"') {
     throw 'Reviewer cards should preserve distinct VI attribute change summaries for later history pairs.'
   }
 
-  $anchoredReportHtml = Get-Content -LiteralPath (Join-Path $targetRoot 'attributes/Demo.vi-001-artifacts/compare-report.html') -Raw
+  $sourceReportHtml = Get-Content -LiteralPath (Join-Path $targetRoot 'attributes/Demo.vi-001-artifacts/compare-report.html') -Raw
+  if ($sourceReportHtml -match [regex]::Escape('id="comparevi-change-001-block-diagram-objects"') -or
+    $sourceReportHtml -match [regex]::Escape('id="comparevi-change-002-block-diagram-objects"')) {
+    throw 'Source attributes compare reports should stay unchanged when reviewer anchors are generated.'
+  }
+
+  $anchoredReportPath = Join-Path $targetRoot 'attributes/Demo.vi-001-artifacts/compare-report.reviewer-anchors.html'
+  if (-not (Test-Path -LiteralPath $anchoredReportPath -PathType Leaf)) {
+    throw 'Expected a reviewer-anchored sidecar report for exact section deep links.'
+  }
+
+  $anchoredReportHtml = Get-Content -LiteralPath $anchoredReportPath -Raw
   if ($anchoredReportHtml -notmatch [regex]::Escape('id="comparevi-change-001-block-diagram-objects"') -or
     $anchoredReportHtml -notmatch [regex]::Escape('id="comparevi-change-002-block-diagram-objects"')) {
-    throw 'Attributes compare reports should be stamped with deterministic section anchors for reviewer deep links.'
+    throw 'Reviewer-anchored sidecar reports should carry deterministic section anchors for deep links.'
   }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw

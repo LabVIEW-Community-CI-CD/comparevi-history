@@ -582,6 +582,18 @@ function Get-ReviewerSemanticHeadingFromSection {
   }
 }
 
+function Get-ReviewerAnchoredReportPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ReportHtmlPath
+  )
+
+  $directory = Split-Path -Parent $ReportHtmlPath
+  $fileNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($ReportHtmlPath)
+  $extension = [System.IO.Path]::GetExtension($ReportHtmlPath)
+  return Join-Path $directory ('{0}.reviewer-anchors{1}' -f $fileNameWithoutExtension, $extension)
+}
+
 function Get-ReviewerChangeDetailSectionsFromReport {
   param(
     [Parameter(Mandatory = $true)]
@@ -664,7 +676,6 @@ function Get-ReviewerChangeDetailSectionsFromReport {
             ordinal = [int]$sectionOrdinal
             heading = $heading
             anchorId = $anchorId
-            reportHtmlRelativePath = ('{0}#{1}' -f (Resolve-RelativePath -Path $ReportHtmlPath -ResultsRoot $ResultsRoot), $anchorId)
             detailLines = $detailLines
           }) | Out-Null
       }
@@ -679,12 +690,20 @@ function Get-ReviewerChangeDetailSectionsFromReport {
   }
 
   $updatedReportHtml = $builder.ToString()
+  $effectiveReportHtmlPath = $ReportHtmlPath
   if ($htmlChanged -and -not [string]::Equals($updatedReportHtml, $reportHtml, [System.StringComparison]::Ordinal)) {
-    Set-Content -LiteralPath $ReportHtmlPath -Encoding utf8 -Value $updatedReportHtml
+    $effectiveReportHtmlPath = Get-ReviewerAnchoredReportPath -ReportHtmlPath $ReportHtmlPath
+    Set-Content -LiteralPath $effectiveReportHtmlPath -Encoding utf8 -Value $updatedReportHtml
+  }
+
+  $effectiveReportHtmlRelativePath = Resolve-RelativePath -Path $effectiveReportHtmlPath -ResultsRoot $ResultsRoot
+  foreach ($section in @($sections | ForEach-Object { $_ })) {
+    $section['reportHtmlRelativePath'] = '{0}#{1}' -f $effectiveReportHtmlRelativePath, [string]$section['anchorId']
   }
 
   return [ordered]@{
     reportHtml = $updatedReportHtml
+    reportHtmlRelativePath = $effectiveReportHtmlRelativePath
     sections = @($sections | ForEach-Object { $_ })
   }
 }
@@ -737,6 +756,11 @@ function Get-ReviewerChangeDetailsFromReport {
   $reportHtml = [string](Get-NestedValue -Object $sectionReceipt -Path @('reportHtml') -Default '')
   if ([string]::IsNullOrWhiteSpace($reportHtml)) {
     return $null
+  }
+
+  $effectiveReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $sectionReceipt -Path @('reportHtmlRelativePath'))
+  if ([string]::IsNullOrWhiteSpace($effectiveReportHtmlRelativePath)) {
+    $effectiveReportHtmlRelativePath = Resolve-RelativePath -Path $ReportHtmlPath -ResultsRoot $ResultsRoot
   }
 
   $includedCategories = @(Get-ReportIncludedCategories -ReportHtml $reportHtml)
@@ -817,7 +841,7 @@ function Get-ReviewerChangeDetailsFromReport {
     changeDetails = [ordered]@{
       label = 'Change details'
       sourceMode = 'attributes'
-      reportHtmlRelativePath = Resolve-RelativePath -Path $ReportHtmlPath -ResultsRoot $ResultsRoot
+      reportHtmlRelativePath = $effectiveReportHtmlRelativePath
       includedCategories = $includedCategories
       groupCount = $groupOrder.Count
       omittedGroupCount = [Math]::Max($groupOrder.Count - $groupItems.Count, 0)
