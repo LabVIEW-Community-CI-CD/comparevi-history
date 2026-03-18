@@ -5,6 +5,35 @@ $scriptPath = Join-Path $PSScriptRoot 'Publish-CompareVIHistoryPullRequestCommen
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('comparevi-history-pr-publish-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
+function New-PreviewPair {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Mode,
+    [Parameter(Mandatory = $true)]
+    [int]$ComparisonIndex
+  )
+
+  return [ordered]@{
+    targetId = 'dynamic-demo-target'
+    targetPath = 'Tooling/demo/Demo.vi'
+    mode = $Mode
+    comparison = [ordered]@{
+      index = $ComparisonIndex
+      baseRef = ('{0}-base-{1}' -f $Mode, $ComparisonIndex)
+      headRef = ('{0}-head-{1}' -f $Mode, $ComparisonIndex)
+    }
+    sectionKind = 'overview'
+    sectionOrdinal = 0
+    label = 'Front Panel Overview'
+    reportHtmlRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report.html' -f $Mode, $ComparisonIndex)
+    baseImageRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report_files/fp_1.png' -f $Mode, $ComparisonIndex)
+    headImageRelativePath = ('targets/001/history/{0}/Demo.vi-{1:D3}-artifacts/compare-report_files/fp_2.png' -f $Mode, $ComparisonIndex)
+    baseByteLength = 4
+    headByteLength = 4
+    sortKey = ('Tooling/demo/Demo.vi|{0}|{1:D4}|00|0000|front-panel-overview' -f $Mode, $ComparisonIndex)
+  }
+}
+
 function New-PublicationArtifactZip {
   param(
     [Parameter(Mandatory = $true)]
@@ -22,143 +51,134 @@ function New-PublicationArtifactZip {
   $zipPath = Join-Path $RootPath 'artifact.zip'
   New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
 
-  @"
-{
-  "schema": "comparevi-history/pr-run@v2",
-  "generatedAtUtc": "2026-03-17T00:00:00Z",
-  "pullRequest": {
-    "number": $PullRequestNumber,
-    "htmlUrl": "https://github.com/example/repo/pull/$PullRequestNumber",
-    "baseRepository": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
-    "baseRef": "develop",
-    "baseSha": "base-sha",
-    "headRepository": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
-    "headRef": "feature/history",
-    "headSha": "head-sha",
-    "isFork": false
-  },
-  "prPolicy": {
-    "schema": "comparevi-history/pr-policy@v2",
-    "path": "C:/repo/.github/comparevi-history-pr-policy.json",
-    "applied": true,
-    "discovery": {},
-    "execution": {},
-    "reviewerSurface": {},
-    "trust": {}
-  },
-  "executionContext": {
-    "selectionMode": "dynamic-paths",
-    "forkBehavior": "hosted-auto",
-    "fullSurface": "artifact-index"
-  },
-  "discovery": {
-    "schema": "comparevi-history/changed-vi-discovery@v2",
-    "path": "C:/results/changed-vi-discovery.json",
-    "status": "ready",
-    "reason": "selected-targets",
-    "changedViCount": 1,
-    "eligibleChangedViCount": 1,
-    "excludedViCount": 0,
-    "selectedTargetCount": 1,
-    "overflowed": false,
-    "overflowChangedViCount": 0
-  },
-  "outputs": {
-    "resultsDir": "C:/results",
-    "prRunPath": "C:/results/pr-run.json",
-    "publicCommentPath": "C:/results/pr-comment.md",
-    "publicStepSummaryPath": "C:/results/pr-step-summary.md",
-    "targetRunsManifestPath": "C:/results/pr-target-runs-manifest.json",
-    "previewManifestPath": $(if ($IncludePreviewManifest.IsPresent) { '"C:/results/pr-preview-manifest.json"' } else { 'null' }),
-    "indexMarkdownPath": "C:/results/index.md",
-    "indexHtmlPath": "C:/results/index.html",
-    "workflowRunUrl": "https://github.com/example/repo/actions/runs/321",
-    "artifactName": "comparevi-history-pr-diagnostics-321"
-  },
-  "summary": {
-    "finalStatus": "$FinalStatus",
-    "finalReason": "completed",
-    "changedViCount": 1,
-    "eligibleChangedViCount": 1,
-    "excludedViCount": 0,
-    "selectedTargetCount": 1,
-    "overflowed": false,
-    "overflowChangedViCount": 0,
-    "executedTargetCount": 1,
-    "failedTargetCount": 0,
-    "totalProcessed": 5,
-    "totalDiffs": 2,
-    "previewPairCount": $(if ($IncludePreviewManifest.IsPresent) { '1' } else { '0' }),
-    "commentPreviewPairCap": 4,
-    "commentPreviewPairCount": $(if ($IncludePreviewManifest.IsPresent) { '1' } else { '0' }),
-    "commentPreviewPairOmittedCount": 0,
-    "indexPreviewPairCap": 12,
-    "indexPreviewPairCount": $(if ($IncludePreviewManifest.IsPresent) { '1' } else { '0' }),
-    "indexPreviewPairOmittedCount": 0
-  },
-  "excludedViFiles": [],
-  "targets": []
-}
-"@ | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-run.json') -Encoding utf8
+  $previewPairs = @(
+    (New-PreviewPair -Mode 'front-panel' -ComparisonIndex 1),
+    (New-PreviewPair -Mode 'block-diagram' -ComparisonIndex 1),
+    (New-PreviewPair -Mode 'attributes' -ComparisonIndex 1),
+    (New-PreviewPair -Mode 'front-panel' -ComparisonIndex 2),
+    (New-PreviewPair -Mode 'block-diagram' -ComparisonIndex 2),
+    (New-PreviewPair -Mode 'attributes' -ComparisonIndex 2)
+  )
+  $commentPreviewPairs = @($previewPairs | Select-Object -First 4)
+
+  ([ordered]@{
+      schema = 'comparevi-history/pr-run@v2'
+      generatedAtUtc = '2026-03-17T00:00:00Z'
+      pullRequest = [ordered]@{
+        number = $PullRequestNumber
+        htmlUrl = "https://github.com/example/repo/pull/$PullRequestNumber"
+        baseRepository = 'LabVIEW-Community-CI-CD/labview-icon-editor-demo'
+        baseRef = 'develop'
+        baseSha = 'base-sha'
+        headRepository = 'LabVIEW-Community-CI-CD/labview-icon-editor-demo'
+        headRef = 'feature/history'
+        headSha = 'head-sha'
+        isFork = $false
+      }
+      prPolicy = [ordered]@{
+        schema = 'comparevi-history/pr-policy@v2'
+        path = 'C:/repo/.github/comparevi-history-pr-policy.json'
+        applied = $true
+        discovery = @{}
+        execution = @{}
+        reviewerSurface = @{}
+        trust = @{}
+      }
+      executionContext = [ordered]@{
+        selectionMode = 'dynamic-paths'
+        forkBehavior = 'hosted-auto'
+        fullSurface = 'artifact-index'
+      }
+      discovery = [ordered]@{
+        schema = 'comparevi-history/changed-vi-discovery@v2'
+        path = 'C:/results/changed-vi-discovery.json'
+        status = 'ready'
+        reason = 'selected-targets'
+        changedViCount = 1
+        eligibleChangedViCount = 1
+        excludedViCount = 0
+        selectedTargetCount = 1
+        overflowed = $false
+        overflowChangedViCount = 0
+      }
+      outputs = [ordered]@{
+        resultsDir = 'C:/results'
+        prRunPath = 'C:/results/pr-run.json'
+        publicCommentPath = 'C:/results/pr-comment.md'
+        publicStepSummaryPath = 'C:/results/pr-step-summary.md'
+        targetRunsManifestPath = 'C:/results/pr-target-runs-manifest.json'
+        previewManifestPath = $(if ($IncludePreviewManifest.IsPresent) { 'C:/results/pr-preview-manifest.json' } else { $null })
+        indexMarkdownPath = 'C:/results/index.md'
+        indexHtmlPath = 'C:/results/index.html'
+        workflowRunUrl = 'https://github.com/example/repo/actions/runs/321'
+        artifactName = 'comparevi-history-pr-diagnostics-321'
+      }
+      summary = [ordered]@{
+        finalStatus = $FinalStatus
+        finalReason = 'completed'
+        changedViCount = 1
+        eligibleChangedViCount = 1
+        excludedViCount = 0
+        selectedTargetCount = 1
+        overflowed = $false
+        overflowChangedViCount = 0
+        executedTargetCount = 1
+        failedTargetCount = 0
+        totalProcessed = 5
+        totalDiffs = 2
+        previewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 6 } else { 0 })
+        commentPreviewPairCap = 4
+        commentPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 4 } else { 0 })
+        commentPreviewPairOmittedCount = $(if ($IncludePreviewManifest.IsPresent) { 2 } else { 0 })
+        indexPreviewPairCap = 12
+        indexPreviewPairCount = $(if ($IncludePreviewManifest.IsPresent) { 6 } else { 0 })
+        indexPreviewPairOmittedCount = 0
+      }
+      excludedViFiles = @()
+      targets = @()
+    } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-run.json') -Encoding utf8
   $CommentBody | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-comment.md') -Encoding utf8
 
   if ($IncludePreviewManifest.IsPresent) {
-    $previewImageRoot = Join-Path $artifactRoot 'targets/001/history/front-panel/Demo.vi-001-artifacts/compare-report_files'
-    New-Item -ItemType Directory -Path $previewImageRoot -Force | Out-Null
-    [System.IO.File]::WriteAllBytes((Join-Path $previewImageRoot 'fp_1.png'), @(0xCA, 0xFE, 0xBA, 0xBE))
-    [System.IO.File]::WriteAllBytes((Join-Path $previewImageRoot 'fp_2.png'), @(0xBA, 0xAD, 0xF0, 0x0D))
+    foreach ($previewPair in $previewPairs) {
+      foreach ($relativePath in @([string]$previewPair.baseImageRelativePath, [string]$previewPair.headImageRelativePath)) {
+        $fullPath = Join-Path $artifactRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        [System.IO.File]::WriteAllBytes($fullPath, @(0xCA, 0xFE, 0xBA, 0xBE))
+      }
+    }
 
-    @"
-{
-  "schema": "comparevi-history/pr-preview-manifest@v1",
-  "generatedAtUtc": "2026-03-17T00:00:00Z",
-  "targetRunsManifestPath": "C:/results/pr-target-runs-manifest.json",
-  "resultsDir": "C:/results",
-  "summary": {
-    "targetCount": 1,
-    "previewPairCount": 1,
-    "commentPreviewPairCap": 4,
-    "commentPreviewPairCount": 1,
-    "commentPreviewPairOmittedCount": 0,
-    "indexPreviewPairCap": 12,
-    "indexPreviewPairCount": 1,
-    "indexPreviewPairOmittedCount": 0
-  },
-  "targets": [
-    {
-      "targetId": "dynamic-demo-target",
-      "targetPath": "Tooling/demo/Demo.vi",
-      "finalStatus": "succeeded",
-      "finalReason": "completed",
-      "previewPairCount": 1,
-      "previewPairs": []
-    }
-  ],
-  "previewPairs": [],
-  "commentPreviewPairs": [
-    {
-      "targetId": "dynamic-demo-target",
-      "targetPath": "Tooling/demo/Demo.vi",
-      "mode": "front-panel",
-      "comparison": {
-        "index": 1,
-        "baseRef": "base-sha",
-        "headRef": "head-sha"
-      },
-      "sectionKind": "overview",
-      "sectionOrdinal": 0,
-      "label": "Front Panel Overview",
-      "reportHtmlRelativePath": "targets/001/history/front-panel/Demo.vi-001-artifacts/compare-report.html",
-      "baseImageRelativePath": "targets/001/history/front-panel/Demo.vi-001-artifacts/compare-report_files/fp_1.png",
-      "headImageRelativePath": "targets/001/history/front-panel/Demo.vi-001-artifacts/compare-report_files/fp_2.png",
-      "baseByteLength": 4,
-      "headByteLength": 4,
-      "sortKey": "Tooling/demo/Demo.vi|00|0001|00|0000|front-panel-overview"
-    }
-  ],
-  "indexPreviewPairs": []
-}
-"@ | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-preview-manifest.json') -Encoding utf8
+    ([ordered]@{
+        schema = 'comparevi-history/pr-preview-manifest@v1'
+        generatedAtUtc = '2026-03-17T00:00:00Z'
+        targetRunsManifestPath = 'C:/results/pr-target-runs-manifest.json'
+        resultsDir = 'C:/results'
+        summary = [ordered]@{
+          targetCount = 1
+          previewPairCount = 6
+          commentPreviewPairCap = 4
+          commentSelectionPolicy = 'mode-balanced@v1'
+          commentPreviewPairCount = 4
+          commentPreviewPairOmittedCount = 2
+          indexPreviewPairCap = 12
+          indexSelectionPolicy = 'mode-balanced@v1'
+          indexPreviewPairCount = 6
+          indexPreviewPairOmittedCount = 0
+        }
+        targets = @(
+          [ordered]@{
+            targetId = 'dynamic-demo-target'
+            targetPath = 'Tooling/demo/Demo.vi'
+            finalStatus = 'succeeded'
+            finalReason = 'completed'
+            previewPairCount = 6
+            previewPairs = $previewPairs
+          }
+        )
+        previewPairs = $previewPairs
+        commentPreviewPairs = $commentPreviewPairs
+        indexPreviewPairs = $previewPairs
+      } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-preview-manifest.json') -Encoding utf8
   }
 
   if (Test-Path -LiteralPath $zipPath) {
@@ -325,21 +345,55 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ([string]$createReceipt.previewPublication.status -ne 'succeeded') {
     throw 'Expected preview publication to succeed for the first path.'
   }
+  if ([int]$createReceipt.previewPublication.previewPairCount -ne 4 -or [int]$createReceipt.previewPublication.publishedImageCount -ne 8) {
+    throw 'Preview publication counts mismatch for the first path.'
+  }
   if ($global:RecordedPosts.Count -ne 1) {
     throw 'Expected one PR comment creation request.'
   }
   if ($global:RecordedPosts[0].body -notmatch [regex]::Escape('<!-- comparevi-history:pull-request-diagnostics -->')) {
     throw 'Created PR comment body is missing the sticky marker.'
   }
-  if ($global:RecordedPosts[0].body -notmatch [regex]::Escape('### Preview gallery') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('https://raw.githubusercontent.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-front-panel-overview/base.png')) {
-    throw 'Created PR comment body did not embed the published preview image URLs.'
+  if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('#### `Tooling/demo/Demo.vi |')).Count -ne 4) {
+    throw 'Created PR comment body should render four preview gallery sections.'
+  }
+  if ([regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/base\.png').Count -ne 4 -or
+    [regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/head\.png').Count -ne 4) {
+    throw 'Created PR comment body should embed eight preview image URLs.'
   }
   if ($global:RecordedRefCreates.Count -ne 1) {
     throw 'Expected one preview branch creation request.'
   }
-  if ($global:RecordedContentWrites.Count -ne 3) {
-    throw 'Expected preview publication to write two images and one manifest.'
+  if ($global:RecordedContentWrites.Count -ne 9) {
+    throw 'Expected preview publication to write eight images and one manifest.'
+  }
+
+  $publishedPairOrder = @(
+    $createReceipt.previewPublication.commentPreviewPairs |
+      ForEach-Object { '{0}:{1}' -f [string]$_.mode, [int]$_.comparison.index }
+  ) -join ','
+  if ($publishedPairOrder -ne 'front-panel:1,block-diagram:1,attributes:1,front-panel:2') {
+    throw "Preview publication order mismatch: $publishedPairOrder"
+  }
+
+  $writeOrder = @(
+    $global:RecordedContentWrites |
+      ForEach-Object { [string]$_.path }
+  )
+  $expectedImagePrefixes = @(
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-front-panel-overview/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-front-panel-overview/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-front-panel-overview/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-front-panel-overview/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/003-front-panel-overview/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/003-front-panel-overview/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/004-front-panel-overview/base.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/004-front-panel-overview/head.png'
+  )
+  foreach ($index in 0..7) {
+    if ([string]$writeOrder[$index] -ne $expectedImagePrefixes[$index]) {
+      throw "Published preview write order mismatch at position $index."
+    }
   }
 
   $createOutputText = Get-Content -LiteralPath $createOutputPath -Raw
@@ -351,8 +405,8 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
       'comment-url=https://github.com/example/repo/pull/55#issuecomment-991',
       'preview-publication-status=succeeded',
       'preview-publication-reason=preview-images-published',
-      'preview-pair-count=1',
-      'published-image-count=2'
+      'preview-pair-count=4',
+      'published-image-count=8'
     )) {
     if ($createOutputText -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."

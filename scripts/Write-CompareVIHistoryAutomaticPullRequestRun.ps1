@@ -193,7 +193,7 @@ function New-MarkdownPreviewGallery {
   $lines = New-Object System.Collections.Generic.List[string]
   $lines.Add('## Preview gallery') | Out-Null
   $lines.Add('') | Out-Null
-  foreach ($previewPair in @(ConvertTo-PreviewPairArray -Value $PreviewPairs)) {
+  foreach ($previewPair in @(ConvertTo-ObjectArray -Value $PreviewPairs)) {
     $title = '{0} | {1} | {2}' -f [string]$previewPair.targetPath, [string]$previewPair.mode, [string]$previewPair.label
     $lines.Add(('### {0}' -f $title)) | Out-Null
     $lines.Add('') | Out-Null
@@ -220,7 +220,7 @@ function New-HtmlPreviewGallery {
   }
 
   $cards = New-Object System.Collections.Generic.List[string]
-  foreach ($previewPair in @(ConvertTo-PreviewPairArray -Value $PreviewPairs)) {
+  foreach ($previewPair in @(ConvertTo-ObjectArray -Value $PreviewPairs)) {
     $title = '{0} | {1} | {2}' -f [string]$previewPair.targetPath, [string]$previewPair.mode, [string]$previewPair.label
     $reportLink = if ([string]::IsNullOrWhiteSpace([string]$previewPair.reportHtmlRelativePath)) {
       ''
