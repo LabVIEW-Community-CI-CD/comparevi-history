@@ -47,6 +47,8 @@ Legacy direct invocation remains available for maintainers:
   index galleries, and sticky-comment preview publication.
 - Emits `comparevi-history/review-bundle@v1` as the canonical compiled review graph for pair-level normalization,
   reviewer interpretation, and renderer inputs.
+- Publishes `comparevi-history/review-compiler-release@v1` as the self-contained review-compiler release manifest for
+  immutable GitHub Release assets.
 - Emits `comparevi-history/pr-comment-publication@v1` as the `workflow_run` publication receipt for sticky PR comments.
 - Emits `comparevi-history/agent-canary-policy@v1` as the repo-owned governance contract for same-repo canary proof
   lanes that exercise the PR diagnostics surface without touching production VIs.
@@ -417,6 +419,40 @@ Minimum viable pilot after the single-VI evidence model is stable:
 
 This keeps the first corpus pilot deterministic and unsuppressed without inventing repo-wide generation before the
 single-VI evidence contracts have stabilized.
+
+## Compiled review bundle compiler
+
+The canonical review graph is compiled by the .NET project
+[`src/CompareVIHistory.ReviewCompiler/CompareVIHistory.ReviewCompiler.csproj`](src/CompareVIHistory.ReviewCompiler/CompareVIHistory.ReviewCompiler.csproj).
+PowerShell remains the orchestration layer, but the typed compiler is now the source of truth for pair-level review
+normalization.
+
+Use [`scripts/Invoke-CompareVIHistoryReviewBundleCompiler.ps1`](scripts/Invoke-CompareVIHistoryReviewBundleCompiler.ps1)
+to drive the compiler from workflow scripts:
+
+- default path: source project via `dotnet run`
+- packaged override: `-CompilerPath <path>` or `COMPAREVI_HISTORY_REVIEW_COMPILER_PATH=<path>`
+- the override can point at either the extracted executable itself or an extracted runtime directory that contains the
+  stable executable name
+
+The immutable GitHub Release publishes self-contained assets for the compiler:
+
+- `comparevi-history-review-compiler-v<version>-win-x64.zip`
+- `comparevi-history-review-compiler-v<version>-linux-x64.zip`
+- `comparevi-history-review-compiler-release.json` (`comparevi-history/review-compiler-release@v1`)
+- `SHA256SUMS.txt`
+
+After unzipping the Linux asset on a non-Windows host, restore the executable bit before invoking it directly:
+
+```bash
+chmod +x ./comparevi-history-review-compiler
+./comparevi-history-review-compiler --version
+```
+
+The canonical compiled review-bundle golden baseline lives in `tests/fixtures/review-bundle-v1`.
+It freezes the normalized `review-bundle.json` output independently from the reviewer workspace golden baseline in
+`tests/fixtures/reviewer-workspace-v1`.
+
 ## Consumer target catalog
 
 Public consumers should check in a target catalog using `comparevi-history/consumer-targets@v1`. The example source of
