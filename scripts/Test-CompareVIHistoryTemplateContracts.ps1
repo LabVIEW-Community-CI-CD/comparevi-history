@@ -343,6 +343,7 @@ Assert-Match -Content $readme -Pattern 'comparevi-history/pr-run@v1' -Message 'R
 Assert-Match -Content $readme -Pattern 'comparevi-history/changed-vi-discovery@v2' -Message 'README must document the dynamic changed-VI discovery contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-policy@v2' -Message 'README must document the dynamic PR policy contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-run@v2' -Message 'README must document the dynamic aggregate pull-request run contract.'
+Assert-Match -Content $readme -Pattern 'comparevi-history/review-bundle@v1' -Message 'README must document the compiled review bundle contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/pr-comment-publication@v1' -Message 'README must document the PR comment publication contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/agent-canary-policy@v1' -Message 'README must document the agent-canary policy contract.'
 Assert-Match -Content $readme -Pattern 'comparevi-history/agent-canary-evaluation@v1' -Message 'README must document the agent-canary evaluation contract.'

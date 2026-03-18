@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-review-bundle-v1.schema.json",
+  "title": "comparevi-history review bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "targetRunsManifestPath",
+    "resultsDir",
+    "summary",
+    "targets",
+    "rawPreviewPairs",
+    "reviewPairs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/review-bundle@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "targetRunsManifestPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetCount",
+        "rawPreviewPairCount",
+        "reviewPairCount",
+        "primaryReviewerDestinationPolicy"
+      ],
+      "properties": {
+        "targetCount": { "type": "integer", "minimum": 0 },
+        "rawPreviewPairCount": { "type": "integer", "minimum": 0 },
+        "reviewPairCount": { "type": "integer", "minimum": 0 },
+        "primaryReviewerDestinationPolicy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/target" }
+    },
+    "rawPreviewPairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rawPreviewPair" }
+    },
+    "reviewPairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reviewPair" }
+    }
+  },
+  "$defs": {
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "baseRef",
+        "headRef"
+      ],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "baseRef": { "type": ["string", "null"] },
+        "headRef": { "type": ["string", "null"] },
+        "baseShortRef": { "type": ["string", "null"] },
+        "headShortRef": { "type": ["string", "null"] },
+        "baseSubject": { "type": ["string", "null"] },
+        "headSubject": { "type": ["string", "null"] }
+      }
+    },
+    "reviewerDestination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "relativePath"
+      ],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "relativePath": { "type": ["string", "null"] }
+      }
+    },
+    "debugDestinations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frontPanelReportHtmlRelativePath",
+        "blockDiagramReportHtmlRelativePath",
+        "changeDetailsReportHtmlRelativePath"
+      ],
+      "properties": {
+        "frontPanelReportHtmlRelativePath": { "type": ["string", "null"] },
+        "blockDiagramReportHtmlRelativePath": { "type": ["string", "null"] },
+        "changeDetailsReportHtmlRelativePath": { "type": ["string", "null"] }
+      }
+    },
+    "rawPreviewPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "targetPath",
+        "mode",
+        "comparison",
+        "sectionKind",
+        "sectionOrdinal",
+        "label",
+        "debugReportHtmlRelativePath",
+        "baseImageRelativePath",
+        "headImageRelativePath",
+        "baseByteLength",
+        "headByteLength",
+        "baseImageSha256",
+        "headImageSha256",
+        "sortKey"
+      ],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "mode": {
+          "type": "string",
+          "enum": ["attributes", "front-panel", "block-diagram"]
+        },
+        "comparison": { "$ref": "#/$defs/comparison" },
+        "sectionKind": {
+          "type": "string",
+          "enum": ["overview", "detail"]
+        },
+        "sectionOrdinal": { "type": "integer", "minimum": 0 },
+        "label": { "type": "string", "minLength": 1 },
+        "debugReportHtmlRelativePath": { "type": ["string", "null"] },
+        "baseImageRelativePath": { "type": "string", "minLength": 1 },
+        "headImageRelativePath": { "type": "string", "minLength": 1 },
+        "baseByteLength": { "type": "integer", "minimum": 0 },
+        "headByteLength": { "type": "integer", "minimum": 0 },
+        "baseImageSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "headImageSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sortKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reviewSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "surfaceKind",
+        "surfaceLabel",
+        "mode",
+        "label",
+        "primaryReviewerRelativePath",
+        "debugReportHtmlRelativePath",
+        "baseImageRelativePath",
+        "headImageRelativePath",
+        "baseByteLength",
+        "headByteLength",
+        "sortKey"
+      ],
+      "properties": {
+        "surfaceKind": { "type": "string", "minLength": 1 },
+        "surfaceLabel": { "type": "string", "minLength": 1 },
+        "mode": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] },
+        "primaryReviewerRelativePath": { "type": ["string", "null"] },
+        "debugReportHtmlRelativePath": { "type": ["string", "null"] },
+        "baseImageRelativePath": { "type": "string", "minLength": 1 },
+        "headImageRelativePath": { "type": "string", "minLength": 1 },
+        "baseByteLength": { "type": "integer", "minimum": 0 },
+        "headByteLength": { "type": "integer", "minimum": 0 },
+        "baseImageSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "headImageSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "sortKey": { "type": ["string", "null"] }
+      }
+    },
+    "changeDetailSectionLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sectionOrdinal",
+        "label",
+        "reviewerRelativePath",
+        "debugReportHtmlRelativePath"
+      ],
+      "properties": {
+        "sectionOrdinal": { "type": "integer", "minimum": 0 },
+        "label": { "type": "string", "minLength": 1 },
+        "reviewerRelativePath": { "type": ["string", "null"] },
+        "debugReportHtmlRelativePath": { "type": ["string", "null"] }
+      }
+    },
+    "changeDetailGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "heading",
+        "sectionCount",
+        "detailCount",
+        "sampleDetails",
+        "omittedDetailCount",
+        "primaryReviewerRelativePath",
+        "primaryDebugReportHtmlRelativePath",
+        "sectionLinks"
+      ],
+      "properties": {
+        "heading": { "type": "string", "minLength": 1 },
+        "sectionCount": { "type": "integer", "minimum": 0 },
+        "detailCount": { "type": "integer", "minimum": 0 },
+        "sampleDetails": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "omittedDetailCount": { "type": "integer", "minimum": 0 },
+        "primaryReviewerRelativePath": { "type": ["string", "null"] },
+        "primaryDebugReportHtmlRelativePath": { "type": ["string", "null"] },
+        "sectionLinks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/changeDetailSectionLink" }
+        }
+      }
+    },
+    "changeDetails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "sourceMode",
+        "primaryReviewerRelativePath",
+        "debugReportHtmlRelativePath",
+        "includedCategories",
+        "groupCount",
+        "omittedGroupCount",
+        "sectionCount",
+        "detailCount",
+        "groups"
+      ],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "sourceMode": { "type": "string", "minLength": 1 },
+        "primaryReviewerRelativePath": { "type": ["string", "null"] },
+        "debugReportHtmlRelativePath": { "type": ["string", "null"] },
+        "includedCategories": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "groupCount": { "type": "integer", "minimum": 0 },
+        "omittedGroupCount": { "type": "integer", "minimum": 0 },
+        "sectionCount": { "type": "integer", "minimum": 0 },
+        "detailCount": { "type": "integer", "minimum": 0 },
+        "groups": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/changeDetailGroup" }
+        }
+      }
+    },
+    "reviewerSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signalKey",
+        "label",
+        "severity",
+        "detailCount",
+        "sectionCount",
+        "summary",
+        "primaryReviewerRelativePath",
+        "primaryDebugReportHtmlRelativePath",
+        "sectionLinks"
+      ],
+      "properties": {
+        "signalKey": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "severity": { "type": "string", "minLength": 1 },
+        "detailCount": { "type": "integer", "minimum": 0 },
+        "sectionCount": { "type": "integer", "minimum": 0 },
+        "summary": { "type": "string", "minLength": 1 },
+        "primaryReviewerRelativePath": { "type": ["string", "null"] },
+        "primaryDebugReportHtmlRelativePath": { "type": ["string", "null"] },
+        "sectionLinks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/changeDetailSectionLink" }
+        }
+      }
+    },
+    "reviewerSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "overallSeverity",
+        "headline",
+        "signalCount",
+        "omittedSignalCount",
+        "signals"
+      ],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "overallSeverity": { "type": "string", "minLength": 1 },
+        "headline": { "type": "string", "minLength": 1 },
+        "signalCount": { "type": "integer", "minimum": 0 },
+        "omittedSignalCount": { "type": "integer", "minimum": 0 },
+        "signals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewerSignal" }
+        }
+      }
+    },
+    "reviewPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewPairKey",
+        "targetId",
+        "targetPath",
+        "comparison",
+        "sortKey",
+        "primaryReviewerDestination",
+        "debugDestinations",
+        "surfaces",
+        "reviewerSummary",
+        "changeDetails"
+      ],
+      "properties": {
+        "reviewPairKey": { "type": "string", "minLength": 1 },
+        "targetId": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "comparison": { "$ref": "#/$defs/comparison" },
+        "sortKey": { "type": "string", "minLength": 1 },
+        "primaryReviewerDestination": { "$ref": "#/$defs/reviewerDestination" },
+        "debugDestinations": { "$ref": "#/$defs/debugDestinations" },
+        "surfaces": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewSurface" }
+        },
+        "reviewerSummary": {
+          "anyOf": [
+            { "$ref": "#/$defs/reviewerSummary" },
+            { "type": "null" }
+          ]
+        },
+        "changeDetails": {
+          "anyOf": [
+            { "$ref": "#/$defs/changeDetails" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "targetPath",
+        "finalStatus",
+        "finalReason",
+        "rawPreviewPairCount",
+        "rawPreviewPairs",
+        "reviewPairCount"
+      ],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1 },
+        "targetPath": { "type": "string", "minLength": 1 },
+        "finalStatus": { "type": ["string", "null"] },
+        "finalReason": { "type": ["string", "null"] },
+        "rawPreviewPairCount": { "type": "integer", "minimum": 0 },
+        "rawPreviewPairs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rawPreviewPair" }
+        },
+        "reviewPairCount": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

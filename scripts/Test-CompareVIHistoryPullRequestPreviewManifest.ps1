@@ -183,6 +183,21 @@ try {
     -GitHubOutputPath $outputPath
 
   $receipt = $receiptJson | ConvertFrom-Json -Depth 64
+  $outputValues = @{}
+  foreach ($line in Get-Content -LiteralPath $outputPath) {
+    if ($line -match '^(?<key>[^=]+)=(?<value>.*)$') {
+      $outputValues[$Matches['key']] = $Matches['value']
+    }
+  }
+
+  if (-not $outputValues.ContainsKey('review-bundle-path') -or -not (Test-Path -LiteralPath $outputValues['review-bundle-path'] -PathType Leaf)) {
+    throw 'Expected preview manifest generation to emit the compiled review bundle output path.'
+  }
+  $reviewBundle = Get-Content -LiteralPath $outputValues['review-bundle-path'] -Raw | ConvertFrom-Json -Depth 64
+  if ([string]$reviewBundle.schema -ne 'comparevi-history/review-bundle@v1') {
+    throw 'Expected preview manifest generation to source the compiler-generated review bundle.'
+  }
+
   if ($receipt.schema -ne 'comparevi-history/pr-preview-manifest@v1') {
     throw 'Preview manifest schema mismatch.'
   }
