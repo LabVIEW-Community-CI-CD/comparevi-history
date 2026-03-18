@@ -433,6 +433,40 @@ need a local compiler build:
 - packaged default: latest immutable release asset
 - packaged override: `-CompilerPath <path>` or `COMPAREVI_HISTORY_REVIEW_COMPILER_PATH=<path>`
 
+## Local proof gate
+
+For pre-PR platform proof, use
+[`scripts/Invoke-CompareVIHistoryLocalProof.ps1`](scripts/Invoke-CompareVIHistoryLocalProof.ps1).
+It wraps the canonical local-review seam plus the golden and corpus regression contracts into one deterministic local
+gate for platform changes.
+
+The canonical local-proof receipt is `local-proof.json` (`comparevi-history/local-proof@v1`).
+The script also writes:
+
+- `local-proof-summary.md`
+- `gate-logs/`
+
+The default results root is:
+
+- `tests/results/local-proof`
+
+The local-proof gate freezes the platform against the current checked-in contracts:
+
+- `Test-CompareVIHistoryLocalReview.ps1`
+- `Test-CompareVIHistoryReviewBundleGoldenContract.ps1`
+- `Test-CompareVIHistoryAutomaticPullRequestRun.ps1`
+- `Test-CompareVIHistoryCorpusPilotGoldenContract.ps1`
+
+Unlike `local-review`, this gate is for `comparevi-history` platform work. It exercises the current branch compiler and
+reviewer-surface contracts through the checked-in synthetic fixture and fails closed when local-review behavior,
+compiled review bundles, reviewer workspaces, preview selection, pair pages, or the corpus pilot baseline drift.
+
+Example:
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalProof.ps1
+```
+
 ## Corpus evidence indexing
 
 For corpus-scale deterministic processing, use

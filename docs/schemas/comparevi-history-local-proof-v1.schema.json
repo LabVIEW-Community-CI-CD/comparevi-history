@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-local-proof-v1.schema.json",
+  "title": "comparevi-history local proof receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "repositoryRoot",
+    "resultsDir",
+    "fixtures",
+    "gates",
+    "outputs",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/local-proof@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repositoryRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultsDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fixtures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewBundleFixtureRoot",
+        "reviewerWorkspaceFixtureRoot",
+        "corpusPilotFixtureRoot"
+      ],
+      "properties": {
+        "reviewBundleFixtureRoot": { "type": "string", "minLength": 1 },
+        "reviewerWorkspaceFixtureRoot": { "type": "string", "minLength": 1 },
+        "corpusPilotFixtureRoot": { "type": "string", "minLength": 1 }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "category",
+          "purpose",
+          "scriptPath",
+          "logPath",
+          "startedAtUtc",
+          "completedAtUtc",
+          "durationSeconds",
+          "status",
+          "errorMessage"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "category": {
+            "type": "string",
+            "enum": [
+              "local-review",
+              "review-bundle-golden",
+              "reviewer-workspace-golden",
+              "corpus-pilot-golden"
+            ]
+          },
+          "purpose": { "type": "string", "minLength": 1 },
+          "scriptPath": { "type": "string", "minLength": 1 },
+          "logPath": { "type": "string", "minLength": 1 },
+          "startedAtUtc": { "type": "string", "format": "date-time" },
+          "completedAtUtc": { "type": "string", "format": "date-time" },
+          "durationSeconds": { "type": "number", "minimum": 0 },
+          "status": {
+            "type": "string",
+            "enum": ["succeeded", "failed"]
+          },
+          "errorMessage": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "summaryPath",
+        "gateLogsDir"
+      ],
+      "properties": {
+        "receiptPath": { "type": "string", "minLength": 1 },
+        "summaryPath": { "type": "string", "minLength": 1 },
+        "gateLogsDir": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gateCount",
+        "passedGateCount",
+        "failedGateCount",
+        "finalStatus",
+        "finalReason"
+      ],
+      "properties": {
+        "gateCount": { "type": "integer", "minimum": 1 },
+        "passedGateCount": { "type": "integer", "minimum": 0 },
+        "failedGateCount": { "type": "integer", "minimum": 0 },
+        "finalStatus": {
+          "type": "string",
+          "enum": ["succeeded", "failed"]
+        },
+        "finalReason": {
+          "type": "string",
+          "enum": ["all-gates-succeeded", "one-or-more-gates-failed"]
+        }
+      }
+    }
+  }
+}
