@@ -24,6 +24,9 @@ $sectionKindOrder = @{
   'detail' = 1
 }
 
+$reviewerChangeDetailGroupCap = 3
+$reviewerChangeDetailSampleCap = 3
+
 function Write-ActionOutput {
   param(
     [Parameter(Mandatory = $true)]
@@ -436,6 +439,162 @@ function Get-ReviewerPreviewSurfaceLabel {
   }
 }
 
+function Normalize-ReviewerChangeDetailHeading {
+  param(
+    [AllowNull()]
+    [string]$Heading
+  )
+
+  $normalizedHeading = Get-OptionalString -Value $Heading
+  if ([string]::IsNullOrWhiteSpace($normalizedHeading)) {
+    return $null
+  }
+
+  return (($normalizedHeading -replace '^\d+\.\s*', '').Trim())
+}
+
+function Get-ReportIncludedCategories {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ReportHtml
+  )
+
+  $includedCategories = New-Object System.Collections.Generic.List[string]
+  $includedBlockMatch = [regex]::Match($ReportHtml, '(?is)<div class="included-attributes".*?<ul[^>]*>(?<list>.*?)</ul>')
+  if (-not $includedBlockMatch.Success) {
+    return @()
+  }
+
+  foreach ($itemMatch in [regex]::Matches([string]$includedBlockMatch.Groups['list'].Value, '(?is)<li class="checked">(?<item>.*?)</li>')) {
+    $itemText = ConvertFrom-HtmlText -Value ([string]$itemMatch.Groups['item'].Value)
+    if ([string]::IsNullOrWhiteSpace($itemText)) {
+      continue
+    }
+
+    $includedCategories.Add($itemText) | Out-Null
+  }
+
+  return @($includedCategories | ForEach-Object { $_ })
+}
+
+function Get-ReviewerChangeDetailsFromReport {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ReportHtmlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [Parameter(Mandatory = $true)]
+    [string]$TargetId,
+    [Parameter(Mandatory = $true)]
+    [string]$TargetPath,
+    [Parameter(Mandatory = $true)]
+    [object]$Comparison,
+    [AllowNull()]
+    [string]$RepositoryRoot
+  )
+
+  if (-not (Test-Path -LiteralPath $ReportHtmlPath -PathType Leaf)) {
+    return $null
+  }
+
+  $reportHtml = Get-Content -LiteralPath $ReportHtmlPath -Raw
+  if ([string]::IsNullOrWhiteSpace($reportHtml)) {
+    return $null
+  }
+
+  $includedCategories = @(Get-ReportIncludedCategories -ReportHtml $reportHtml)
+  $groupMap = @{}
+  $groupOrder = New-Object System.Collections.Generic.List[string]
+  $detailPattern = '(?is)<details[^>]*>\s*<summary[^>]*>(?<summary>.*?)</summary>(?<body>.*?)</details>'
+  foreach ($detailMatch in [regex]::Matches($reportHtml, $detailPattern)) {
+    $bodyHtml = [string]$detailMatch.Groups['body'].Value
+    if ($bodyHtml -notmatch 'detailed-description-list') {
+      continue
+    }
+
+    $heading = Normalize-ReviewerChangeDetailHeading -Heading (ConvertFrom-HtmlText -Value ([string]$detailMatch.Groups['summary'].Value))
+    if ([string]::IsNullOrWhiteSpace($heading)) {
+      $heading = 'Change details'
+    }
+
+    $detailLines = @(
+      [regex]::Matches($bodyHtml, '(?is)<li class="[^"]*diff-detail[^"]*">(?<detail>.*?)</li>') |
+        ForEach-Object { ConvertFrom-HtmlText -Value ([string]$_.Groups['detail'].Value) } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($detailLines.Count -eq 0) {
+      continue
+    }
+
+    if (-not $groupMap.ContainsKey($heading)) {
+      $groupMap[$heading] = [ordered]@{
+        heading = $heading
+        sectionCount = 0
+        detailCount = 0
+        sampleDetails = New-Object System.Collections.Generic.List[string]
+      }
+      $groupOrder.Add($heading) | Out-Null
+    }
+
+    $groupRecord = $groupMap[$heading]
+    $groupRecord.sectionCount = [int]$groupRecord.sectionCount + 1
+    $groupRecord.detailCount = [int]$groupRecord.detailCount + $detailLines.Count
+    foreach ($detailLine in $detailLines) {
+      if ($groupRecord.sampleDetails.Count -ge $reviewerChangeDetailSampleCap) {
+        continue
+      }
+
+      $groupRecord.sampleDetails.Add($detailLine) | Out-Null
+    }
+  }
+
+  if ($groupOrder.Count -eq 0 -and $includedCategories.Count -eq 0) {
+    return $null
+  }
+
+  $groupItems = New-Object System.Collections.Generic.List[object]
+  $sectionCount = 0
+  $detailCount = 0
+  foreach ($heading in @($groupOrder | Select-Object -First $reviewerChangeDetailGroupCap)) {
+    $groupRecord = $groupMap[$heading]
+    $sectionCount += [int]$groupRecord.sectionCount
+    $detailCount += [int]$groupRecord.detailCount
+    $sampleDetails = @($groupRecord.sampleDetails | ForEach-Object { $_ })
+    $groupItems.Add([ordered]@{
+        heading = [string]$groupRecord.heading
+        sectionCount = [int]$groupRecord.sectionCount
+        detailCount = [int]$groupRecord.detailCount
+        sampleDetails = $sampleDetails
+        omittedDetailCount = [Math]::Max([int]$groupRecord.detailCount - $sampleDetails.Count, 0)
+      }) | Out-Null
+  }
+
+  foreach ($heading in @($groupOrder | Select-Object -Skip $reviewerChangeDetailGroupCap)) {
+    $groupRecord = $groupMap[$heading]
+    $sectionCount += [int]$groupRecord.sectionCount
+    $detailCount += [int]$groupRecord.detailCount
+  }
+
+  $comparisonReceipt = New-PreviewPairComparison -Comparison $Comparison -RepositoryRoot $RepositoryRoot
+  return [ordered]@{
+    targetId = $TargetId
+    targetPath = $TargetPath
+    comparison = $comparisonReceipt
+    sortKey = '{0}|{1:D4}|change-details' -f $TargetPath, [int]$comparisonReceipt.index
+    changeDetails = [ordered]@{
+      label = 'Change details'
+      sourceMode = 'attributes'
+      reportHtmlRelativePath = Resolve-RelativePath -Path $ReportHtmlPath -ResultsRoot $ResultsRoot
+      includedCategories = $includedCategories
+      groupCount = $groupOrder.Count
+      omittedGroupCount = [Math]::Max($groupOrder.Count - $groupItems.Count, 0)
+      sectionCount = $sectionCount
+      detailCount = $detailCount
+      groups = @($groupItems | ForEach-Object { $_ })
+    }
+  }
+}
+
 function New-PreviewSurfaceCandidate {
   param(
     [Parameter(Mandatory = $true)]
@@ -622,7 +781,9 @@ function New-ReviewerPreviewCards {
     [Parameter(Mandatory = $true)]
     [object[]]$SelectedPreviewPairs,
     [AllowEmptyCollection()]
-    [object[]]$AllPreviewPairs = @()
+    [object[]]$AllPreviewPairs = @(),
+    [AllowEmptyCollection()]
+    [object[]]$AllChangeDetails = @()
   )
 
   $orderedAllPreviewPairs = @(ConvertTo-PreviewPairArray -Value $AllPreviewPairs)
@@ -632,6 +793,13 @@ function New-ReviewerPreviewCards {
 
   $cards = New-Object System.Collections.Generic.List[object]
   $seenCards = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $changeDetailsByCardKey = @{}
+  foreach ($changeDetailRecord in @(ConvertTo-ObjectArray -Value $AllChangeDetails)) {
+    $changeDetailKey = '{0}|{1}' -f `
+      [string]$changeDetailRecord.targetId, `
+      [int](Get-NestedValue -Object $changeDetailRecord -Path @('comparison', 'index') -Default 0)
+    $changeDetailsByCardKey[$changeDetailKey] = Get-NestedValue -Object $changeDetailRecord -Path @('changeDetails')
+  }
   foreach ($selectedPreviewPair in @(ConvertTo-PreviewPairArray -Value $SelectedPreviewPairs)) {
     $cardKey = Get-ReviewerPreviewCardKey -PreviewPair $selectedPreviewPair
     if (-not $seenCards.Add($cardKey)) {
@@ -673,6 +841,7 @@ function New-ReviewerPreviewCards {
         comparison = $selectedPreviewPair.comparison
         sortKey = Get-OptionalString -Value $selectedPreviewPair.sortKey
         surfaces = @($surfaces | ForEach-Object { $_ })
+        changeDetails = Get-NestedValue -Object $changeDetailsByCardKey -Path @($cardKey)
       }) | Out-Null
   }
 
@@ -786,6 +955,7 @@ if ([string]$targetRunsManifest.schema -ne 'comparevi-history/pr-target-runs-man
 }
 
 $allPreviewPairs = New-Object System.Collections.Generic.List[object]
+$allChangeDetails = New-Object System.Collections.Generic.List[object]
 $targetReceipts = New-Object System.Collections.Generic.List[object]
 
 foreach ($target in @(ConvertTo-ObjectArray -Value $targetRunsManifest.targets)) {
@@ -811,6 +981,13 @@ foreach ($target in @(ConvertTo-ObjectArray -Value $targetRunsManifest.targets))
           continue
         }
 
+        if ($modeName -eq 'attributes') {
+          $changeDetailsRecord = Get-ReviewerChangeDetailsFromReport -ReportHtmlPath $reportHtmlPath -ResultsRoot $resultsDirResolved -TargetId ([string]$target.targetId) -TargetPath ([string]$target.targetPath) -Comparison $comparison -RepositoryRoot $targetRepositoryRoot
+          if ($null -ne $changeDetailsRecord) {
+            $allChangeDetails.Add($changeDetailsRecord) | Out-Null
+          }
+        }
+
         foreach ($previewPair in @(Get-ReportPreviewPairs -ReportHtmlPath $reportHtmlPath -ResultsRoot $resultsDirResolved -TargetId ([string]$target.targetId) -TargetPath ([string]$target.targetPath) -Mode $modeName -Comparison $comparison -RepositoryRoot $targetRepositoryRoot)) {
           $targetPreviewPairs.Add($previewPair) | Out-Null
           $allPreviewPairs.Add($previewPair) | Out-Null
@@ -833,9 +1010,10 @@ $orderedPreviewPairs = @(ConvertTo-PreviewPairArray -Value $allPreviewPairs)
 $reviewerPreviewPairs = @(Get-ReviewerPreviewPairArray -Value $orderedPreviewPairs)
 $commentPreviewPairs = @(Select-PreviewPairs -PreviewPairs $orderedPreviewPairs -Limit $CommentPreviewPairCap)
 $indexPreviewPairs = @(Select-PreviewPairs -PreviewPairs $orderedPreviewPairs -Limit $IndexPreviewPairCap)
-$reviewerPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $reviewerPreviewPairs -AllPreviewPairs $orderedPreviewPairs)
-$commentPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $commentPreviewPairs -AllPreviewPairs $orderedPreviewPairs)
-$indexPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $indexPreviewPairs -AllPreviewPairs $orderedPreviewPairs)
+$allChangeDetailRecords = @($allChangeDetails | ForEach-Object { $_ })
+$reviewerPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $reviewerPreviewPairs -AllPreviewPairs $orderedPreviewPairs -AllChangeDetails $allChangeDetailRecords)
+$commentPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $commentPreviewPairs -AllPreviewPairs $orderedPreviewPairs -AllChangeDetails $allChangeDetailRecords)
+$indexPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $indexPreviewPairs -AllPreviewPairs $orderedPreviewPairs -AllChangeDetails $allChangeDetailRecords)
 $targetReceiptArray = @($targetReceipts | ForEach-Object { $_ })
 $orderedPreviewPairArray = @($orderedPreviewPairs | ForEach-Object { $_ })
 $commentPreviewPairArray = @($commentPreviewPairs | ForEach-Object { $_ })

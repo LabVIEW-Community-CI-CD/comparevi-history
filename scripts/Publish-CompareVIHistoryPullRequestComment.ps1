@@ -349,6 +349,56 @@ function Get-ReviewerPreviewSurfaceLabel {
   }
 }
 
+function New-CommentChangeDetailsMarkdown {
+  param(
+    [AllowNull()]
+    [object]$ChangeDetails
+  )
+
+  if ($null -eq $ChangeDetails) {
+    return ''
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('<p><strong>Change details</strong></p>') | Out-Null
+  $lines.Add('<ul>') | Out-Null
+  $includedCategories = @(
+    ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('includedCategories') -Default @()) |
+      ForEach-Object { Get-OptionalString -Value $_ } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+  if ($includedCategories.Count -gt 0) {
+    $lines.Add(('<li><strong>Included categories:</strong> {0}</li>' -f (ConvertTo-HtmlText ($includedCategories -join ', ')))) | Out-Null
+  }
+  foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
+    $lines.Add(('<li><strong>{0}:</strong> {1} details across {2} sections' -f `
+          (ConvertTo-HtmlText (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading')))), `
+          [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0), `
+          [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0))) | Out-Null
+    $lines.Add('<ul>') | Out-Null
+    foreach ($sampleDetail in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sampleDetails') -Default @()))) {
+      $lines.Add(('<li>{0}</li>' -f (ConvertTo-HtmlText ([string]$sampleDetail)))) | Out-Null
+    }
+    $omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
+    if ($omittedDetailCount -gt 0) {
+      $lines.Add(('<li>+{0} more details in report</li>' -f $omittedDetailCount)) | Out-Null
+    }
+    $lines.Add('</ul>') | Out-Null
+    $lines.Add('</li>') | Out-Null
+  }
+  $omittedGroupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('omittedGroupCount') -Default 0)
+  if ($omittedGroupCount -gt 0) {
+    $lines.Add(('<li><strong>Additional change-detail groups omitted:</strong> {0}</li>' -f $omittedGroupCount)) | Out-Null
+  }
+  $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
+  if (-not [string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
+    $lines.Add(('<li><a href="{0}">open change details report</a></li>' -f (ConvertTo-HtmlText $reportHtmlRelativePath))) | Out-Null
+  }
+  $lines.Add('</ul>') | Out-Null
+
+  return $lines -join "`n"
+}
+
 function Get-ReviewerPreviewCardKey {
   param([Parameter(Mandatory = $true)][object]$PreviewPair)
 
@@ -630,6 +680,10 @@ function New-CommentPreviewMarkdown {
     if (-not [string]::IsNullOrWhiteSpace($detailHtml)) {
       $lines.Add($detailHtml) | Out-Null
     }
+    $changeDetailsMarkdown = New-CommentChangeDetailsMarkdown -ChangeDetails (Get-NestedValue -Object $previewCard -Path @('changeDetails'))
+    if (-not [string]::IsNullOrWhiteSpace($changeDetailsMarkdown)) {
+      $lines.Add($changeDetailsMarkdown) | Out-Null
+    }
     foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
       $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
       $baseUrl = [string]$surface.baseImageUrl
@@ -768,6 +822,7 @@ function Publish-CommentPreviewSurface {
       targetId = [string]$previewCard.targetId
       targetPath = [string]$previewCard.targetPath
       comparison = $previewCard.comparison
+      changeDetails = Get-NestedValue -Object $previewCard -Path @('changeDetails')
       surfaces = @($publishedSurfaces | ForEach-Object { $_ })
     }
     $publishedPreviewCards.Add($publishedCard) | Out-Null
