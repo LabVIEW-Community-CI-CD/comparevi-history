@@ -372,11 +372,13 @@ function New-CommentChangeDetailsMarkdown {
   }
   foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
     $headingText = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+    $primaryReportUrl = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportUrl'))
     $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
-    $headingMarkup = if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+    $headingLink = if ([string]::IsNullOrWhiteSpace($primaryReportUrl)) { $primaryReportHtmlRelativePath } else { $primaryReportUrl }
+    $headingMarkup = if ([string]::IsNullOrWhiteSpace($headingLink)) {
       ConvertTo-HtmlText $headingText
     } else {
-      '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $primaryReportHtmlRelativePath), (ConvertTo-HtmlText $headingText)
+      '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $headingLink), (ConvertTo-HtmlText $headingText)
     }
     $lines.Add(('<li><strong>{0}:</strong> {1} details across {2} sections' -f `
           $headingMarkup, `
@@ -394,7 +396,10 @@ function New-CommentChangeDetailsMarkdown {
       ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()) |
         ForEach-Object {
           $label = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('label'))
-          $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+          $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportUrl'))
+          if ([string]::IsNullOrWhiteSpace($path)) {
+            $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+          }
           if ([string]::IsNullOrWhiteSpace($label) -or [string]::IsNullOrWhiteSpace($path)) {
             return $null
           }
@@ -413,9 +418,12 @@ function New-CommentChangeDetailsMarkdown {
   if ($omittedGroupCount -gt 0) {
     $lines.Add(('<li><strong>Additional change-detail groups omitted:</strong> {0}</li>' -f $omittedGroupCount)) | Out-Null
   }
-  $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
-  if (-not [string]::IsNullOrWhiteSpace($reportHtmlRelativePath)) {
-    $lines.Add(('<li><a href="{0}">open change details report</a></li>' -f (ConvertTo-HtmlText $reportHtmlRelativePath))) | Out-Null
+  $reportUrl = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportUrl'))
+  if ([string]::IsNullOrWhiteSpace($reportUrl)) {
+    $reportUrl = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
+  }
+  if (-not [string]::IsNullOrWhiteSpace($reportUrl)) {
+    $lines.Add(('<li><a href="{0}">open change details report</a></li>' -f (ConvertTo-HtmlText $reportUrl))) | Out-Null
   }
   $lines.Add('</ul>') | Out-Null
 
@@ -445,11 +453,13 @@ function New-CommentReviewerSummaryMarkdown {
   }
   foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()))) {
     $labelText = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+    $primaryReportUrl = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportUrl'))
     $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportHtmlRelativePath'))
-    $labelMarkup = if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+    $labelLink = if ([string]::IsNullOrWhiteSpace($primaryReportUrl)) { $primaryReportHtmlRelativePath } else { $primaryReportUrl }
+    $labelMarkup = if ([string]::IsNullOrWhiteSpace($labelLink)) {
       ConvertTo-HtmlText $labelText
     } else {
-      '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $primaryReportHtmlRelativePath), (ConvertTo-HtmlText $labelText)
+      '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $labelLink), (ConvertTo-HtmlText $labelText)
     }
     $lines.Add(('<li><strong>{0}:</strong> {1} severity, {2} details across {3} sections' -f `
           $labelMarkup, `
@@ -461,7 +471,10 @@ function New-CommentReviewerSummaryMarkdown {
       ConvertTo-ObjectArray -Value (Get-NestedValue -Object $signal -Path @('sectionLinks') -Default @()) |
         ForEach-Object {
           $label = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('label'))
-          $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+          $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportUrl'))
+          if ([string]::IsNullOrWhiteSpace($path)) {
+            $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+          }
           if ([string]::IsNullOrWhiteSpace($label) -or [string]::IsNullOrWhiteSpace($path)) {
             return $null
           }
@@ -733,6 +746,282 @@ function ConvertTo-BlobGitHubUrl {
   return 'https://github.com/{0}/blob/{1}/{2}' -f $RepositorySlug, $BranchName, ($Path -replace '\\', '/')
 }
 
+function Get-ReportAnchorId {
+  param(
+    [AllowNull()]
+    [string]$Path
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $null
+  }
+
+  $hashIndex = $Path.IndexOf('#', [System.StringComparison]::Ordinal)
+  if ($hashIndex -lt 0 -or $hashIndex -ge ($Path.Length - 1)) {
+    return $null
+  }
+
+  return $Path.Substring($hashIndex + 1)
+}
+
+function Add-AnchorToUrl {
+  param(
+    [AllowNull()]
+    [string]$Url,
+    [AllowNull()]
+    [string]$AnchorId
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Url)) {
+    return $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($AnchorId)) {
+    return $Url
+  }
+
+  return '{0}#{1}' -f $Url, $AnchorId
+}
+
+function New-CommentChangeDetailsEvidenceMarkdown {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $title = Get-ReviewerPreviewTitle -PreviewPair $PreviewCard
+  $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $PreviewCard
+  $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $PreviewCard
+  $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $PreviewCard)
+  $changeDetails = Get-NestedValue -Object $PreviewCard -Path @('changeDetails')
+  $reviewerSummary = Get-NestedValue -Object $PreviewCard -Path @('reviewerSummary')
+
+  $lines.Add(('# `{0}`' -f $title)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('## {0}' -f $subtitle)) | Out-Null
+  $lines.Add('') | Out-Null
+  if (-not [string]::IsNullOrWhiteSpace($revisionContext)) {
+    $lines.Add(('`{0}`' -f $revisionContext)) | Out-Null
+    $lines.Add('') | Out-Null
+  }
+  foreach ($detailLine in $detailLines) {
+    $lines.Add(('- {0}' -f $detailLine)) | Out-Null
+  }
+  if ($detailLines.Count -gt 0) {
+    $lines.Add('') | Out-Null
+  }
+
+  if ($null -ne $reviewerSummary) {
+    $lines.Add('## Reviewer summary') | Out-Null
+    $lines.Add('') | Out-Null
+    $headline = Get-OptionalString -Value (Get-NestedValue -Object $reviewerSummary -Path @('headline'))
+    if (-not [string]::IsNullOrWhiteSpace($headline)) {
+      $lines.Add(('- Headline: `{0}`' -f $headline)) | Out-Null
+    }
+    $overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $reviewerSummary -Path @('overallSeverity'))
+    if (-not [string]::IsNullOrWhiteSpace($overallSeverity)) {
+      $lines.Add(('- Overall severity: `{0}`' -f $overallSeverity)) | Out-Null
+    }
+    foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $reviewerSummary -Path @('signals') -Default @()))) {
+      $label = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+      $severity = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('severity'))
+      $detailCount = [int](Get-NestedValue -Object $signal -Path @('detailCount') -Default 0)
+      $sectionCount = [int](Get-NestedValue -Object $signal -Path @('sectionCount') -Default 0)
+      $lines.Add(('- `{0}`: `{1}` severity, `{2}` details across `{3}` sections' -f $label, $severity, $detailCount, $sectionCount)) | Out-Null
+    }
+    $lines.Add('') | Out-Null
+  }
+
+  if ($null -ne $changeDetails) {
+    $lines.Add('## Change details') | Out-Null
+    $lines.Add('') | Out-Null
+    $includedCategories = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $changeDetails -Path @('includedCategories') -Default @()) |
+        ForEach-Object { Get-OptionalString -Value $_ } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($includedCategories.Count -gt 0) {
+      $lines.Add(('Included categories: `{0}`' -f ($includedCategories -join '`, `'))) | Out-Null
+      $lines.Add('') | Out-Null
+    }
+    foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $changeDetails -Path @('groups') -Default @()))) {
+      $anchorId = Get-ReportAnchorId -Path (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath')))
+      if (-not [string]::IsNullOrWhiteSpace($anchorId)) {
+        $lines.Add(('<a id="{0}"></a>' -f (ConvertTo-HtmlText $anchorId))) | Out-Null
+      }
+      $heading = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+      $lines.Add(('### {0}' -f $heading)) | Out-Null
+      $lines.Add('') | Out-Null
+      $lines.Add(('- `{0}` details across `{1}` sections' -f [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0), [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0))) | Out-Null
+      foreach ($sampleDetail in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sampleDetails') -Default @()))) {
+        $lines.Add(('  - {0}' -f [string]$sampleDetail)) | Out-Null
+      }
+      $omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
+      if ($omittedDetailCount -gt 0) {
+        $lines.Add(('  - +{0} more details in report' -f $omittedDetailCount)) | Out-Null
+      }
+      $lines.Add('') | Out-Null
+    }
+  }
+
+  return ($lines -join "`n").TrimEnd() + "`n"
+}
+
+function New-CommentSurfaceEvidenceMarkdown {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [Parameter(Mandatory = $true)]
+    [object]$Surface,
+    [AllowNull()]
+    [string]$ChangeDetailsEvidenceUrl
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $title = Get-ReviewerPreviewTitle -PreviewPair $PreviewCard
+  $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $PreviewCard
+  $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $PreviewCard
+  $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $PreviewCard)
+  $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $Surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $Surface.surfaceLabel)
+
+  $lines.Add(('# `{0}`' -f $title)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('## {0}' -f $subtitle)) | Out-Null
+  $lines.Add('') | Out-Null
+  if (-not [string]::IsNullOrWhiteSpace($revisionContext)) {
+    $lines.Add(('`{0}`' -f $revisionContext)) | Out-Null
+    $lines.Add('') | Out-Null
+  }
+  foreach ($detailLine in $detailLines) {
+    $lines.Add(('- {0}' -f $detailLine)) | Out-Null
+  }
+  if ($detailLines.Count -gt 0) {
+    $lines.Add('') | Out-Null
+  }
+  $lines.Add(('## {0}' -f $surfaceLabel)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('**Base**') | Out-Null
+  $lines.Add(('![{0}]({1})' -f ('{0} base' -f $surfaceLabel), [string]$Surface.baseImageUrl)) | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add('**Head**') | Out-Null
+  $lines.Add(('![{0}]({1})' -f ('{0} head' -f $surfaceLabel), [string]$Surface.headImageUrl)) | Out-Null
+  if (-not [string]::IsNullOrWhiteSpace($ChangeDetailsEvidenceUrl)) {
+    $lines.Add('') | Out-Null
+    $lines.Add(('[Change details evidence]({0})' -f $ChangeDetailsEvidenceUrl)) | Out-Null
+  }
+
+  return ($lines -join "`n").TrimEnd() + "`n"
+}
+
+function ConvertTo-PublishedSectionLink {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$SectionLink,
+    [AllowNull()]
+    [string]$EvidenceUrl
+  )
+
+  $reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('reportHtmlRelativePath'))
+  return [ordered]@{
+    sectionOrdinal = [int](Get-NestedValue -Object $SectionLink -Path @('sectionOrdinal') -Default 0)
+    label = Get-OptionalString -Value (Get-NestedValue -Object $SectionLink -Path @('label'))
+    reportHtmlRelativePath = $reportHtmlRelativePath
+    reportUrl = Add-AnchorToUrl -Url $EvidenceUrl -AnchorId (Get-ReportAnchorId -Path $reportHtmlRelativePath)
+  }
+}
+
+function ConvertTo-PublishedChangeDetails {
+  param(
+    [AllowNull()]
+    [object]$ChangeDetails,
+    [AllowNull()]
+    [string]$EvidenceUrl
+  )
+
+  if ($null -eq $ChangeDetails) {
+    return $null
+  }
+
+  $groups = New-Object System.Collections.Generic.List[object]
+  foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
+    $groups.Add([ordered]@{
+        heading = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+        sectionCount = [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0)
+        detailCount = [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0)
+        sampleDetails = @(
+          ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sampleDetails') -Default @()) |
+            ForEach-Object { [string]$_ }
+        )
+        omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
+        primaryReportHtmlRelativePath = $primaryReportHtmlRelativePath
+        primaryReportUrl = Add-AnchorToUrl -Url $EvidenceUrl -AnchorId (Get-ReportAnchorId -Path $primaryReportHtmlRelativePath)
+        sectionLinks = @(
+          ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()) |
+            ForEach-Object { ConvertTo-PublishedSectionLink -SectionLink $_ -EvidenceUrl $EvidenceUrl }
+        )
+      }) | Out-Null
+  }
+
+  return [ordered]@{
+    label = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('label'))
+    sourceMode = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('sourceMode'))
+    reportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $ChangeDetails -Path @('reportHtmlRelativePath'))
+    reportUrl = $EvidenceUrl
+    includedCategories = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('includedCategories') -Default @()) |
+        ForEach-Object { [string]$_ }
+    )
+    groupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('groupCount') -Default 0)
+    omittedGroupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('omittedGroupCount') -Default 0)
+    sectionCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('sectionCount') -Default 0)
+    detailCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('detailCount') -Default 0)
+    groups = @($groups | ForEach-Object { $_ })
+  }
+}
+
+function ConvertTo-PublishedReviewerSummary {
+  param(
+    [AllowNull()]
+    [object]$ReviewerSummary,
+    [AllowNull()]
+    [string]$EvidenceUrl
+  )
+
+  if ($null -eq $ReviewerSummary) {
+    return $null
+  }
+
+  $signals = New-Object System.Collections.Generic.List[object]
+  foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()))) {
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportHtmlRelativePath'))
+    $signals.Add([ordered]@{
+        signalKey = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('signalKey'))
+        label = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+        severity = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('severity'))
+        detailCount = [int](Get-NestedValue -Object $signal -Path @('detailCount') -Default 0)
+        sectionCount = [int](Get-NestedValue -Object $signal -Path @('sectionCount') -Default 0)
+        summary = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('summary'))
+        primaryReportHtmlRelativePath = $primaryReportHtmlRelativePath
+        primaryReportUrl = Add-AnchorToUrl -Url $EvidenceUrl -AnchorId (Get-ReportAnchorId -Path $primaryReportHtmlRelativePath)
+        sectionLinks = @(
+          ConvertTo-ObjectArray -Value (Get-NestedValue -Object $signal -Path @('sectionLinks') -Default @()) |
+            ForEach-Object { ConvertTo-PublishedSectionLink -SectionLink $_ -EvidenceUrl $EvidenceUrl }
+        )
+      }) | Out-Null
+  }
+
+  return [ordered]@{
+    label = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('label'))
+    overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('overallSeverity'))
+    headline = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('headline'))
+    signalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('signalCount') -Default 0)
+    omittedSignalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('omittedSignalCount') -Default 0)
+    signals = @($signals | ForEach-Object { $_ })
+  }
+}
+
 function New-CommentPreviewMarkdown {
   param(
     [Parameter(Mandatory = $true)]
@@ -778,7 +1067,10 @@ function New-CommentPreviewMarkdown {
       $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
       $baseUrl = [string]$surface.baseImageUrl
       $headUrl = [string]$surface.headImageUrl
-      $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
+      $linkUrl = Get-OptionalString -Value (Get-NestedValue -Object $surface -Path @('evidenceUrl'))
+      if ([string]::IsNullOrWhiteSpace($linkUrl)) {
+        $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
+      }
       $baseAlt = '{0} base' -f $surfaceLabel
       $headAlt = '{0} head' -f $surfaceLabel
       $lines.Add('') | Out-Null
@@ -790,9 +1082,6 @@ function New-CommentPreviewMarkdown {
       $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $headAlt), (ConvertTo-HtmlText $headUrl))) | Out-Null
       $lines.Add('</tr></tbody>') | Out-Null
       $lines.Add('</table>') | Out-Null
-    }
-    if (-not [string]::IsNullOrWhiteSpace($RunUrl)) {
-      $lines.Add(('<p><a href="{0}">workflow run</a></p>' -f (ConvertTo-HtmlText $RunUrl))) | Out-Null
     }
     $lines.Add('') | Out-Null
   }
@@ -867,6 +1156,12 @@ function Publish-CommentPreviewSurface {
   $cardOrdinal = 1
   foreach ($previewCard in $previewCards) {
     $cardRoot = '{0}/{1}-{2}' -f $runRoot, ('{0:D3}' -f $cardOrdinal), ('history-pair-' + ('{0:D2}' -f (Get-ReviewerPreviewComparisonIndex -PreviewPair $previewCard)))
+    $changeDetailsEvidencePath = '{0}/change-details.md' -f $cardRoot
+    $changeDetailsEvidenceUrl = $null
+    if ($null -ne (Get-NestedValue -Object $previewCard -Path @('changeDetails')) -or
+      $null -ne (Get-NestedValue -Object $previewCard -Path @('reviewerSummary'))) {
+      $changeDetailsEvidenceUrl = ConvertTo-BlobGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $changeDetailsEvidencePath
+    }
     $publishedSurfaces = New-Object System.Collections.Generic.List[object]
     $surfaceOrdinal = 1
     foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
@@ -888,6 +1183,7 @@ function Publish-CommentPreviewSurface {
       $headExtension = [System.IO.Path]::GetExtension($headImagePath)
       $basePublishPath = '{0}/base{1}' -f $surfaceRoot, $baseExtension
       $headPublishPath = '{0}/head{1}' -f $surfaceRoot, $headExtension
+      $surfaceEvidencePath = '{0}/evidence.md' -f $surfaceRoot
 
       $messageBase = 'comparevi-history: publish PR preview images for run {0}' -f $ExecutionRunId
       Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath -Bytes ([System.IO.File]::ReadAllBytes($baseImagePath)) -Message $messageBase | Out-Null
@@ -903,17 +1199,29 @@ function Publish-CommentPreviewSurface {
         baseImageUrl = ConvertTo-RawGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath
         headImagePath = $headPublishPath
         headImageUrl = ConvertTo-RawGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $headPublishPath
+        evidencePath = $surfaceEvidencePath
+        evidenceUrl = ConvertTo-BlobGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $surfaceEvidencePath
       }
+      $surfaceEvidenceMarkdown = New-CommentSurfaceEvidenceMarkdown -PreviewCard $previewCard -Surface $publishedSurface -ChangeDetailsEvidenceUrl $changeDetailsEvidenceUrl
+      Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $surfaceEvidencePath -Bytes ([System.Text.Encoding]::UTF8.GetBytes($surfaceEvidenceMarkdown)) -Message ('comparevi-history: publish PR preview evidence for run {0}' -f $ExecutionRunId) | Out-Null
       $publishedSurfaces.Add($publishedSurface) | Out-Null
       $surfaceOrdinal += 1
     }
+
+    if (-not [string]::IsNullOrWhiteSpace($changeDetailsEvidenceUrl)) {
+      $changeDetailsEvidenceMarkdown = New-CommentChangeDetailsEvidenceMarkdown -PreviewCard $previewCard
+      Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $changeDetailsEvidencePath -Bytes ([System.Text.Encoding]::UTF8.GetBytes($changeDetailsEvidenceMarkdown)) -Message ('comparevi-history: publish PR preview evidence for run {0}' -f $ExecutionRunId) | Out-Null
+    }
+
+    $publishedReviewerSummary = ConvertTo-PublishedReviewerSummary -ReviewerSummary (Get-NestedValue -Object $previewCard -Path @('reviewerSummary')) -EvidenceUrl $changeDetailsEvidenceUrl
+    $publishedChangeDetails = ConvertTo-PublishedChangeDetails -ChangeDetails (Get-NestedValue -Object $previewCard -Path @('changeDetails')) -EvidenceUrl $changeDetailsEvidenceUrl
 
     $publishedCard = [ordered]@{
       targetId = [string]$previewCard.targetId
       targetPath = [string]$previewCard.targetPath
       comparison = $previewCard.comparison
-      reviewerSummary = Get-NestedValue -Object $previewCard -Path @('reviewerSummary')
-      changeDetails = Get-NestedValue -Object $previewCard -Path @('changeDetails')
+      reviewerSummary = $publishedReviewerSummary
+      changeDetails = $publishedChangeDetails
       surfaces = @($publishedSurfaces | ForEach-Object { $_ })
     }
     $publishedPreviewCards.Add($publishedCard) | Out-Null
@@ -932,6 +1240,8 @@ function Publish-CommentPreviewSurface {
           baseImageUrl = [string]$representativeSurface.baseImageUrl
           headImagePath = [string]$representativeSurface.headImagePath
           headImageUrl = [string]$representativeSurface.headImageUrl
+          evidencePath = Get-OptionalString -Value $representativeSurface.evidencePath
+          evidenceUrl = Get-OptionalString -Value $representativeSurface.evidenceUrl
         }) | Out-Null
     }
 

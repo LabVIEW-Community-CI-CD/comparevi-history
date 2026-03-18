@@ -517,6 +517,12 @@ try {
     [regex]::Matches($indexMarkdown, [regex]::Escape('#### Block diagram')).Count -ne 2) {
     throw 'Index markdown should render both front-panel and block-diagram surfaces for each reviewer card.'
   }
+  if ($indexMarkdown -notmatch [regex]::Escape('[![Front panel base](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png)](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)') -or
+    $indexMarkdown -notmatch [regex]::Escape('[![Block diagram base](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png)](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)') -or
+    $indexMarkdown -notmatch [regex]::Escape('[![Front panel head](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_2.png)](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html)') -or
+    $indexMarkdown -notmatch [regex]::Escape('[![Block diagram head](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_2.png)](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html)')) {
+    throw 'Index markdown should make preview images one-click links to exact visual report surfaces.'
+  }
   if ([regex]::Matches($indexMarkdown, [regex]::Escape('#### Reviewer summary')).Count -ne 2 -or
     $indexMarkdown -notmatch [regex]::Escape('- Headline: `Material logic-affecting movement and structure resizing`') -or
     $indexMarkdown -notmatch [regex]::Escape('- Overall severity: `medium`') -or
@@ -567,6 +573,12 @@ try {
   if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Front panel</h4>')).Count -ne 2 -or
     [regex]::Matches($indexHtml, [regex]::Escape('<h4>Block diagram</h4>')).Count -ne 2) {
     throw 'Index HTML should render both front-panel and block-diagram surfaces for each reviewer card.'
+  }
+  if ($indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html"><img alt="Front panel base" src="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/fp_1.png"></a>') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html"><img alt="Block diagram base" src="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report_files/bd_1.png"></a>') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html"><img alt="Front panel head" src="targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/fp_2.png"></a>') -or
+    $indexHtml -notmatch [regex]::Escape('<a href="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report.html"><img alt="Block diagram head" src="targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-002-artifacts/compare-report_files/bd_2.png"></a>')) {
+    throw 'Index HTML should make preview images one-click links to exact visual report surfaces.'
   }
   if ([regex]::Matches($indexHtml, [regex]::Escape('<h4>Reviewer summary</h4>')).Count -ne 2 -or
     $indexHtml -notmatch [regex]::Escape('<strong>Headline:</strong> Material logic-affecting movement and structure resizing') -or

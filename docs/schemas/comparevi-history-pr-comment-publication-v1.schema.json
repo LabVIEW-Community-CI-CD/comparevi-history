@@ -186,6 +186,7 @@
                         "sectionCount": { "type": "integer", "minimum": 0 },
                         "summary": { "type": "string", "minLength": 1 },
                         "primaryReportHtmlRelativePath": { "type": ["string", "null"] },
+                        "primaryReportUrl": { "type": ["string", "null"] },
                         "sectionLinks": {
                           "type": "array",
                           "items": {
@@ -199,7 +200,8 @@
                             "properties": {
                               "sectionOrdinal": { "type": "integer", "minimum": 0 },
                               "label": { "type": "string", "minLength": 1 },
-                              "reportHtmlRelativePath": { "type": "string", "minLength": 1 }
+                              "reportHtmlRelativePath": { "type": "string", "minLength": 1 },
+                              "reportUrl": { "type": ["string", "null"] }
                             }
                           }
                         }
@@ -229,6 +231,7 @@
                   "label": { "type": "string", "minLength": 1 },
                   "sourceMode": { "const": "attributes" },
                   "reportHtmlRelativePath": { "type": ["string", "null"] },
+                  "reportUrl": { "type": ["string", "null"] },
                   "includedCategories": {
                     "type": "array",
                     "items": { "type": "string", "minLength": 1 }
@@ -261,6 +264,7 @@
                         },
                         "omittedDetailCount": { "type": "integer", "minimum": 0 },
                         "primaryReportHtmlRelativePath": { "type": ["string", "null"] },
+                        "primaryReportUrl": { "type": ["string", "null"] },
                         "sectionLinks": {
                           "type": "array",
                           "items": {
@@ -274,7 +278,8 @@
                             "properties": {
                               "sectionOrdinal": { "type": "integer", "minimum": 0 },
                               "label": { "type": "string", "minLength": 1 },
-                              "reportHtmlRelativePath": { "type": "string", "minLength": 1 }
+                              "reportHtmlRelativePath": { "type": "string", "minLength": 1 },
+                              "reportUrl": { "type": ["string", "null"] }
                             }
                           }
                         }
@@ -304,7 +309,9 @@
                     "baseImagePath": { "type": "string", "minLength": 1 },
                     "baseImageUrl": { "type": "string", "minLength": 1 },
                     "headImagePath": { "type": "string", "minLength": 1 },
-                    "headImageUrl": { "type": "string", "minLength": 1 }
+                    "headImageUrl": { "type": "string", "minLength": 1 },
+                    "evidencePath": { "type": ["string", "null"] },
+                    "evidenceUrl": { "type": ["string", "null"] }
                   }
                 }
               }
@@ -340,7 +347,9 @@
               "baseImagePath": { "type": "string", "minLength": 1 },
               "baseImageUrl": { "type": "string", "minLength": 1 },
               "headImagePath": { "type": "string", "minLength": 1 },
-              "headImageUrl": { "type": "string", "minLength": 1 }
+              "headImageUrl": { "type": "string", "minLength": 1 },
+              "evidencePath": { "type": ["string", "null"] },
+              "evidenceUrl": { "type": ["string", "null"] }
             }
           }
         }
