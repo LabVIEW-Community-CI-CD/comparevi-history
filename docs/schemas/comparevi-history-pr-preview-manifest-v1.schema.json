@@ -94,7 +94,11 @@
       "properties": {
         "index": { "type": "integer", "minimum": 0 },
         "baseRef": { "type": ["string", "null"] },
-        "headRef": { "type": ["string", "null"] }
+        "headRef": { "type": ["string", "null"] },
+        "baseShortRef": { "type": ["string", "null"] },
+        "headShortRef": { "type": ["string", "null"] },
+        "baseSubject": { "type": ["string", "null"] },
+        "headSubject": { "type": ["string", "null"] }
       }
     },
     "previewPair": {

@@ -214,6 +214,21 @@ function ConvertTo-Slug {
   return $slug
 }
 
+function ConvertTo-ShortRef {
+  param([AllowNull()][string]$Ref)
+
+  $refValue = Get-OptionalString -Value $Ref
+  if ([string]::IsNullOrWhiteSpace($refValue)) {
+    return $null
+  }
+
+  if ($refValue.Length -le 12) {
+    return $refValue
+  }
+
+  return $refValue.Substring(0, 12)
+}
+
 function Get-ModeSortOrder {
   param([AllowNull()][string]$Mode)
 
@@ -226,6 +241,110 @@ function Get-ModeSortOrder {
   }
 
   return 99
+}
+
+$gitCommitSubjectCache = @{}
+
+function Resolve-TargetRepositoryRoot {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Target,
+    [Parameter(Mandatory = $true)]
+    [string]$BasePath
+  )
+
+  $publicRunPath = Resolve-ExistingPath -Path (Get-OptionalString -Value (Get-NestedValue -Object $Target -Path @('publicRunPath'))) -BasePath $BasePath -PathType Leaf
+  if ($null -eq $publicRunPath) {
+    return $null
+  }
+
+  try {
+    $publicRun = Read-JsonFile -Path $publicRunPath
+  } catch {
+    return $null
+  }
+
+  $repositoryRoot = Get-OptionalString -Value (Get-NestedValue -Object $publicRun -Path @('request', 'consumer', 'repositoryRoot'))
+  if ([string]::IsNullOrWhiteSpace($repositoryRoot)) {
+    return $null
+  }
+
+  $resolvedRepositoryRoot = Resolve-ExistingPath -Path $repositoryRoot -BasePath $BasePath -PathType Container
+  if ($null -eq $resolvedRepositoryRoot) {
+    return $null
+  }
+
+  if (-not (Test-Path -LiteralPath (Join-Path $resolvedRepositoryRoot '.git'))) {
+    return $null
+  }
+
+  return $resolvedRepositoryRoot
+}
+
+function Get-GitCommitSubject {
+  param(
+    [AllowNull()]
+    [string]$RepositoryRoot,
+    [AllowNull()]
+    [string]$Ref
+  )
+
+  $resolvedRepositoryRoot = Get-OptionalString -Value $RepositoryRoot
+  $resolvedRef = Get-OptionalString -Value $Ref
+  if ([string]::IsNullOrWhiteSpace($resolvedRepositoryRoot) -or [string]::IsNullOrWhiteSpace($resolvedRef)) {
+    return $null
+  }
+
+  $cacheKey = '{0}|{1}' -f $resolvedRepositoryRoot, $resolvedRef
+  if ($gitCommitSubjectCache.ContainsKey($cacheKey)) {
+    return $gitCommitSubjectCache[$cacheKey]
+  }
+
+  $subject = $null
+  try {
+    $subject = (& git -C $resolvedRepositoryRoot show -s --format=%s $resolvedRef 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+      $subject = $null
+    }
+  } catch {
+    $subject = $null
+  }
+
+  $subject = Get-OptionalString -Value $subject
+  $gitCommitSubjectCache[$cacheKey] = $subject
+  return $subject
+}
+
+function New-PreviewPairComparison {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$Comparison,
+    [AllowNull()]
+    [string]$RepositoryRoot
+  )
+
+  $index = [int](Get-NestedValue -Object $Comparison -Path @('index') -Default 0)
+  $baseRef = Get-OptionalString -Value (Get-NestedValue -Object $Comparison -Path @('base', 'ref'))
+  $headRef = Get-OptionalString -Value (Get-NestedValue -Object $Comparison -Path @('head', 'ref'))
+  $baseShortRef = Get-OptionalString -Value (Get-NestedValue -Object $Comparison -Path @('base', 'short'))
+  if ([string]::IsNullOrWhiteSpace($baseShortRef)) {
+    $baseShortRef = ConvertTo-ShortRef -Ref $baseRef
+  }
+
+  $headShortRef = Get-OptionalString -Value (Get-NestedValue -Object $Comparison -Path @('head', 'short'))
+  if ([string]::IsNullOrWhiteSpace($headShortRef)) {
+    $headShortRef = ConvertTo-ShortRef -Ref $headRef
+  }
+
+  return [ordered]@{
+    index = $index
+    baseRef = $baseRef
+    headRef = $headRef
+    baseShortRef = $baseShortRef
+    headShortRef = $headShortRef
+    baseSubject = Get-GitCommitSubject -RepositoryRoot $RepositoryRoot -Ref $baseRef
+    headSubject = Get-GitCommitSubject -RepositoryRoot $RepositoryRoot -Ref $headRef
+  }
 }
 
 function Get-SectionKindSortOrder {
@@ -333,7 +452,9 @@ function Get-ReportPreviewPairs {
     [Parameter(Mandatory = $true)]
     [string]$Mode,
     [Parameter(Mandatory = $true)]
-    [object]$Comparison
+    [object]$Comparison,
+    [AllowNull()]
+    [string]$RepositoryRoot
   )
 
   if (-not (Test-Path -LiteralPath $ReportHtmlPath -PathType Leaf)) {
@@ -386,7 +507,8 @@ function Get-ReportPreviewPairs {
       'Preview'
     }
 
-    $comparisonIndex = [int](Get-NestedValue -Object $Comparison -Path @('index') -Default 0)
+    $comparisonReceipt = New-PreviewPairComparison -Comparison $Comparison -RepositoryRoot $RepositoryRoot
+    $comparisonIndex = [int]$comparisonReceipt.index
     $sortKey = '{0}|{1:D2}|{2:D4}|{3:D2}|{4:D4}|{5}' -f `
       $TargetPath, `
       (Get-ModeSortOrder -Mode $Mode), `
@@ -395,15 +517,11 @@ function Get-ReportPreviewPairs {
       $sectionOrdinal, `
       (ConvertTo-Slug -Value $label)
 
-    $pairs.Add([ordered]@{
+      $pairs.Add([ordered]@{
         targetId = $TargetId
         targetPath = $TargetPath
         mode = $Mode
-        comparison = [ordered]@{
-          index = $comparisonIndex
-          baseRef = Get-OptionalString -Value (Get-NestedValue -Object $Comparison -Path @('base', 'ref'))
-          headRef = Get-OptionalString -Value (Get-NestedValue -Object $Comparison -Path @('head', 'ref'))
-        }
+        comparison = $comparisonReceipt
         sectionKind = $sectionKind
         sectionOrdinal = $sectionOrdinal
         label = $label
@@ -449,6 +567,7 @@ $targetReceipts = New-Object System.Collections.Generic.List[object]
 
 foreach ($target in @(ConvertTo-ObjectArray -Value $targetRunsManifest.targets)) {
   $targetPreviewPairs = New-Object System.Collections.Generic.List[object]
+  $targetRepositoryRoot = Resolve-TargetRepositoryRoot -Target $target -BasePath $basePath
   $suiteManifestPath = Resolve-ExistingPath -Path (Get-OptionalString -Value (Get-NestedValue -Object $target -Path @('manifestPath'))) -BasePath $basePath -PathType Leaf
   if ($null -ne $suiteManifestPath) {
     $suiteManifest = Read-JsonFile -Path $suiteManifestPath
@@ -469,7 +588,7 @@ foreach ($target in @(ConvertTo-ObjectArray -Value $targetRunsManifest.targets))
           continue
         }
 
-        foreach ($previewPair in @(Get-ReportPreviewPairs -ReportHtmlPath $reportHtmlPath -ResultsRoot $resultsDirResolved -TargetId ([string]$target.targetId) -TargetPath ([string]$target.targetPath) -Mode $modeName -Comparison $comparison)) {
+        foreach ($previewPair in @(Get-ReportPreviewPairs -ReportHtmlPath $reportHtmlPath -ResultsRoot $resultsDirResolved -TargetId ([string]$target.targetId) -TargetPath ([string]$target.targetPath) -Mode $modeName -Comparison $comparison -RepositoryRoot $targetRepositoryRoot)) {
           $targetPreviewPairs.Add($previewPair) | Out-Null
           $allPreviewPairs.Add($previewPair) | Out-Null
         }

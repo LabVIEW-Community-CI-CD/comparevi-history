@@ -170,6 +170,81 @@ function Escape-Html {
   return [System.Net.WebUtility]::HtmlEncode($Value)
 }
 
+function ConvertTo-ShortRef {
+  param([AllowNull()][string]$Ref)
+
+  $refValue = Get-OptionalString -Value $Ref
+  if ([string]::IsNullOrWhiteSpace($refValue)) {
+    return $null
+  }
+
+  if ($refValue.Length -le 12) {
+    return $refValue
+  }
+
+  return $refValue.Substring(0, 12)
+}
+
+function Get-ReviewerPreviewComparisonIndex {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  return [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
+}
+
+function Get-ReviewerPreviewRevisionContext {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  $baseShortRef = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'baseShortRef'))
+  if ([string]::IsNullOrWhiteSpace($baseShortRef)) {
+    $baseShortRef = ConvertTo-ShortRef -Ref (Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'baseRef')))
+  }
+
+  $headShortRef = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'headShortRef'))
+  if ([string]::IsNullOrWhiteSpace($headShortRef)) {
+    $headShortRef = ConvertTo-ShortRef -Ref (Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'headRef')))
+  }
+
+  if ([string]::IsNullOrWhiteSpace($baseShortRef) -and [string]::IsNullOrWhiteSpace($headShortRef)) {
+    return $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($baseShortRef)) {
+    return $headShortRef
+  }
+
+  if ([string]::IsNullOrWhiteSpace($headShortRef)) {
+    return $baseShortRef
+  }
+
+  return '{0} -> {1}' -f $baseShortRef, $headShortRef
+}
+
+function Get-ReviewerPreviewDetailLines {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $baseSubject = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'baseSubject'))
+  if (-not [string]::IsNullOrWhiteSpace($baseSubject)) {
+    $lines.Add('Base: {0}' -f $baseSubject) | Out-Null
+  }
+
+  $headSubject = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'headSubject'))
+  if (-not [string]::IsNullOrWhiteSpace($headSubject)) {
+    $lines.Add('Head: {0}' -f $headSubject) | Out-Null
+  }
+
+  return @($lines | ForEach-Object { $_ })
+}
+
 function Get-ReviewerPreviewTitle {
   param(
     [Parameter(Mandatory = $true)]
@@ -185,13 +260,7 @@ function Get-ReviewerPreviewSubtitle {
     [object]$PreviewPair
   )
 
-  $comparisonIndex = [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
-  $label = Get-OptionalString -Value $PreviewPair.label
-  if ([string]::IsNullOrWhiteSpace($label)) {
-    return 'Comparison {0}' -f $comparisonIndex
-  }
-
-  return 'Comparison {0} - {1}' -f $comparisonIndex, $label
+  return 'History pair {0}' -f (Get-ReviewerPreviewComparisonIndex -PreviewPair $PreviewPair)
 }
 
 function ConvertTo-PreviewPairArray {
@@ -229,10 +298,22 @@ function New-MarkdownPreviewGallery {
   foreach ($previewPair in @(ConvertTo-ObjectArray -Value $PreviewPairs)) {
     $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
     $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
+    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewPair
+    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewPair)
     $lines.Add(('### `{0}`' -f $title)) | Out-Null
     $lines.Add('') | Out-Null
     $lines.Add($subtitle) | Out-Null
     $lines.Add('') | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($revisionContext)) {
+      $lines.Add(('`{0}`' -f $revisionContext)) | Out-Null
+      $lines.Add('') | Out-Null
+    }
+    foreach ($detailLine in $detailLines) {
+      $lines.Add($detailLine) | Out-Null
+    }
+    if ($detailLines.Count -gt 0) {
+      $lines.Add('') | Out-Null
+    }
     $lines.Add('**Base**') | Out-Null
     $lines.Add((
         '![{0}]({1})' -f
@@ -269,6 +350,14 @@ function New-HtmlPreviewGallery {
   foreach ($previewPair in @(ConvertTo-ObjectArray -Value $PreviewPairs)) {
     $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
     $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
+    $comparisonIndex = Get-ReviewerPreviewComparisonIndex -PreviewPair $previewPair
+    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewPair
+    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewPair)
+    $detailHtml = if ($detailLines.Count -eq 0) {
+      ''
+    } else {
+      '<div class="preview-card-history">' + (($detailLines | ForEach-Object { '<p>' + (Escape-Html $_) + '</p>' }) -join '') + '</div>'
+    }
     $reportLink = if ([string]::IsNullOrWhiteSpace([string]$previewPair.reportHtmlRelativePath)) {
       ''
     } else {
@@ -279,10 +368,10 @@ function New-HtmlPreviewGallery {
   <h3>$(Escape-Html $title)</h3>
   <p class="preview-card-subtitle">$(Escape-Html $subtitle)</p>
   <div class="preview-card-meta">
-    <strong>Target</strong><span><code>$(Escape-Html ([string]$previewPair.targetPath))</code></span>
-    <strong>Comparison</strong><span><code>$([int](Get-NestedValue -Object $previewPair -Path @('comparison', 'index') -Default 0))</code></span>
-    <strong>Section</strong><span><code>$(Escape-Html ([string]$previewPair.label))</code></span>
+    <strong>History pair</strong><span><code>$(Escape-Html ([string]$comparisonIndex))</code></span>
+    <strong>Revisions</strong><span><code>$(Escape-Html $revisionContext)</code></span>
   </div>
+  $detailHtml
   <div class="preview-image-grid">
     <figure>
       <img alt="$(Escape-Html ($subtitle + ' base'))" src="$(Escape-Html ([string]$previewPair.baseImageRelativePath))">

@@ -42,8 +42,14 @@ function New-PreviewReportFixture {
 
   return [ordered]@{
     index = $ComparisonIndex
-    base = [ordered]@{ ref = $BaseRef }
-    head = [ordered]@{ ref = $HeadRef }
+    base = [ordered]@{
+      ref = $BaseRef
+      short = ('base-{0:D2}' -f $ComparisonIndex)
+    }
+    head = [ordered]@{
+      ref = $HeadRef
+      short = ('head-{0:D2}' -f $ComparisonIndex)
+    }
     result = [ordered]@{
       reportHtml = $reportHtmlPath
     }
@@ -414,8 +420,9 @@ try {
   }
   if ($commentBody -match [regex]::Escape('| front-panel |') -or
     $commentBody -match [regex]::Escape('| block-diagram |') -or
-    $commentBody -match [regex]::Escape('| attributes |')) {
-    throw 'PR comment body should not surface execution modes in the reviewer-facing preview gallery.'
+    $commentBody -match [regex]::Escape('| attributes |') -or
+    $commentBody -match [regex]::Escape('Front Panel Overview')) {
+    throw 'PR comment body should not surface execution modes or report captions in the reviewer-facing preview gallery.'
   }
 
   $indexMarkdown = Get-Content -LiteralPath $receipt.outputs.indexMarkdownPath -Raw
@@ -438,8 +445,15 @@ try {
   }
   if ($indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | front-panel |') -or
     $indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | block-diagram |') -or
-    $indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | attributes |')) {
-    throw 'Index markdown should not surface execution modes in reviewer-facing preview titles.'
+    $indexMarkdown -match [regex]::Escape('### Tooling/deployment/VIP_Post-Install Custom Action.vi | attributes |') -or
+    $indexMarkdown -match [regex]::Escape('Front Panel Overview')) {
+    throw 'Index markdown should not surface execution modes or report captions in reviewer-facing preview titles.'
+  }
+  if ($indexMarkdown -notmatch [regex]::Escape('History pair 1') -or
+    $indexMarkdown -notmatch [regex]::Escape('History pair 2') -or
+    $indexMarkdown -notmatch [regex]::Escape('`base-01 -> head-01`') -or
+    $indexMarkdown -notmatch [regex]::Escape('`base-02 -> head-02`')) {
+    throw 'Index markdown should surface stable history-pair subtitles and revision refs.'
   }
 
   $markdownPositions = Get-OrdinalPositions -Content $indexMarkdown -Needles @(
@@ -457,8 +471,15 @@ try {
   if ([regex]::Matches($indexHtml, [regex]::Escape('<article class="preview-card">')).Count -ne 2) {
     throw 'Index HTML should render two reviewer-canonical preview cards for the PR31-shaped fixture.'
   }
-  if ($indexHtml -match [regex]::Escape('<strong>Mode</strong>')) {
-    throw 'Index HTML should not surface execution modes in reviewer-facing preview cards.'
+  if ($indexHtml -match [regex]::Escape('<strong>Mode</strong>') -or
+    $indexHtml -match [regex]::Escape('Front Panel Overview')) {
+    throw 'Index HTML should not surface execution modes or report captions in reviewer-facing preview cards.'
+  }
+  if ($indexHtml -notmatch [regex]::Escape('History pair 1') -or
+    $indexHtml -notmatch [regex]::Escape('History pair 2') -or
+    $indexHtml -notmatch [regex]::Escape('base-01 -&gt; head-01') -or
+    $indexHtml -notmatch [regex]::Escape('base-02 -&gt; head-02')) {
+    throw 'Index HTML should surface stable history-pair subtitles and revision refs.'
   }
 
   $htmlPositions = Get-OrdinalPositions -Content $indexHtml -Needles @(
