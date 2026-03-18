@@ -158,7 +158,7 @@ $lines -join "`n"
     -RequestPath (Join-Path $publicRoot 'request.json') `
     -ToolingRoot $toolingRoot `
     -CompareviRepository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
-    -CompareviRef 'v0.6.3-tools.8' `
+    -CompareviRef 'v0.6.3-tools.9' `
     -ToolingSource 'bundle' `
     -ActionRef 'LabVIEW-Community-CI-CD/comparevi-history@v1' `
     -HistorySummaryJson (Join-Path $resultsRoot 'history-summary.json') `
@@ -230,7 +230,7 @@ $lines -join "`n"
     -RequestPath (Join-Path $publicRoot 'request.json') `
     -ToolingRoot $toolingRoot `
     -CompareviRepository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
-    -CompareviRef 'v0.6.3-tools.8' `
+    -CompareviRef 'v0.6.3-tools.9' `
     -ToolingSource 'bundle' `
     -ModeSummaryJsonPath $modeSummaryJsonPath `
     -ModeSummaryPath $modeSummaryPath `
