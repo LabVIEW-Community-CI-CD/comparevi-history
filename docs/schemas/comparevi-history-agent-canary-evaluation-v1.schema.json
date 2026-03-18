@@ -74,6 +74,12 @@
         },
         "promotionContract": {
           "type": "object"
+        },
+        "reviewerSurfaceContract": {
+          "type": [
+            "object",
+            "null"
+          ]
         }
       }
     },
@@ -327,6 +333,57 @@
         }
       }
     },
+    "reviewerSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "previewManifestPath",
+        "commentBodyPath",
+        "previewPublicationStatus",
+        "previewPublicationReason",
+        "commentPreviewCardCount",
+        "indexPreviewCardCount",
+        "indexPreviewSurfaceCount"
+      ],
+      "properties": {
+        "previewManifestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commentBodyPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previewPublicationStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previewPublicationReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commentPreviewCardCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexPreviewCardCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexPreviewSurfaceCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "outputs": {
       "type": "object",
       "additionalProperties": false,
@@ -364,6 +421,18 @@
         "discoveryPath": {
           "type": "string",
           "minLength": 1
+        },
+        "previewManifestPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commentBodyPath": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "indexMarkdownPath": {
           "type": [
@@ -403,6 +472,9 @@
           "$ref": "#/$defs/checkResult"
         },
         "artifactContract": {
+          "$ref": "#/$defs/checkResult"
+        },
+        "reviewerSurfaceContract": {
           "$ref": "#/$defs/checkResult"
         }
       }
@@ -477,6 +549,26 @@
         "publicationReason": {
           "type": "string",
           "minLength": 1
+        },
+        "previewPublicationStatus": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previewPublicationReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commentPreviewCardCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexPreviewCardCount": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }

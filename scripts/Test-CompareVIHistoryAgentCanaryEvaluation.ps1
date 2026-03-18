@@ -36,11 +36,212 @@ function New-CanaryPolicyFile {
   "promotionContract": {
     "mergePolicy": "manual-only",
     "prMode": "draft"
+  },
+  "reviewerSurfaceContract": {
+    "previewManifestRequired": true,
+    "requiredPreviewPublicationStatus": "succeeded",
+    "maxCommentPreviewCards": 4,
+    "requiredSurfaceKinds": ["front-panel", "block-diagram"],
+    "reviewerSummaryRequired": true,
+    "changeDetailsRequired": true,
+    "requiredMarkdownSections": [
+      "## Workspace summary",
+      "## Workspace navigation",
+      "## Review workspace",
+      "## Raw evidence inventory"
+    ],
+    "requiredHtmlMarkers": [
+      "class=\"workspace-shell\"",
+      "class=\"workspace-nav\"",
+      "class=\"workspace-summary\"",
+      "class=\"raw-evidence\""
+    ],
+    "surfaceReportLinksRequired": true,
+    "signalReportLinksRequired": true,
+    "changeDetailReportLinksRequired": true
   }
 }
 '@ | Set-Content -LiteralPath $policyPath -Encoding utf8
 
   return $policyPath
+}
+
+function New-PreviewPair {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$TargetPath,
+    [Parameter(Mandatory = $true)]
+    [string]$Mode,
+    [Parameter(Mandatory = $true)]
+    [int]$ComparisonIndex
+  )
+
+  return [ordered]@{
+    targetId = 'dynamic-canary-001'
+    targetPath = $TargetPath
+    mode = $Mode
+    comparison = [ordered]@{
+      index = $ComparisonIndex
+      baseRef = ('{0}-base-{1}' -f $Mode, $ComparisonIndex)
+      headRef = ('{0}-head-{1}' -f $Mode, $ComparisonIndex)
+      baseShortRef = ('base-{0:D2}' -f $ComparisonIndex)
+      headShortRef = ('head-{0:D2}' -f $ComparisonIndex)
+      baseSubject = ('Base subject {0}' -f $ComparisonIndex)
+      headSubject = ('Head subject {0}' -f $ComparisonIndex)
+    }
+    reportHtmlRelativePath = ('targets/001/history/{0}/CanaryProbe.vi-{1:D3}-artifacts/compare-report.html' -f $Mode, $ComparisonIndex)
+    baseImageRelativePath = ('targets/001/history/{0}/CanaryProbe.vi-{1:D3}-artifacts/compare-report_files/{2}_1.png' -f $Mode, $ComparisonIndex, $(if ($Mode -eq 'block-diagram') { 'bd' } else { 'fp' }))
+    headImageRelativePath = ('targets/001/history/{0}/CanaryProbe.vi-{1:D3}-artifacts/compare-report_files/{2}_2.png' -f $Mode, $ComparisonIndex, $(if ($Mode -eq 'block-diagram') { 'bd' } else { 'fp' }))
+  }
+}
+
+function New-PreviewCard {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$TargetPath,
+    [Parameter(Mandatory = $true)]
+    [object[]]$PreviewPairs,
+    [Parameter(Mandatory = $true)]
+    [int]$ComparisonIndex,
+    [switch]$Published
+  )
+
+  $matchingPairs = @(
+    $PreviewPairs |
+      Where-Object { [int]$_.comparison.index -eq $ComparisonIndex } |
+      Sort-Object {
+        switch ([string]$_.mode) {
+          'front-panel' { 0 }
+          'block-diagram' { 1 }
+          default { 99 }
+        }
+      }
+  )
+
+  $prefix = $(if ($Published.IsPresent) {
+      'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-444'
+    } else {
+      $null
+    })
+
+  $surfaces = @(
+    $matchingPairs |
+      ForEach-Object {
+        [ordered]@{
+          surfaceKind = [string]$_.mode
+          surfaceLabel = $(if ([string]$_.mode -eq 'front-panel') { 'Front panel' } else { 'Block diagram' })
+          reportHtmlRelativePath = [string]$_.reportHtmlRelativePath
+          reportUrl = $(if ($Published.IsPresent) { '{0}/{1:D3}-history-pair-{2:D2}/{3:D2}-{4}/evidence.md' -f $prefix, $ComparisonIndex, $ComparisonIndex, $(if ([string]$_.mode -eq 'front-panel') { 1 } else { 2 }), [string]$_.mode } else { $null })
+          baseImageRelativePath = [string]$_.baseImageRelativePath
+          headImageRelativePath = [string]$_.headImageRelativePath
+        }
+      }
+  )
+
+  return [ordered]@{
+    targetId = 'dynamic-canary-001'
+    targetPath = $TargetPath
+    comparison = $matchingPairs[0].comparison
+    reviewerSummary = [ordered]@{
+      label = 'Reviewer summary'
+      overallSeverity = 'medium'
+      headline = $(if ($ComparisonIndex -eq 1) { 'Material logic-affecting movement and structure resizing' } else { 'Material version or compatibility changes' })
+      signalCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
+      omittedSignalCount = 0
+      signals = @(
+        [ordered]@{
+          signalKey = $(if ($ComparisonIndex -eq 1) { 'logic-affecting-movement' } else { 'version-or-compatibility-changes' })
+          label = $(if ($ComparisonIndex -eq 1) { 'Logic-affecting movement' } else { 'Version or compatibility changes' })
+          severity = 'medium'
+          detailCount = $(if ($ComparisonIndex -eq 1) { 3 } else { 1 })
+          sectionCount = 1
+          summary = $(if ($ComparisonIndex -eq 1) { 'Block diagram objects moved across 1 exact sections.' } else { 'Version or compatibility changes detected across 1 exact sections.' })
+          primaryReportHtmlRelativePath = ('targets/001/history/attributes/CanaryProbe.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+          primaryReportUrl = $(if ($Published.IsPresent) { '{0}/{1:D3}-history-pair-{1:D2}/change-details.md#comparevi-change-001-{2}' -f $prefix, $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }) } else { $null })
+          sectionLinks = @(
+            [ordered]@{
+              sectionOrdinal = 1
+              label = 'section 1'
+              reportHtmlRelativePath = ('targets/001/history/attributes/CanaryProbe.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+              reportUrl = $(if ($Published.IsPresent) { '{0}/{1:D3}-history-pair-{1:D2}/change-details.md#comparevi-change-001-{2}' -f $prefix, $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }) } else { $null })
+            }
+          )
+        }
+        $(if ($ComparisonIndex -eq 1) {
+            ,
+            [ordered]@{
+              signalKey = 'structure-resizing'
+              label = 'Structure resizing'
+              severity = 'low'
+              detailCount = 2
+              sectionCount = 1
+              summary = 'Structure resizing detected across 1 exact sections.'
+              primaryReportHtmlRelativePath = 'targets/001/history/attributes/CanaryProbe.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+              primaryReportUrl = $(if ($Published.IsPresent) { "$prefix/001-history-pair-01/change-details.md#comparevi-change-002-block-diagram-objects" } else { $null })
+              sectionLinks = @(
+                [ordered]@{
+                  sectionOrdinal = 2
+                  label = 'section 2'
+                  reportHtmlRelativePath = 'targets/001/history/attributes/CanaryProbe.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+                  reportUrl = $(if ($Published.IsPresent) { "$prefix/001-history-pair-01/change-details.md#comparevi-change-002-block-diagram-objects" } else { $null })
+                }
+              )
+            }
+          })
+      )
+    }
+    changeDetails = [ordered]@{
+      label = 'Change details'
+      sourceMode = 'attributes'
+      reportHtmlRelativePath = ('targets/001/history/attributes/CanaryProbe.vi-{0:D3}-artifacts/compare-report.html' -f $ComparisonIndex)
+      reportUrl = $(if ($Published.IsPresent) { '{0}/{1:D3}-history-pair-{1:D2}/change-details.md' -f $prefix, $ComparisonIndex } else { $null })
+      includedCategories = $(if ($ComparisonIndex -eq 1) { @('Block Diagram Functional', 'VI Attribute') } else { @('VI Attribute') })
+      groupCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
+      omittedGroupCount = 0
+      sectionCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
+      detailCount = $(if ($ComparisonIndex -eq 1) { 5 } else { 1 })
+      groups = @(
+        [ordered]@{
+          heading = $(if ($ComparisonIndex -eq 1) { 'Block diagram moves' } else { 'VI version changes' })
+          sectionCount = 1
+          detailCount = $(if ($ComparisonIndex -eq 1) { 3 } else { 1 })
+          sampleDetails = @('sample')
+          omittedDetailCount = 0
+          primaryReportHtmlRelativePath = ('targets/001/history/attributes/CanaryProbe.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+          primaryReportUrl = $(if ($Published.IsPresent) { '{0}/{1:D3}-history-pair-{1:D2}/change-details.md#comparevi-change-001-{2}' -f $prefix, $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }) } else { $null })
+          sectionLinks = @(
+            [ordered]@{
+              sectionOrdinal = 1
+              label = 'section 1'
+              reportHtmlRelativePath = ('targets/001/history/attributes/CanaryProbe.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+              reportUrl = $(if ($Published.IsPresent) { '{0}/{1:D3}-history-pair-{1:D2}/change-details.md#comparevi-change-001-{2}' -f $prefix, $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }) } else { $null })
+            }
+          )
+        }
+        $(if ($ComparisonIndex -eq 1) {
+            ,
+            [ordered]@{
+              heading = 'Block diagram resizing'
+              sectionCount = 1
+              detailCount = 2
+              sampleDetails = @('sample')
+              omittedDetailCount = 0
+              primaryReportHtmlRelativePath = 'targets/001/history/attributes/CanaryProbe.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+              primaryReportUrl = $(if ($Published.IsPresent) { "$prefix/001-history-pair-01/change-details.md#comparevi-change-002-block-diagram-objects" } else { $null })
+              sectionLinks = @(
+                [ordered]@{
+                  sectionOrdinal = 2
+                  label = 'section 2'
+                  reportHtmlRelativePath = 'targets/001/history/attributes/CanaryProbe.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+                  reportUrl = $(if ($Published.IsPresent) { "$prefix/001-history-pair-01/change-details.md#comparevi-change-002-block-diagram-objects" } else { $null })
+                }
+              )
+            }
+          })
+      )
+    }
+    surfaces = $surfaces
+  }
 }
 
 function New-PublicationArtifactZip {
@@ -62,6 +263,7 @@ function New-PublicationArtifactZip {
     [bool]$IncludePrRun = $true,
     [bool]$IncludeDiscovery = $true,
     [bool]$IncludeIndex = $true,
+    [bool]$IncludePreviewManifest = $true,
     [string[]]$PublicModes = @('attributes', 'front-panel', 'block-diagram'),
     [string]$NoisePolicy = 'include',
     [string]$FullSurface = 'artifact-index'
@@ -75,6 +277,22 @@ function New-PublicationArtifactZip {
   $labelsJson = ($Labels | ForEach-Object { '"{0}"' -f $_ }) -join ', '
   $modesJson = ($PublicModes | ForEach-Object { '"{0}"' -f $_ }) -join ', '
   $draftLiteral = if ($Draft) { 'true' } else { 'false' }
+  $previewPairs = @(
+    (New-PreviewPair -TargetPath $TargetPath -Mode 'front-panel' -ComparisonIndex 1),
+    (New-PreviewPair -TargetPath $TargetPath -Mode 'block-diagram' -ComparisonIndex 1),
+    (New-PreviewPair -TargetPath $TargetPath -Mode 'front-panel' -ComparisonIndex 2),
+    (New-PreviewPair -TargetPath $TargetPath -Mode 'block-diagram' -ComparisonIndex 2)
+  )
+  $indexPreviewCards = @(
+    (New-PreviewCard -TargetPath $TargetPath -PreviewPairs $previewPairs -ComparisonIndex 1),
+    (New-PreviewCard -TargetPath $TargetPath -PreviewPairs $previewPairs -ComparisonIndex 2)
+  )
+  $commentPreviewCards = @(
+    (New-PreviewCard -TargetPath $TargetPath -PreviewPairs $previewPairs -ComparisonIndex 1 -Published),
+    (New-PreviewCard -TargetPath $TargetPath -PreviewPairs $previewPairs -ComparisonIndex 2 -Published)
+  )
+  $commentPreviewCardsJson = $commentPreviewCards | ConvertTo-Json -Depth 64
+  $indexPreviewCardsJson = $indexPreviewCards | ConvertTo-Json -Depth 64
 
   if ($IncludePublicationReceipt) {
     @"
@@ -96,6 +314,19 @@ function New-PublicationArtifactZip {
     "commentAction": "$CommentAction",
     "commentId": 991,
     "commentUrl": "https://github.com/example/repo/pull/55#issuecomment-991"
+  },
+  "previewPublication": {
+    "status": "$(if ($IncludePreviewManifest) { 'succeeded' } else { 'not-required' })",
+    "reason": "$(if ($IncludePreviewManifest) { 'preview-images-published' } else { 'preview-manifest-missing' })",
+    "branch": "comparevi-history-pr-previews",
+    "root": ".comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-444",
+    "manifestPath": "$(if ($IncludePreviewManifest) { '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-444/preview-manifest.json' } else { '' })",
+    "manifestUrl": "$(if ($IncludePreviewManifest) { 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-444/preview-manifest.json' } else { '' })",
+    "previewPairCount": $(if ($IncludePreviewManifest) { 2 } else { 0 }),
+    "publishedSurfaceCount": $(if ($IncludePreviewManifest) { 4 } else { 0 }),
+    "publishedImageCount": $(if ($IncludePreviewManifest) { 8 } else { 0 }),
+    "commentPreviewCards": $commentPreviewCardsJson,
+    "commentPreviewPairs": []
   }
 }
 "@ | Set-Content -LiteralPath (Join-Path $artifactRoot 'pr-comment-publication.json') -Encoding utf8
@@ -168,6 +399,7 @@ function New-PublicationArtifactZip {
     "publicCommentPath": "C:/results/pr-comment.md",
     "publicStepSummaryPath": "C:/results/pr-step-summary.md",
     "targetRunsManifestPath": "C:/results/pr-target-runs-manifest.json",
+    "previewManifestPath": $(if ($IncludePreviewManifest) { '"C:/results/pr-preview-manifest.json"' } else { 'null' }),
     "indexMarkdownPath": "C:/results/index.md",
     "indexHtmlPath": "C:/results/index.html",
     "workflowRunUrl": "https://github.com/example/repo/actions/runs/333",
@@ -185,7 +417,9 @@ function New-PublicationArtifactZip {
     "executedTargetCount": $SelectedTargetCount,
     "failedTargetCount": 0,
     "totalProcessed": 2,
-    "totalDiffs": 1
+    "totalDiffs": 1,
+    "commentPreviewPairCount": $(if ($IncludePreviewManifest) { 2 } else { 0 }),
+    "indexPreviewCardCount": $(if ($IncludePreviewManifest) { 2 } else { 0 })
   },
   "excludedViFiles": [],
   "targets": [
@@ -314,9 +548,100 @@ function New-PublicationArtifactZip {
 "@ | Set-Content -LiteralPath (Join-Path $executionRoot 'changed-vi-discovery.json') -Encoding utf8
   }
 
+  @'
+<!-- comparevi-history:pull-request-diagnostics -->
+## comparevi-history pull request diagnostics
+
+- Reviewer preview gallery: `2` history pairs shown, `0` omitted, cap `4`
+- Raw preview surfaces collapsed for review: `4` raw -> `2` reviewer-canonical
+'@ | Set-Content -LiteralPath (Join-Path $executionRoot 'pr-comment.md') -Encoding utf8
+
+  if ($IncludePreviewManifest) {
+    foreach ($previewPair in $previewPairs) {
+      foreach ($relativePath in @([string]$previewPair.baseImageRelativePath, [string]$previewPair.headImageRelativePath)) {
+        $fullPath = Join-Path $executionRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
+        [System.IO.File]::WriteAllBytes($fullPath, @(0xCA, 0xFE, 0xBA, 0xBE))
+      }
+    }
+
+    ([ordered]@{
+        schema = 'comparevi-history/pr-preview-manifest@v1'
+        generatedAtUtc = '2026-03-17T00:00:00Z'
+        targetRunsManifestPath = 'C:/results/pr-target-runs-manifest.json'
+        resultsDir = 'C:/results'
+        summary = [ordered]@{
+          targetCount = 1
+          previewPairCount = 4
+          rawPreviewPairCount = 4
+          reviewerPreviewPairCount = 2
+          reviewerPreviewCardCount = 2
+          reviewerPreviewSurfaceCount = 4
+          commentPreviewPairCap = 4
+          commentPreviewPairCount = 2
+          commentPreviewPairOmittedCount = 0
+          commentPreviewCardCount = 2
+          commentPreviewSurfaceCount = 4
+          commentCardSelectionPolicy = 'reviewer-multisurface@v1'
+          indexPreviewPairCap = 12
+          indexPreviewPairCount = 2
+          indexPreviewPairOmittedCount = 0
+          indexPreviewCardCount = 2
+          indexPreviewSurfaceCount = 4
+          indexCardSelectionPolicy = 'reviewer-multisurface@v1'
+        }
+        indexPreviewCards = $indexPreviewCards
+      } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath (Join-Path $executionRoot 'pr-preview-manifest.json') -Encoding utf8
+  }
+
   if ($IncludeIndex) {
-    '# comparevi-history PR diagnostics index' | Set-Content -LiteralPath (Join-Path $executionRoot 'index.md') -Encoding utf8
-    '<html><body>index</body></html>' | Set-Content -LiteralPath (Join-Path $executionRoot 'index.html') -Encoding utf8
+    @"
+# comparevi-history PR diagnostics workspace
+
+## Workspace summary
+
+- History pairs in workspace: `2`
+- Targets in workspace: `1`
+- Severity mix: `0` high / `2` medium / `0` low
+
+## Workspace navigation
+
+- [History pair 1](#history-pair-01-tooling-comparevi-history-canary-canaryprobe-vi) `medium` - Material logic-affecting movement and structure resizing
+- [History pair 2](#history-pair-02-tooling-comparevi-history-canary-canaryprobe-vi) `medium` - Material version or compatibility changes
+
+## Review workspace
+
+<a id="history-pair-01-tooling-comparevi-history-canary-canaryprobe-vi"></a>
+
+Quick links: [card](#history-pair-01-tooling-comparevi-history-canary-canaryprobe-vi)
+
+<a id="history-pair-02-tooling-comparevi-history-canary-canaryprobe-vi"></a>
+
+Quick links: [card](#history-pair-02-tooling-comparevi-history-canary-canaryprobe-vi)
+
+## Raw evidence inventory
+"@ | Set-Content -LiteralPath (Join-Path $executionRoot 'index.md') -Encoding utf8
+    @'
+<html>
+<head><title>comparevi-history PR diagnostics workspace</title></head>
+<body>
+  <div class="workspace-shell">
+    <aside class="workspace-nav">
+      <a class="workspace-nav-link" href="#history-pair-01-tooling-comparevi-history-canary-canaryprobe-vi">History pair 1</a>
+      <a class="workspace-nav-link" href="#history-pair-02-tooling-comparevi-history-canary-canaryprobe-vi">History pair 2</a>
+    </aside>
+    <main class="workspace-main">
+      <section class="workspace-summary"></section>
+      <section class="preview-gallery">
+        <article class="preview-card" id="history-pair-01-tooling-comparevi-history-canary-canaryprobe-vi"></article>
+        <article class="preview-card" id="history-pair-02-tooling-comparevi-history-canary-canaryprobe-vi"></article>
+      </section>
+      <section class="raw-evidence"></section>
+    </main>
+  </div>
+</body>
+</html>
+'@ | Set-Content -LiteralPath (Join-Path $executionRoot 'index.html') -Encoding utf8
   }
 
   if (Test-Path -LiteralPath $zipPath) {
@@ -426,6 +751,18 @@ try {
   }
   if ($successReceipt.publication.status -ne 'succeeded' -or $successReceipt.execution.finalStatus -ne 'succeeded') {
     throw 'Success case status propagation mismatch.'
+  }
+  if ([string]$successReceipt.summary.previewPublicationStatus -ne 'succeeded' -or
+    [int]$successReceipt.summary.commentPreviewCardCount -ne 2 -or
+    [int]$successReceipt.summary.indexPreviewCardCount -ne 2) {
+    throw 'Success case reviewer-surface summary mismatch.'
+  }
+  if ($successReceipt.checks.reviewerSurfaceContract.matched -ne $true) {
+    throw 'Success case should satisfy reviewer-surface canary checks.'
+  }
+  if ([string]$successReceipt.reviewerSurface.previewManifestPath -notmatch 'pr-preview-manifest\.json$' -or
+    [string]$successReceipt.outputs.commentBodyPath -notmatch 'pr-comment\.md$') {
+    throw 'Success case should preserve reviewer-surface artifact paths.'
   }
   if ($successReceipt.artifactName -ne 'comparevi-history-pr-diagnostics-publish-444') {
     throw 'Success case should preserve the resolved artifact name.'
@@ -591,6 +928,36 @@ try {
   $missingIndexReceipt = Get-Content -LiteralPath (Join-Path $missingIndexRoot 'results/agent-canary-evaluation.json') -Raw | ConvertFrom-Json -Depth 64
   if ($missingIndexReceipt.summary.reason -ne 'missing-index-surface') {
     throw 'Missing index failure reason mismatch.'
+  }
+
+  $missingPreviewManifestRoot = Join-Path $tempRoot 'missing-preview-manifest'
+  New-Item -ItemType Directory -Path $missingPreviewManifestRoot -Force | Out-Null
+  $missingPreviewManifestFixture = New-PublicationArtifactZip -RootPath $missingPreviewManifestRoot -IncludePreviewManifest:$false
+  $global:MockScenario = @{
+    ArtifactName = 'comparevi-history-pr-diagnostics-publish-4481'
+    ZipPath = $missingPreviewManifestFixture.ZipPath
+    PullRequestDraft = $missingPreviewManifestFixture.Draft
+    PullRequestLabels = $missingPreviewManifestFixture.Labels
+  }
+
+  $missingPreviewManifestFailed = $false
+  try {
+    & $scriptPath `
+      -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+      -WorkflowRunId '4481' `
+      -ArtifactName 'comparevi-history-pr-diagnostics-publish-4481' `
+      -CanaryPolicyPath $policyPath `
+      -GitHubToken 'token' `
+      -ResultsDir (Join-Path $missingPreviewManifestRoot 'results') | Out-Null
+  } catch {
+    $missingPreviewManifestFailed = $true
+  }
+  if (-not $missingPreviewManifestFailed) {
+    throw 'Missing preview manifest should fail closed.'
+  }
+  $missingPreviewManifestReceipt = Get-Content -LiteralPath (Join-Path $missingPreviewManifestRoot 'results/agent-canary-evaluation.json') -Raw | ConvertFrom-Json -Depth 64
+  if ($missingPreviewManifestReceipt.summary.reason -ne 'missing-preview-manifest') {
+    throw 'Missing preview manifest reason mismatch.'
   }
 
   $missingPublicationRoot = Join-Path $tempRoot 'missing-publication'

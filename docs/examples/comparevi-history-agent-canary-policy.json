@@ -27,5 +27,31 @@
   "promotionContract": {
     "mergePolicy": "manual-only",
     "prMode": "draft"
+  },
+  "reviewerSurfaceContract": {
+    "previewManifestRequired": true,
+    "requiredPreviewPublicationStatus": "succeeded",
+    "maxCommentPreviewCards": 4,
+    "requiredSurfaceKinds": [
+      "front-panel",
+      "block-diagram"
+    ],
+    "reviewerSummaryRequired": true,
+    "changeDetailsRequired": true,
+    "requiredMarkdownSections": [
+      "## Workspace summary",
+      "## Workspace navigation",
+      "## Review workspace",
+      "## Raw evidence inventory"
+    ],
+    "requiredHtmlMarkers": [
+      "class=\"workspace-shell\"",
+      "class=\"workspace-nav\"",
+      "class=\"workspace-summary\"",
+      "class=\"raw-evidence\""
+    ],
+    "surfaceReportLinksRequired": true,
+    "signalReportLinksRequired": true,
+    "changeDetailReportLinksRequired": true
   }
 }
