@@ -62,6 +62,58 @@ function New-PreviewCard {
     targetId = 'dynamic-demo-target'
     targetPath = 'Tooling/demo/Demo.vi'
     comparison = $matchingPairs[0].comparison
+    reviewerSummary = [ordered]@{
+      label = 'Reviewer summary'
+      overallSeverity = $(if ($ComparisonIndex -eq 1) { 'medium' } else { 'medium' })
+      headline = $(if ($ComparisonIndex -eq 1) {
+          'Material logic-affecting movement and structure resizing'
+        } else {
+          'Material version or compatibility changes'
+        })
+      signalCount = $(if ($ComparisonIndex -eq 1) { 2 } else { 1 })
+      omittedSignalCount = 0
+      signals = @(
+        [ordered]@{
+          signalKey = $(if ($ComparisonIndex -eq 1) { 'block-diagram-moves' } else { 'vi-version-changes' })
+          label = $(if ($ComparisonIndex -eq 1) { 'Logic-affecting movement' } else { 'Version or compatibility changes' })
+          severity = 'medium'
+          detailCount = $(if ($ComparisonIndex -eq 1) { 3 } else { 1 })
+          sectionCount = 1
+          summary = $(if ($ComparisonIndex -eq 1) {
+              'Block diagram objects moved across 1 exact sections.'
+            } else {
+              'Version or compatibility changes detected across 1 exact sections.'
+            })
+          primaryReportHtmlRelativePath = ('targets/001/history/attributes/Demo.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+          sectionLinks = @(
+            [ordered]@{
+              sectionOrdinal = 1
+              label = 'section 1'
+              reportHtmlRelativePath = ('targets/001/history/attributes/Demo.vi-{0:D3}-artifacts/compare-report.html#comparevi-change-001-{1}' -f $ComparisonIndex, $(if ($ComparisonIndex -eq 1) { 'block-diagram-objects' } else { 'vi-attribute-miscellaneous' }))
+            }
+          )
+        }
+        $(if ($ComparisonIndex -eq 1) {
+            ,
+            [ordered]@{
+              signalKey = 'block-diagram-resizing'
+              label = 'Structure resizing'
+              severity = 'low'
+              detailCount = 2
+              sectionCount = 1
+              summary = 'Structure resizing detected across 1 exact sections.'
+              primaryReportHtmlRelativePath = 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+              sectionLinks = @(
+                [ordered]@{
+                  sectionOrdinal = 2
+                  label = 'section 2'
+                  reportHtmlRelativePath = 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects'
+                }
+              )
+            }
+          })
+      )
+    }
     changeDetails = [ordered]@{
       label = 'Change details'
       sourceMode = 'attributes'
@@ -495,6 +547,15 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     [regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Block diagram</strong></p>')).Count -ne 2) {
     throw 'Created PR comment body should render both front-panel and block-diagram surfaces for each history pair.'
   }
+  if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Reviewer summary</strong></p>')).Count -ne 2 -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Headline:</strong> Material logic-affecting movement and structure resizing') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Overall severity:</strong> medium') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">Logic-affecting movement</a>:</strong> medium severity, 3 details across 1 sections') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects">Structure resizing</a>:</strong> low severity, 2 details across 1 sections') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Headline:</strong> Material version or compatibility changes') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous">Version or compatibility changes</a>:</strong> medium severity, 1 details across 1 sections')) {
+    throw 'Created PR comment body should render reviewer-summary headlines, severity, and exact linked signals.'
+  }
   if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Change details</strong></p>')).Count -ne 2 -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
@@ -531,6 +592,18 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ($createReceipt.previewPublication.commentPreviewCards.Count -ne 2 -or
     (@($createReceipt.previewPublication.commentPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
     throw 'Preview publication should retain reviewer cards with both front-panel and block-diagram surfaces.'
+  }
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.label -ne 'Reviewer summary' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.headline -ne 'Material logic-affecting movement and structure resizing' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].label -ne 'Logic-affecting movement' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[1].label -ne 'Structure resizing' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].reviewerSummary.headline -ne 'Material version or compatibility changes' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].reviewerSummary.signals[0].label -ne 'Version or compatibility changes') {
+    throw 'Preview publication should retain reviewer-summary headlines and signals.'
+  }
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous') {
+    throw 'Preview publication should retain exact reviewer-summary links.'
   }
   if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block diagram moves' -or

@@ -415,6 +415,52 @@ function New-MarkdownChangeDetailsLines {
   return @($lines | ForEach-Object { $_ })
 }
 
+function New-MarkdownReviewerSummaryLines {
+  param(
+    [AllowNull()]
+    [object]$ReviewerSummary
+  )
+
+  if ($null -eq $ReviewerSummary) {
+    return @()
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('#### Reviewer summary') | Out-Null
+  $lines.Add('') | Out-Null
+  $headline = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('headline'))
+  if (-not [string]::IsNullOrWhiteSpace($headline)) {
+    $lines.Add(('- Headline: `{0}`' -f $headline)) | Out-Null
+  }
+  $overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('overallSeverity'))
+  if (-not [string]::IsNullOrWhiteSpace($overallSeverity)) {
+    $lines.Add(('- Overall severity: `{0}`' -f $overallSeverity)) | Out-Null
+  }
+  foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()))) {
+    $label = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+    $primaryPath = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportHtmlRelativePath'))
+    $detailCount = [int](Get-NestedValue -Object $signal -Path @('detailCount') -Default 0)
+    $sectionCount = [int](Get-NestedValue -Object $signal -Path @('sectionCount') -Default 0)
+    $severity = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('severity'))
+    $labelText = if ([string]::IsNullOrWhiteSpace($primaryPath)) {
+      ('`{0}`' -f $label)
+    } else {
+      ('[`{0}`]({1})' -f $label, $primaryPath)
+    }
+    $lines.Add(('- {0}: `{1}` severity, `{2}` details across `{3}` sections' -f $labelText, $severity, $detailCount, $sectionCount)) | Out-Null
+    $sectionLinkLine = New-MarkdownChangeDetailSectionLinkLine -SectionLinks @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $signal -Path @('sectionLinks') -Default @()))
+    if (-not [string]::IsNullOrWhiteSpace($sectionLinkLine)) {
+      $lines.Add($sectionLinkLine) | Out-Null
+    }
+  }
+  $omittedSignalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('omittedSignalCount') -Default 0)
+  if ($omittedSignalCount -gt 0) {
+    $lines.Add(('- Additional reviewer signals omitted: `{0}`' -f $omittedSignalCount)) | Out-Null
+  }
+  $lines.Add('') | Out-Null
+  return @($lines | ForEach-Object { $_ })
+}
+
 function New-HtmlChangeDetailsBlock {
   param(
     [AllowNull()]
@@ -469,6 +515,52 @@ function New-HtmlChangeDetailsBlock {
   }
 
   return '<section class="preview-change-details"><h4>Change details</h4><ul>' + ($items -join '') + '</ul></section>'
+}
+
+function New-HtmlReviewerSummaryBlock {
+  param(
+    [AllowNull()]
+    [object]$ReviewerSummary
+  )
+
+  if ($null -eq $ReviewerSummary) {
+    return ''
+  }
+
+  $items = New-Object System.Collections.Generic.List[string]
+  $headline = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('headline'))
+  if (-not [string]::IsNullOrWhiteSpace($headline)) {
+    $items.Add('<li><strong>Headline:</strong> ' + (Escape-Html $headline) + '</li>') | Out-Null
+  }
+  $overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('overallSeverity'))
+  if (-not [string]::IsNullOrWhiteSpace($overallSeverity)) {
+    $items.Add('<li><strong>Overall severity:</strong> ' + (Escape-Html $overallSeverity) + '</li>') | Out-Null
+  }
+  foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()))) {
+    $labelText = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+    $primaryPath = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportHtmlRelativePath'))
+    $detailCount = [int](Get-NestedValue -Object $signal -Path @('detailCount') -Default 0)
+    $sectionCount = [int](Get-NestedValue -Object $signal -Path @('sectionCount') -Default 0)
+    $severity = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('severity'))
+    $heading = if ([string]::IsNullOrWhiteSpace($primaryPath)) {
+      Escape-Html $labelText
+    } else {
+      '<a href="' + (Escape-Html $primaryPath) + '">' + (Escape-Html $labelText) + '</a>'
+    }
+    $signalItems = New-Object System.Collections.Generic.List[string]
+    $sectionLinksHtml = New-HtmlChangeDetailSectionLinks -SectionLinks @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $signal -Path @('sectionLinks') -Default @()))
+    if (-not [string]::IsNullOrWhiteSpace($sectionLinksHtml)) {
+      $signalItems.Add($sectionLinksHtml) | Out-Null
+    }
+    $nestedList = if ($signalItems.Count -gt 0) { '<ul>' + ($signalItems -join '') + '</ul>' } else { '' }
+    $items.Add('<li><strong>' + $heading + ':</strong> ' + (Escape-Html $severity) + ' severity, ' + $detailCount + ' details across ' + $sectionCount + ' sections' + $nestedList + '</li>') | Out-Null
+  }
+  $omittedSignalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('omittedSignalCount') -Default 0)
+  if ($omittedSignalCount -gt 0) {
+    $items.Add('<li><strong>Additional reviewer signals omitted:</strong> ' + $omittedSignalCount + '</li>') | Out-Null
+  }
+
+  return '<section class="preview-reviewer-summary"><h4>Reviewer summary</h4><ul>' + ($items -join '') + '</ul></section>'
 }
 
 function New-ReviewerPreviewSurface {
@@ -609,6 +701,9 @@ function New-MarkdownPreviewGallery {
     if ($detailLines.Count -gt 0) {
       $lines.Add('') | Out-Null
     }
+    foreach ($reviewerSummaryLine in @(New-MarkdownReviewerSummaryLines -ReviewerSummary (Get-NestedValue -Object $previewCard -Path @('reviewerSummary')))) {
+      $lines.Add($reviewerSummaryLine) | Out-Null
+    }
     foreach ($changeDetailLine in @(New-MarkdownChangeDetailsLines -ChangeDetails (Get-NestedValue -Object $previewCard -Path @('changeDetails')))) {
       $lines.Add($changeDetailLine) | Out-Null
     }
@@ -661,6 +756,7 @@ function New-HtmlPreviewGallery {
     } else {
       '<div class="preview-card-history">' + (($detailLines | ForEach-Object { '<p>' + (Escape-Html $_) + '</p>' }) -join '') + '</div>'
     }
+    $reviewerSummaryHtml = New-HtmlReviewerSummaryBlock -ReviewerSummary (Get-NestedValue -Object $previewCard -Path @('reviewerSummary'))
     $changeDetailsHtml = New-HtmlChangeDetailsBlock -ChangeDetails (Get-NestedValue -Object $previewCard -Path @('changeDetails'))
     $surfaceBlocks = New-Object System.Collections.Generic.List[string]
     foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
@@ -696,6 +792,7 @@ function New-HtmlPreviewGallery {
     <strong>Revisions</strong><span><code>$(Escape-Html $revisionContext)</code></span>
   </div>
   $detailHtml
+  $reviewerSummaryHtml
   $changeDetailsHtml
   $($surfaceBlocks -join "`n  ")
 </article>

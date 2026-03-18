@@ -136,12 +136,78 @@
               "targetId",
               "targetPath",
               "comparison",
-              "surfaces"
+              "surfaces",
+              "reviewerSummary"
             ],
             "properties": {
               "targetId": { "type": "string", "minLength": 1 },
               "targetPath": { "type": "string", "minLength": 1 },
               "comparison": { "type": "object" },
+              "reviewerSummary": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "required": [
+                  "label",
+                  "overallSeverity",
+                  "headline",
+                  "signalCount",
+                  "omittedSignalCount",
+                  "signals"
+                ],
+                "properties": {
+                  "label": { "const": "Reviewer summary" },
+                  "overallSeverity": { "enum": ["high", "medium", "low"] },
+                  "headline": { "type": "string", "minLength": 1 },
+                  "signalCount": { "type": "integer", "minimum": 0 },
+                  "omittedSignalCount": { "type": "integer", "minimum": 0 },
+                  "signals": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "signalKey",
+                        "label",
+                        "severity",
+                        "detailCount",
+                        "sectionCount",
+                        "summary",
+                        "primaryReportHtmlRelativePath",
+                        "sectionLinks"
+                      ],
+                      "properties": {
+                        "signalKey": { "type": "string", "minLength": 1 },
+                        "label": { "type": "string", "minLength": 1 },
+                        "severity": { "enum": ["high", "medium", "low"] },
+                        "detailCount": { "type": "integer", "minimum": 0 },
+                        "sectionCount": { "type": "integer", "minimum": 0 },
+                        "summary": { "type": "string", "minLength": 1 },
+                        "primaryReportHtmlRelativePath": { "type": ["string", "null"] },
+                        "sectionLinks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "sectionOrdinal",
+                              "label",
+                              "reportHtmlRelativePath"
+                            ],
+                            "properties": {
+                              "sectionOrdinal": { "type": "integer", "minimum": 0 },
+                              "label": { "type": "string", "minLength": 1 },
+                              "reportHtmlRelativePath": { "type": "string", "minLength": 1 }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
               "changeDetails": {
                 "type": [
                   "object",

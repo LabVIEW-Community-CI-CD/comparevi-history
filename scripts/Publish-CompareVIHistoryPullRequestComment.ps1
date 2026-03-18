@@ -422,6 +422,69 @@ function New-CommentChangeDetailsMarkdown {
   return $lines -join "`n"
 }
 
+function New-CommentReviewerSummaryMarkdown {
+  param(
+    [AllowNull()]
+    [object]$ReviewerSummary
+  )
+
+  if ($null -eq $ReviewerSummary) {
+    return ''
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('<p><strong>Reviewer summary</strong></p>') | Out-Null
+  $lines.Add('<ul>') | Out-Null
+  $headline = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('headline'))
+  if (-not [string]::IsNullOrWhiteSpace($headline)) {
+    $lines.Add(('<li><strong>Headline:</strong> {0}</li>' -f (ConvertTo-HtmlText $headline))) | Out-Null
+  }
+  $overallSeverity = Get-OptionalString -Value (Get-NestedValue -Object $ReviewerSummary -Path @('overallSeverity'))
+  if (-not [string]::IsNullOrWhiteSpace($overallSeverity)) {
+    $lines.Add(('<li><strong>Overall severity:</strong> {0}</li>' -f (ConvertTo-HtmlText $overallSeverity))) | Out-Null
+  }
+  foreach ($signal in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ReviewerSummary -Path @('signals') -Default @()))) {
+    $labelText = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('label'))
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('primaryReportHtmlRelativePath'))
+    $labelMarkup = if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+      ConvertTo-HtmlText $labelText
+    } else {
+      '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $primaryReportHtmlRelativePath), (ConvertTo-HtmlText $labelText)
+    }
+    $lines.Add(('<li><strong>{0}:</strong> {1} severity, {2} details across {3} sections' -f `
+          $labelMarkup, `
+          (ConvertTo-HtmlText (Get-OptionalString -Value (Get-NestedValue -Object $signal -Path @('severity')))), `
+          [int](Get-NestedValue -Object $signal -Path @('detailCount') -Default 0), `
+          [int](Get-NestedValue -Object $signal -Path @('sectionCount') -Default 0))) | Out-Null
+    $lines.Add('<ul>') | Out-Null
+    $sectionLinks = @(
+      ConvertTo-ObjectArray -Value (Get-NestedValue -Object $signal -Path @('sectionLinks') -Default @()) |
+        ForEach-Object {
+          $label = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('label'))
+          $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+          if ([string]::IsNullOrWhiteSpace($label) -or [string]::IsNullOrWhiteSpace($path)) {
+            return $null
+          }
+
+          '<a href="{0}">{1}</a>' -f (ConvertTo-HtmlText $path), (ConvertTo-HtmlText $label)
+        } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($sectionLinks.Count -gt 0) {
+      $lines.Add(('<li><strong>Exact sections:</strong> {0}</li>' -f ($sectionLinks -join ', '))) | Out-Null
+    }
+    $lines.Add('</ul>') | Out-Null
+    $lines.Add('</li>') | Out-Null
+  }
+  $omittedSignalCount = [int](Get-NestedValue -Object $ReviewerSummary -Path @('omittedSignalCount') -Default 0)
+  if ($omittedSignalCount -gt 0) {
+    $lines.Add(('<li><strong>Additional reviewer signals omitted:</strong> {0}</li>' -f $omittedSignalCount)) | Out-Null
+  }
+  $lines.Add('</ul>') | Out-Null
+
+  return $lines -join "`n"
+}
+
 function Get-ReviewerPreviewCardKey {
   param([Parameter(Mandatory = $true)][object]$PreviewPair)
 
@@ -703,6 +766,10 @@ function New-CommentPreviewMarkdown {
     if (-not [string]::IsNullOrWhiteSpace($detailHtml)) {
       $lines.Add($detailHtml) | Out-Null
     }
+    $reviewerSummaryMarkdown = New-CommentReviewerSummaryMarkdown -ReviewerSummary (Get-NestedValue -Object $previewCard -Path @('reviewerSummary'))
+    if (-not [string]::IsNullOrWhiteSpace($reviewerSummaryMarkdown)) {
+      $lines.Add($reviewerSummaryMarkdown) | Out-Null
+    }
     $changeDetailsMarkdown = New-CommentChangeDetailsMarkdown -ChangeDetails (Get-NestedValue -Object $previewCard -Path @('changeDetails'))
     if (-not [string]::IsNullOrWhiteSpace($changeDetailsMarkdown)) {
       $lines.Add($changeDetailsMarkdown) | Out-Null
@@ -845,6 +912,7 @@ function Publish-CommentPreviewSurface {
       targetId = [string]$previewCard.targetId
       targetPath = [string]$previewCard.targetPath
       comparison = $previewCard.comparison
+      reviewerSummary = Get-NestedValue -Object $previewCard -Path @('reviewerSummary')
       changeDetails = Get-NestedValue -Object $previewCard -Path @('changeDetails')
       surfaces = @($publishedSurfaces | ForEach-Object { $_ })
     }
