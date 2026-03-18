@@ -485,6 +485,22 @@ try {
 
   $indexMarkdown = Get-Content -LiteralPath $receipt.outputs.indexMarkdownPath -Raw
   foreach ($requiredText in @(
+      '# comparevi-history PR diagnostics workspace',
+      '## Workspace summary',
+      '## Workspace navigation',
+      '## Review workspace',
+      '## Raw evidence inventory',
+      '- History pairs in workspace: `2`',
+      '- Targets in workspace: `2`',
+      '- Severity mix: `0` high / `2` medium / `0` low',
+      '- [History pair 1](#history-pair-01-tooling-deployment-vip-post-install-custom-action-vi) `medium` - Material logic-affecting movement and structure resizing',
+      '- [History pair 2](#history-pair-02-tooling-deployment-vip-post-install-custom-action-vi) `medium` - Material version or compatibility changes',
+      '<a id="history-pair-01-tooling-deployment-vip-post-install-custom-action-vi"></a>',
+      '<a id="history-pair-02-tooling-deployment-vip-post-install-custom-action-vi"></a>',
+      'Quick links: [card](#history-pair-01-tooling-deployment-vip-post-install-custom-action-vi)',
+      '[front panel](targets/001-post/history/front-panel/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)',
+      '[block diagram](targets/001-post/history/block-diagram/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.html)',
+      '[change details](targets/001-post/history/attributes/VIP_Post-Install_Custom_Action.vi-001-artifacts/compare-report.reviewer-anchors.html)',
       '[changed-vi-discovery.json](changed-vi-discovery.json)',
       '[pr-run.json](pr-run.json)',
       '[pr-preview-manifest.json](pr-preview-manifest.json)',
@@ -554,10 +570,31 @@ try {
   }
 
   $indexHtml = Get-Content -LiteralPath $receipt.outputs.indexHtmlPath -Raw
-  if ($indexHtml -notmatch [regex]::Escape('<section class="preview-gallery">')) {
-    throw 'Index HTML should embed the preview gallery.'
+  foreach ($requiredHtml in @(
+      '<title>comparevi-history PR diagnostics workspace</title>',
+      '<h1>comparevi-history PR diagnostics workspace</h1>',
+      '<div class="workspace-shell">',
+      '<aside class="workspace-nav">',
+      '<section class="workspace-summary">',
+      '<section class="raw-evidence">',
+      '<h2>Raw evidence inventory</h2>',
+      '<a class="workspace-nav-link" href="#history-pair-01-tooling-deployment-vip-post-install-custom-action-vi">History pair 1</a>',
+      '<a class="workspace-nav-link" href="#history-pair-02-tooling-deployment-vip-post-install-custom-action-vi">History pair 2</a>',
+      '<p class="workspace-nav-severity"><code>medium</code></p>',
+      '<p class="workspace-nav-headline">Material logic-affecting movement and structure resizing</p>',
+      '<p class="workspace-nav-headline">Material version or compatibility changes</p>',
+      '<p class="workspace-quick-links"><a href="#history-pair-01-tooling-deployment-vip-post-install-custom-action-vi">card</a>',
+      '<article class="preview-card" id="history-pair-01-tooling-deployment-vip-post-install-custom-action-vi">',
+      '<article class="preview-card" id="history-pair-02-tooling-deployment-vip-post-install-custom-action-vi">'
+    )) {
+    if ($indexHtml -notmatch [regex]::Escape($requiredHtml)) {
+      throw "Index HTML is missing '$requiredHtml'."
+    }
   }
-  if ([regex]::Matches($indexHtml, [regex]::Escape('<article class="preview-card">')).Count -ne 2) {
+  if ($indexHtml -notmatch [regex]::Escape('<section class="preview-gallery">')) {
+    throw 'Index HTML should embed the review workspace gallery.'
+  }
+  if ([regex]::Matches($indexHtml, [regex]::Escape('<article class="preview-card" id="')).Count -ne 2) {
     throw 'Index HTML should render two reviewer-canonical preview cards for the PR31-shaped fixture.'
   }
   if ($indexHtml -match [regex]::Escape('<strong>Mode</strong>') -or

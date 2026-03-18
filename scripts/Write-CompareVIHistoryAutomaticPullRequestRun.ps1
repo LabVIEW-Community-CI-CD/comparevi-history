@@ -303,6 +303,353 @@ function Get-ReviewerPreviewSurfaceLabel {
   }
 }
 
+function ConvertTo-Slug {
+  param(
+    [AllowNull()]
+    [string]$Value,
+    [string]$Fallback = 'item'
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $Fallback
+  }
+
+  $slug = $Value.ToLowerInvariant() -replace '[^a-z0-9]+', '-'
+  $slug = $slug.Trim('-')
+  if ([string]::IsNullOrWhiteSpace($slug)) {
+    return $Fallback
+  }
+
+  return $slug
+}
+
+function Get-WorkspaceCardAnchorId {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard
+  )
+
+  $comparisonIndex = Get-ReviewerPreviewComparisonIndex -PreviewPair $PreviewCard
+  $targetSlug = ConvertTo-Slug -Value (Get-OptionalString -Value $PreviewCard.targetPath) -Fallback (ConvertTo-Slug -Value (Get-OptionalString -Value $PreviewCard.targetId) -Fallback 'target')
+  return 'history-pair-{0:D2}-{1}' -f $comparisonIndex, $targetSlug
+}
+
+function Get-WorkspaceSurfaceReportLink {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [Parameter(Mandatory = $true)]
+    [string]$SurfaceKind
+  )
+
+  $surface = @(
+    ConvertTo-ObjectArray -Value (Get-NestedValue -Object $PreviewCard -Path @('surfaces') -Default @()) |
+      Where-Object { [string]$_.surfaceKind -eq $SurfaceKind } |
+      Select-Object -First 1
+  )
+  if ($null -eq $surface) {
+    return $null
+  }
+
+  return Get-OptionalString -Value $surface.reportHtmlRelativePath
+}
+
+function Get-WorkspaceTargetLinks {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $target = @(
+    ConvertTo-ObjectArray -Value $Targets |
+      Where-Object { [string]$_.targetId -eq [string]$PreviewCard.targetId } |
+      Select-Object -First 1
+  )
+  if ($null -eq $target) {
+    return [ordered]@{}
+  }
+
+  return [ordered]@{
+    publicRun = Resolve-RelativePath -Path ([string]$target.publicRunPath) -ResultsRoot $ResultsRoot
+    sharedEvidence = Resolve-RelativePath -Path ([string]$target.sharedEvidencePath) -ResultsRoot $ResultsRoot
+    historyReport = Resolve-RelativePath -Path ([string]$target.historyReportHtmlPath) -ResultsRoot $ResultsRoot
+    modeSummary = Resolve-RelativePath -Path ([string]$target.modeSummaryPath) -ResultsRoot $ResultsRoot
+    request = Resolve-RelativePath -Path ([string]$target.requestPath) -ResultsRoot $ResultsRoot
+  }
+}
+
+function Get-WorkspaceReviewerHeadline {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard
+  )
+
+  return Get-OptionalString -Value (Get-NestedValue -Object $PreviewCard -Path @('reviewerSummary', 'headline'))
+}
+
+function Get-WorkspaceReviewerSeverity {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard
+  )
+
+  $severity = Get-OptionalString -Value (Get-NestedValue -Object $PreviewCard -Path @('reviewerSummary', 'overallSeverity'))
+  if ([string]::IsNullOrWhiteSpace($severity)) {
+    return 'unknown'
+  }
+
+  return $severity
+}
+
+function New-MarkdownWorkspaceQuickLinkLine {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $linkItems = New-Object System.Collections.Generic.List[string]
+  $linkItems.Add(('[card](#{0})' -f (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard))) | Out-Null
+
+  $frontPanelLink = Get-WorkspaceSurfaceReportLink -PreviewCard $PreviewCard -SurfaceKind 'front-panel'
+  if (-not [string]::IsNullOrWhiteSpace($frontPanelLink)) {
+    $linkItems.Add(('[front panel]({0})' -f $frontPanelLink)) | Out-Null
+  }
+
+  $blockDiagramLink = Get-WorkspaceSurfaceReportLink -PreviewCard $PreviewCard -SurfaceKind 'block-diagram'
+  if (-not [string]::IsNullOrWhiteSpace($blockDiagramLink)) {
+    $linkItems.Add(('[block diagram]({0})' -f $blockDiagramLink)) | Out-Null
+  }
+
+  $changeDetailsLink = Get-OptionalString -Value (Get-NestedValue -Object $PreviewCard -Path @('changeDetails', 'reportHtmlRelativePath'))
+  if (-not [string]::IsNullOrWhiteSpace($changeDetailsLink)) {
+    $linkItems.Add(('[change details]({0})' -f $changeDetailsLink)) | Out-Null
+  }
+
+  $targetLinks = Get-WorkspaceTargetLinks -PreviewCard $PreviewCard -Targets $Targets -ResultsRoot $ResultsRoot
+  foreach ($key in @('historyReport', 'sharedEvidence', 'publicRun', 'modeSummary', 'request')) {
+    $path = Get-OptionalString -Value (Get-NestedValue -Object $targetLinks -Path @($key))
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      continue
+    }
+
+    $label = switch ($key) {
+      'historyReport' { 'history report' }
+      'sharedEvidence' { 'shared evidence' }
+      'publicRun' { 'public run' }
+      'modeSummary' { 'mode summary' }
+      'request' { 'request' }
+      default { $key }
+    }
+    $linkItems.Add(('[{0}]({1})' -f $label, $path)) | Out-Null
+  }
+
+  if ($linkItems.Count -eq 0) {
+    return $null
+  }
+
+  return 'Quick links: {0}' -f ($linkItems -join ', ')
+}
+
+function New-HtmlWorkspaceQuickLinks {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewCard,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  $links = New-Object System.Collections.Generic.List[string]
+  $links.Add('<a href="#' + (Escape-Html (Get-WorkspaceCardAnchorId -PreviewCard $PreviewCard)) + '">card</a>') | Out-Null
+
+  $frontPanelLink = Get-WorkspaceSurfaceReportLink -PreviewCard $PreviewCard -SurfaceKind 'front-panel'
+  if (-not [string]::IsNullOrWhiteSpace($frontPanelLink)) {
+    $links.Add('<a href="' + (Escape-Html $frontPanelLink) + '">front panel</a>') | Out-Null
+  }
+
+  $blockDiagramLink = Get-WorkspaceSurfaceReportLink -PreviewCard $PreviewCard -SurfaceKind 'block-diagram'
+  if (-not [string]::IsNullOrWhiteSpace($blockDiagramLink)) {
+    $links.Add('<a href="' + (Escape-Html $blockDiagramLink) + '">block diagram</a>') | Out-Null
+  }
+
+  $changeDetailsLink = Get-OptionalString -Value (Get-NestedValue -Object $PreviewCard -Path @('changeDetails', 'reportHtmlRelativePath'))
+  if (-not [string]::IsNullOrWhiteSpace($changeDetailsLink)) {
+    $links.Add('<a href="' + (Escape-Html $changeDetailsLink) + '">change details</a>') | Out-Null
+  }
+
+  $targetLinks = Get-WorkspaceTargetLinks -PreviewCard $PreviewCard -Targets $Targets -ResultsRoot $ResultsRoot
+  foreach ($key in @('historyReport', 'sharedEvidence', 'publicRun', 'modeSummary', 'request')) {
+    $path = Get-OptionalString -Value (Get-NestedValue -Object $targetLinks -Path @($key))
+    if ([string]::IsNullOrWhiteSpace($path)) {
+      continue
+    }
+
+    $label = switch ($key) {
+      'historyReport' { 'history report' }
+      'sharedEvidence' { 'shared evidence' }
+      'publicRun' { 'public run' }
+      'modeSummary' { 'mode summary' }
+      'request' { 'request' }
+      default { $key }
+    }
+    $links.Add('<a href="' + (Escape-Html $path) + '">' + (Escape-Html $label) + '</a>') | Out-Null
+  }
+
+  if ($links.Count -eq 0) {
+    return ''
+  }
+
+  return '<p class="workspace-quick-links">' + ($links -join ' <span aria-hidden="true">/</span> ') + '</p>'
+}
+
+function Get-WorkspaceSummaryCounts {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @(),
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @()
+  )
+
+  $highCount = 0
+  $mediumCount = 0
+  $lowCount = 0
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    switch (Get-WorkspaceReviewerSeverity -PreviewCard $previewCard) {
+      'high' { $highCount += 1 }
+      'medium' { $mediumCount += 1 }
+      'low' { $lowCount += 1 }
+    }
+  }
+
+  return [ordered]@{
+    pairCount = @(ConvertTo-ObjectArray -Value $PreviewCards).Count
+    targetCount = @(ConvertTo-ObjectArray -Value $Targets).Count
+    highCount = $highCount
+    mediumCount = $mediumCount
+    lowCount = $lowCount
+  }
+}
+
+function New-MarkdownWorkspaceSummary {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @(),
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @()
+  )
+
+  $counts = Get-WorkspaceSummaryCounts -PreviewCards $PreviewCards -Targets $Targets
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('## Workspace summary') | Out-Null
+  $lines.Add('') | Out-Null
+  $lines.Add(('- History pairs in workspace: `{0}`' -f $counts.pairCount)) | Out-Null
+  $lines.Add(('- Targets in workspace: `{0}`' -f $counts.targetCount)) | Out-Null
+  $lines.Add(('- Severity mix: `{0}` high / `{1}` medium / `{2}` low' -f $counts.highCount, $counts.mediumCount, $counts.lowCount)) | Out-Null
+  $lines.Add('') | Out-Null
+  return @($lines | ForEach-Object { $_ })
+}
+
+function New-MarkdownWorkspaceNavigation {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @(),
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  if ($PreviewCards.Count -eq 0) {
+    return @()
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $lines.Add('## Workspace navigation') | Out-Null
+  $lines.Add('') | Out-Null
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $anchorId = Get-WorkspaceCardAnchorId -PreviewCard $previewCard
+    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
+    $headline = Get-WorkspaceReviewerHeadline -PreviewCard $previewCard
+    $severity = Get-WorkspaceReviewerSeverity -PreviewCard $previewCard
+    $lines.Add(('- [{0}](#{1}) `{2}` {3}' -f $subtitle, $anchorId, $severity, $(if ([string]::IsNullOrWhiteSpace($headline)) { '' } else { ('- ' + $headline) }))) | Out-Null
+    $quickLinkLine = New-MarkdownWorkspaceQuickLinkLine -PreviewCard $previewCard -Targets $Targets -ResultsRoot $ResultsRoot
+    if (-not [string]::IsNullOrWhiteSpace($quickLinkLine)) {
+      $lines.Add(('  {0}' -f $quickLinkLine)) | Out-Null
+    }
+  }
+  $lines.Add('') | Out-Null
+  return @($lines | ForEach-Object { $_ })
+}
+
+function New-HtmlWorkspaceSummary {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @(),
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @()
+  )
+
+  $counts = Get-WorkspaceSummaryCounts -PreviewCards $PreviewCards -Targets $Targets
+  return @"
+  <section class="workspace-summary">
+    <div class="workspace-summary-card"><strong>History pairs</strong><span><code>$(Escape-Html ([string]$counts.pairCount))</code></span></div>
+    <div class="workspace-summary-card"><strong>Targets</strong><span><code>$(Escape-Html ([string]$counts.targetCount))</code></span></div>
+    <div class="workspace-summary-card"><strong>Severity mix</strong><span><code>$(Escape-Html ('{0} high / {1} medium / {2} low' -f $counts.highCount, $counts.mediumCount, $counts.lowCount))</code></span></div>
+  </section>
+"@
+}
+
+function New-HtmlWorkspaceNavigation {
+  param(
+    [AllowEmptyCollection()]
+    [object[]]$PreviewCards = @(),
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  if ($PreviewCards.Count -eq 0) {
+    return ''
+  }
+
+  $items = New-Object System.Collections.Generic.List[string]
+  foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $anchorId = Get-WorkspaceCardAnchorId -PreviewCard $previewCard
+    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
+    $headline = Get-WorkspaceReviewerHeadline -PreviewCard $previewCard
+    $severity = Get-WorkspaceReviewerSeverity -PreviewCard $previewCard
+    $quickLinks = New-HtmlWorkspaceQuickLinks -PreviewCard $previewCard -Targets $Targets -ResultsRoot $ResultsRoot
+    $headlineHtml = if ([string]::IsNullOrWhiteSpace($headline)) { '' } else { '<p class="workspace-nav-headline">' + (Escape-Html $headline) + '</p>' }
+    $items.Add(@"
+      <li class="workspace-nav-item">
+        <a class="workspace-nav-link" href="#$(Escape-Html $anchorId)">$(Escape-Html $subtitle)</a>
+        <p class="workspace-nav-severity"><code>$(Escape-Html $severity)</code></p>
+        $headlineHtml
+        $quickLinks
+      </li>
+"@) | Out-Null
+  }
+
+  return @"
+  <aside class="workspace-nav">
+    <h2>Workspace navigation</h2>
+    <ul class="workspace-nav-list">
+      $($items -join "`n")
+    </ul>
+  </aside>
+"@
+}
+
 function New-MarkdownChangeDetailSectionLinkLine {
   param(
     [AllowNull()]
@@ -672,7 +1019,11 @@ function New-ReviewerPreviewCards {
 function New-MarkdownPreviewGallery {
   param(
     [AllowEmptyCollection()]
-    [object[]]$PreviewCards
+    [object[]]$PreviewCards,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
   )
 
   if ($PreviewCards.Count -eq 0) {
@@ -680,13 +1031,17 @@ function New-MarkdownPreviewGallery {
   }
 
   $lines = New-Object System.Collections.Generic.List[string]
-  $lines.Add('## Preview gallery') | Out-Null
+  $lines.Add('## Review workspace') | Out-Null
   $lines.Add('') | Out-Null
   foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $anchorId = Get-WorkspaceCardAnchorId -PreviewCard $previewCard
     $title = Get-ReviewerPreviewTitle -PreviewPair $previewCard
     $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
     $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewCard
     $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewCard)
+    $quickLinkLine = New-MarkdownWorkspaceQuickLinkLine -PreviewCard $previewCard -Targets $Targets -ResultsRoot $ResultsRoot
+    $lines.Add(('<a id="{0}"></a>' -f $anchorId)) | Out-Null
+    $lines.Add('') | Out-Null
     $lines.Add(('### `{0}`' -f $title)) | Out-Null
     $lines.Add('') | Out-Null
     $lines.Add($subtitle) | Out-Null
@@ -699,6 +1054,10 @@ function New-MarkdownPreviewGallery {
       $lines.Add($detailLine) | Out-Null
     }
     if ($detailLines.Count -gt 0) {
+      $lines.Add('') | Out-Null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($quickLinkLine)) {
+      $lines.Add($quickLinkLine) | Out-Null
       $lines.Add('') | Out-Null
     }
     foreach ($reviewerSummaryLine in @(New-MarkdownReviewerSummaryLines -ReviewerSummary (Get-NestedValue -Object $previewCard -Path @('reviewerSummary')))) {
@@ -746,7 +1105,11 @@ function New-MarkdownPreviewGallery {
 function New-HtmlPreviewGallery {
   param(
     [AllowEmptyCollection()]
-    [object[]]$PreviewCards
+    [object[]]$PreviewCards,
+    [AllowEmptyCollection()]
+    [object[]]$Targets = @(),
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
   )
 
   if ($PreviewCards.Count -eq 0) {
@@ -755,6 +1118,7 @@ function New-HtmlPreviewGallery {
 
   $cards = New-Object System.Collections.Generic.List[string]
   foreach ($previewCard in @(ConvertTo-ObjectArray -Value $PreviewCards)) {
+    $anchorId = Get-WorkspaceCardAnchorId -PreviewCard $previewCard
     $title = Get-ReviewerPreviewTitle -PreviewPair $previewCard
     $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
     $comparisonIndex = Get-ReviewerPreviewComparisonIndex -PreviewPair $previewCard
@@ -765,6 +1129,7 @@ function New-HtmlPreviewGallery {
     } else {
       '<div class="preview-card-history">' + (($detailLines | ForEach-Object { '<p>' + (Escape-Html $_) + '</p>' }) -join '') + '</div>'
     }
+    $quickLinksHtml = New-HtmlWorkspaceQuickLinks -PreviewCard $previewCard -Targets $Targets -ResultsRoot $ResultsRoot
     $reviewerSummaryHtml = New-HtmlReviewerSummaryBlock -ReviewerSummary (Get-NestedValue -Object $previewCard -Path @('reviewerSummary'))
     $changeDetailsHtml = New-HtmlChangeDetailsBlock -ChangeDetails (Get-NestedValue -Object $previewCard -Path @('changeDetails'))
     $surfaceBlocks = New-Object System.Collections.Generic.List[string]
@@ -801,7 +1166,7 @@ function New-HtmlPreviewGallery {
 "@) | Out-Null
     }
     $cards.Add(@"
-<article class="preview-card">
+<article class="preview-card" id="$(Escape-Html $anchorId)">
   <h3>$(Escape-Html $title)</h3>
   <p class="preview-card-subtitle">$(Escape-Html $subtitle)</p>
   <div class="preview-card-meta">
@@ -809,6 +1174,7 @@ function New-HtmlPreviewGallery {
     <strong>Revisions</strong><span><code>$(Escape-Html $revisionContext)</code></span>
   </div>
   $detailHtml
+  $quickLinksHtml
   $reviewerSummaryHtml
   $changeDetailsHtml
   $($surfaceBlocks -join "`n  ")
@@ -818,7 +1184,7 @@ function New-HtmlPreviewGallery {
 
   return @"
   <section class="preview-gallery">
-    <h2>Preview gallery</h2>
+    <h2>Review workspace</h2>
     <div class="preview-grid">
       $($cards -join "`n      ")
     </div>
@@ -1015,7 +1381,7 @@ if ($emitCommentBody) {
 }
 
 $indexLines = New-Object System.Collections.Generic.List[string]
-$indexLines.Add('# comparevi-history PR diagnostics index') | Out-Null
+$indexLines.Add('# comparevi-history PR diagnostics workspace') | Out-Null
 $indexLines.Add('') | Out-Null
 $indexLines.Add(('- Final status: `{0}`' -f $finalStatus)) | Out-Null
 $indexLines.Add(('- Final reason: `{0}`' -f $finalReason)) | Out-Null
@@ -1037,11 +1403,19 @@ if ($reviewerPreviewPairCount -gt 0) {
   }
 }
 $indexLines.Add('') | Out-Null
-$previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewCards $indexPreviewCards
+foreach ($summaryLine in @(New-MarkdownWorkspaceSummary -PreviewCards $indexPreviewCards -Targets $targets)) {
+  $indexLines.Add($summaryLine) | Out-Null
+}
+foreach ($navigationLine in @(New-MarkdownWorkspaceNavigation -PreviewCards $indexPreviewCards -Targets $targets -ResultsRoot $resultsDirResolved)) {
+  $indexLines.Add($navigationLine) | Out-Null
+}
+$previewGalleryMarkdown = New-MarkdownPreviewGallery -PreviewCards $indexPreviewCards -Targets $targets -ResultsRoot $resultsDirResolved
 if (-not [string]::IsNullOrWhiteSpace($previewGalleryMarkdown)) {
   $indexLines.Add($previewGalleryMarkdown) | Out-Null
   $indexLines.Add('') | Out-Null
 }
+$indexLines.Add('## Raw evidence inventory') | Out-Null
+$indexLines.Add('') | Out-Null
 $indexLines.Add('| VI path | Status | Public run | Shared evidence | History report | Indexable surfaces |') | Out-Null
 $indexLines.Add('| --- | --- | --- | --- | --- | --- |') | Out-Null
 foreach ($target in @($targets | Sort-Object { [string]$_.targetPath }, { [string]$_.targetId })) {
@@ -1107,17 +1481,33 @@ $indexHtml = @"
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>comparevi-history PR diagnostics index</title>
+  <title>comparevi-history PR diagnostics workspace</title>
   <style>
-    body { font-family: Segoe UI, sans-serif; margin: 2rem; color: #1f2933; background: #f8fafc; }
+    body { font-family: Segoe UI, sans-serif; margin: 0; color: #1f2933; background: #f8fafc; }
+    .page-shell { max-width: 1600px; margin: 0 auto; padding: 2rem; }
     code { background: #e2e8f0; padding: 0.1rem 0.3rem; border-radius: 4px; }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; background: #ffffff; }
     th, td { border: 1px solid #cbd5e1; padding: 0.6rem; text-align: left; vertical-align: top; }
     th { background: #e2e8f0; }
-    h1 { margin-top: 0; }
+    h1 { margin-top: 0; margin-bottom: 1rem; }
     ul { padding-left: 1.2rem; }
+    .workspace-shell { display: grid; grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+    .workspace-main { min-width: 0; }
+    .workspace-meta { margin: 0 0 1.25rem 0; padding-left: 1.2rem; }
+    .workspace-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; margin: 0 0 1.5rem 0; }
+    .workspace-summary-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.9rem 1rem; display: grid; gap: 0.4rem; }
+    .workspace-nav { position: sticky; top: 1rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; }
+    .workspace-nav h2 { margin-top: 0; }
+    .workspace-nav-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.85rem; }
+    .workspace-nav-item { border-top: 1px solid #e2e8f0; padding-top: 0.85rem; }
+    .workspace-nav-item:first-child { border-top: none; padding-top: 0; }
+    .workspace-nav-link { font-weight: 600; color: #0f172a; text-decoration: none; }
+    .workspace-nav-severity { margin: 0.25rem 0 0.35rem 0; }
+    .workspace-nav-headline { margin: 0 0 0.45rem 0; color: #334155; }
+    .workspace-quick-links { margin: 0.5rem 0 0 0; font-size: 0.92rem; color: #334155; line-height: 1.5; }
+    .workspace-quick-links a { white-space: nowrap; }
     .preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr)); gap: 1rem; margin: 1.5rem 0; }
-    .preview-card { background: #ffffff; border: 1px solid #cbd5e1; padding: 1rem; }
+    .preview-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; scroll-margin-top: 1rem; }
     .preview-card-subtitle { color: #334155; margin-top: -0.35rem; margin-bottom: 1rem; }
     .preview-card-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 0.75rem; margin-bottom: 1rem; }
     .preview-surface + .preview-surface { margin-top: 1rem; }
@@ -1126,37 +1516,53 @@ $indexHtml = @"
     .preview-image-grid figure { margin: 0; }
     .preview-image-grid img { max-width: 100%; height: auto; border: 1px solid #cbd5e1; background: #ffffff; }
     .preview-image-grid figcaption { font-size: 0.85rem; color: #52606d; margin-top: 0.35rem; }
+    .raw-evidence { margin-top: 2rem; }
+    @media (max-width: 1100px) {
+      .workspace-shell { grid-template-columns: 1fr; }
+      .workspace-nav { position: static; }
+    }
   </style>
 </head>
 <body>
-  <h1>comparevi-history PR diagnostics index</h1>
-  <ul>
-    <li>Final status: <code>$(Escape-Html $finalStatus)</code></li>
-    <li>Final reason: <code>$(Escape-Html $finalReason)</code></li>
-    $(if (-not [string]::IsNullOrWhiteSpace($RunUrl)) { '<li>Workflow run: <a href="' + (Escape-Html $RunUrl) + '">' + (Escape-Html $RunUrl) + '</a></li>' } else { '' })
-    $(if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) { '<li>Artifact bundle: <code>' + (Escape-Html $ArtifactName.Trim()) + '</code></li>' } else { '' })
-    <li>Discovery receipt: <a href="changed-vi-discovery.json">changed-vi-discovery.json</a></li>
-    <li>Aggregate receipt: <a href="pr-run.json">pr-run.json</a></li>
-    $(if ($null -ne $previewManifestPathResolved -and (Test-Path -LiteralPath $previewManifestPathResolved -PathType Leaf)) { '<li>Preview manifest: <a href="pr-preview-manifest.json">pr-preview-manifest.json</a></li>' } else { '' })
-    $(if ($reviewerPreviewPairCount -gt 0) { '<li>Reviewer preview gallery: <code>' + $indexPreviewCardCount + '</code> history pairs shown, <code>' + $indexPreviewPairOmittedCount + '</code> omitted, cap <code>' + $indexPreviewPairCap + '</code></li>' } else { '' })
-    $(if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) { '<li>Raw preview surfaces collapsed for review: <code>' + $rawPreviewPairCount + '</code> raw -> <code>' + $reviewerPreviewPairCount + '</code> reviewer-canonical</li>' } else { '' })
-  </ul>
-  $(New-HtmlPreviewGallery -PreviewCards $indexPreviewCards)
-  <table>
-    <thead>
-      <tr>
-        <th>VI path</th>
-        <th>Status</th>
-        <th>Public run</th>
-        <th>Shared evidence</th>
-        <th>History report</th>
-        <th>Indexable surfaces</th>
-      </tr>
-    </thead>
-    <tbody>
-      $($htmlRows -join "`n      ")
-    </tbody>
-  </table>
+  <div class="page-shell">
+    <h1>comparevi-history PR diagnostics workspace</h1>
+    <div class="workspace-shell">
+      $(New-HtmlWorkspaceNavigation -PreviewCards $indexPreviewCards -Targets $targets -ResultsRoot $resultsDirResolved)
+      <main class="workspace-main">
+        <ul class="workspace-meta">
+          <li>Final status: <code>$(Escape-Html $finalStatus)</code></li>
+          <li>Final reason: <code>$(Escape-Html $finalReason)</code></li>
+          $(if (-not [string]::IsNullOrWhiteSpace($RunUrl)) { '<li>Workflow run: <a href="' + (Escape-Html $RunUrl) + '">' + (Escape-Html $RunUrl) + '</a></li>' } else { '' })
+          $(if (-not [string]::IsNullOrWhiteSpace($ArtifactName)) { '<li>Artifact bundle: <code>' + (Escape-Html $ArtifactName.Trim()) + '</code></li>' } else { '' })
+          <li>Discovery receipt: <a href="changed-vi-discovery.json">changed-vi-discovery.json</a></li>
+          <li>Aggregate receipt: <a href="pr-run.json">pr-run.json</a></li>
+          $(if ($null -ne $previewManifestPathResolved -and (Test-Path -LiteralPath $previewManifestPathResolved -PathType Leaf)) { '<li>Preview manifest: <a href="pr-preview-manifest.json">pr-preview-manifest.json</a></li>' } else { '' })
+          $(if ($reviewerPreviewPairCount -gt 0) { '<li>Reviewer preview gallery: <code>' + $indexPreviewCardCount + '</code> history pairs shown, <code>' + $indexPreviewPairOmittedCount + '</code> omitted, cap <code>' + $indexPreviewPairCap + '</code></li>' } else { '' })
+          $(if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) { '<li>Raw preview surfaces collapsed for review: <code>' + $rawPreviewPairCount + '</code> raw -> <code>' + $reviewerPreviewPairCount + '</code> reviewer-canonical</li>' } else { '' })
+        </ul>
+        $(New-HtmlWorkspaceSummary -PreviewCards $indexPreviewCards -Targets $targets)
+        $(New-HtmlPreviewGallery -PreviewCards $indexPreviewCards -Targets $targets -ResultsRoot $resultsDirResolved)
+        <section class="raw-evidence">
+          <h2>Raw evidence inventory</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>VI path</th>
+                <th>Status</th>
+                <th>Public run</th>
+                <th>Shared evidence</th>
+                <th>History report</th>
+                <th>Indexable surfaces</th>
+              </tr>
+            </thead>
+            <tbody>
+              $($htmlRows -join "`n              ")
+            </tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+  </div>
 </body>
 </html>
 "@
