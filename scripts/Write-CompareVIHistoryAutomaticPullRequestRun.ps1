@@ -709,23 +709,32 @@ function New-MarkdownPreviewGallery {
     }
     foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
       $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+      $surfaceReportPath = Get-OptionalString -Value $surface.reportHtmlRelativePath
       $lines.Add(('#### {0}' -f $surfaceLabel)) | Out-Null
       $lines.Add('') | Out-Null
       $lines.Add('**Base**') | Out-Null
-      $lines.Add((
-          '![{0}]({1})' -f
-            ('{0} base' -f $surfaceLabel),
-            [string]$surface.baseImageRelativePath
-        )) | Out-Null
+      $baseImageMarkdown = (
+        '![{0}]({1})' -f
+          ('{0} base' -f $surfaceLabel),
+          [string]$surface.baseImageRelativePath
+      )
+      if (-not [string]::IsNullOrWhiteSpace($surfaceReportPath)) {
+        $baseImageMarkdown = '[{0}]({1})' -f $baseImageMarkdown, $surfaceReportPath
+      }
+      $lines.Add($baseImageMarkdown) | Out-Null
       $lines.Add('') | Out-Null
       $lines.Add('**Head**') | Out-Null
-      $lines.Add((
-          '![{0}]({1})' -f
-            ('{0} head' -f $surfaceLabel),
-            [string]$surface.headImageRelativePath
-        )) | Out-Null
-      if (-not [string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
-        $lines.Add(('- Report: [{0}]({0})' -f [string]$surface.reportHtmlRelativePath)) | Out-Null
+      $headImageMarkdown = (
+        '![{0}]({1})' -f
+          ('{0} head' -f $surfaceLabel),
+          [string]$surface.headImageRelativePath
+      )
+      if (-not [string]::IsNullOrWhiteSpace($surfaceReportPath)) {
+        $headImageMarkdown = '[{0}]({1})' -f $headImageMarkdown, $surfaceReportPath
+      }
+      $lines.Add($headImageMarkdown) | Out-Null
+      if (-not [string]::IsNullOrWhiteSpace($surfaceReportPath)) {
+        $lines.Add(('- Report: [{0}]({0})' -f $surfaceReportPath)) | Out-Null
       }
       $lines.Add('') | Out-Null
     }
@@ -766,16 +775,24 @@ function New-HtmlPreviewGallery {
       } else {
         '<p><a href="' + (Escape-Html ([string]$surface.reportHtmlRelativePath)) + '">open ' + (Escape-Html $surfaceLabel.ToLowerInvariant()) + ' report</a></p>'
       }
+      $baseImageHtml = '<img alt="' + (Escape-Html ($surfaceLabel + ' base')) + '" src="' + (Escape-Html ([string]$surface.baseImageRelativePath)) + '">'
+      if (-not [string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
+        $baseImageHtml = '<a href="' + (Escape-Html ([string]$surface.reportHtmlRelativePath)) + '">' + $baseImageHtml + '</a>'
+      }
+      $headImageHtml = '<img alt="' + (Escape-Html ($surfaceLabel + ' head')) + '" src="' + (Escape-Html ([string]$surface.headImageRelativePath)) + '">'
+      if (-not [string]::IsNullOrWhiteSpace([string]$surface.reportHtmlRelativePath)) {
+        $headImageHtml = '<a href="' + (Escape-Html ([string]$surface.reportHtmlRelativePath)) + '">' + $headImageHtml + '</a>'
+      }
       $surfaceBlocks.Add(@"
   <section class="preview-surface">
     <h4>$(Escape-Html $surfaceLabel)</h4>
     <div class="preview-image-grid">
       <figure>
-        <img alt="$(Escape-Html ($surfaceLabel + ' base'))" src="$(Escape-Html ([string]$surface.baseImageRelativePath))">
+        $baseImageHtml
         <figcaption>Base</figcaption>
       </figure>
       <figure>
-        <img alt="$(Escape-Html ($surfaceLabel + ' head'))" src="$(Escape-Html ([string]$surface.headImageRelativePath))">
+        $headImageHtml
         <figcaption>Head</figcaption>
       </figure>
     </div>

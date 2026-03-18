@@ -550,20 +550,25 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Reviewer summary</strong></p>')).Count -ne 2 -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Headline:</strong> Material logic-affecting movement and structure resizing') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Overall severity:</strong> medium') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">Logic-affecting movement</a>:</strong> medium severity, 3 details across 1 sections') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects">Structure resizing</a>:</strong> low severity, 2 details across 1 sections') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-001-block-diagram-objects">Logic-affecting movement</a>:</strong> medium severity, 3 details across 1 sections') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-002-block-diagram-objects">Structure resizing</a>:</strong> low severity, 2 details across 1 sections') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Headline:</strong> Material version or compatibility changes') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous">Version or compatibility changes</a>:</strong> medium severity, 1 details across 1 sections')) {
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/change-details.md#comparevi-change-001-vi-attribute-miscellaneous">Version or compatibility changes</a>:</strong> medium severity, 1 details across 1 sections')) {
     throw 'Created PR comment body should render reviewer-summary headlines, severity, and exact linked signals.'
   }
   if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p><strong>Change details</strong></p>')).Count -ne 2 -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Exact sections:</strong> <a href="targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects">section 1</a>') -or
-    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-001-block-diagram-objects">Block diagram moves</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-002-block-diagram-objects">Block diagram resizing</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<strong>Exact sections:</strong> <a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-001-block-diagram-objects">section 1</a>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/change-details.md#comparevi-change-001-vi-attribute-miscellaneous">VI version changes</a>') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('VI Version : changed from &quot;21.0&quot; to &quot;20.0&quot;') -or
     $global:RecordedPosts[0].body -notmatch [regex]::Escape('open change details report')) {
     throw 'Created PR comment body should render bounded change-detail summaries from the attributes compare report.'
+  }
+  if ($global:RecordedPosts[0].body -notmatch [regex]::Escape('<td><a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/evidence.md"><img alt="Front panel base"') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('<td><a href="https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/02-block-diagram/evidence.md"><img alt="Block diagram head"') -or
+    $global:RecordedPosts[0].body -match [regex]::Escape('<p><a href="https://github.com/example/repo/actions/runs/321">workflow run</a></p>')) {
+    throw 'Created PR comment body should link preview images to exact published evidence pages instead of the workflow run.'
   }
   if ([regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/base\.png').Count -ne 4 -or
     [regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/head\.png').Count -ne 4) {
@@ -578,8 +583,8 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ($global:RecordedRefCreates.Count -ne 1) {
     throw 'Expected one preview branch creation request.'
   }
-  if ($global:RecordedContentWrites.Count -ne 9) {
-    throw 'Expected preview publication to write eight images and one manifest.'
+  if ($global:RecordedContentWrites.Count -ne 15) {
+    throw 'Expected preview publication to write eight images, six evidence pages, and one manifest.'
   }
 
   $publishedPairOrder = @(
@@ -593,6 +598,11 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     (@($createReceipt.previewPublication.commentPreviewCards[0].surfaces | ForEach-Object { [string]$_.surfaceKind }) -join ',') -ne 'front-panel,block-diagram') {
     throw 'Preview publication should retain reviewer cards with both front-panel and block-diagram surfaces.'
   }
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].surfaces[0].evidencePath -ne '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/evidence.md' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].surfaces[0].evidenceUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/evidence.md' -or
+    [string]$createReceipt.previewPublication.commentPreviewPairs[0].evidencePath -ne '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/evidence.md') {
+    throw 'Preview publication should expose exact published evidence-page locations for visual surfaces.'
+  }
   if ([string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.label -ne 'Reviewer summary' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.headline -ne 'Material logic-affecting movement and structure resizing' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].label -ne 'Logic-affecting movement' -or
@@ -602,8 +612,9 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     throw 'Preview publication should retain reviewer-summary headlines and signals.'
   }
   if ([string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
-    [string]$createReceipt.previewPublication.commentPreviewCards[1].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous') {
-    throw 'Preview publication should retain exact reviewer-summary links.'
+    [string]$createReceipt.previewPublication.commentPreviewCards[1].reviewerSummary.signals[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].reviewerSummary.signals[0].primaryReportUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-001-block-diagram-objects') {
+    throw 'Preview publication should retain exact reviewer-summary links and publish stable evidence URLs.'
   }
   if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.label -ne 'Change details' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block diagram moves' -or
@@ -611,27 +622,36 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
     [string]$createReceipt.previewPublication.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI version changes') {
     throw 'Preview publication should retain reviewer-facing change-detail summaries.'
   }
-  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
+  if ([string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.reportUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$createReceipt.previewPublication.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportUrl -ne 'https://github.com/LabVIEW-Community-CI-CD/labview-icon-editor-demo/blob/comparevi-history-pr-previews/.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md#comparevi-change-001-block-diagram-objects' -or
     [string]$createReceipt.previewPublication.commentPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous') {
-    throw 'Preview publication should retain exact section links for reviewer change details.'
+    throw 'Preview publication should retain exact section links for reviewer change details and publish stable evidence URLs.'
   }
 
   $writeOrder = @(
     $global:RecordedContentWrites |
       ForEach-Object { [string]$_.path }
   )
-  $expectedImagePrefixes = @(
+  $expectedWritePaths = @(
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/base.png',
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/01-front-panel/evidence.md',
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/02-block-diagram/base.png',
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/02-block-diagram/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/02-block-diagram/evidence.md',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/001-history-pair-01/change-details.md',
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/01-front-panel/base.png',
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/01-front-panel/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/01-front-panel/evidence.md',
     '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/02-block-diagram/base.png',
-    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/02-block-diagram/head.png'
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/02-block-diagram/head.png',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/02-block-diagram/evidence.md',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/002-history-pair-02/change-details.md',
+    '.comparevi-history/pr-diagnostics/previews/pull-request-00055/workflow-run-321/preview-manifest.json'
   )
-  foreach ($index in 0..7) {
-    if ([string]$writeOrder[$index] -ne $expectedImagePrefixes[$index]) {
+  foreach ($index in 0..($expectedWritePaths.Count - 1)) {
+    if ([string]$writeOrder[$index] -ne $expectedWritePaths[$index]) {
       throw "Published preview write order mismatch at position $index."
     }
   }
