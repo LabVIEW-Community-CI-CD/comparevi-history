@@ -21,6 +21,10 @@ function New-PreviewPair {
       index = $ComparisonIndex
       baseRef = ('{0}-base-{1}' -f $Mode, $ComparisonIndex)
       headRef = ('{0}-head-{1}' -f $Mode, $ComparisonIndex)
+      baseShortRef = ('base-{0:D2}' -f $ComparisonIndex)
+      headShortRef = ('head-{0:D2}' -f $ComparisonIndex)
+      baseSubject = ('Base subject {0}' -f $ComparisonIndex)
+      headSubject = ('Head subject {0}' -f $ComparisonIndex)
     }
     sectionKind = 'overview'
     sectionOrdinal = 0
@@ -361,14 +365,24 @@ The full unsuppressed history suite lives in the uploaded artifact bundle. Use t
   if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<h4><code>Tooling/demo/Demo.vi</code></h4>')).Count -ne 2) {
     throw 'Created PR comment body should render two reviewer-canonical preview gallery sections.'
   }
+  if ([regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p>History pair 1</p>')).Count -ne 1 -or
+    [regex]::Matches($global:RecordedPosts[0].body, [regex]::Escape('<p>History pair 2</p>')).Count -ne 1) {
+    throw 'Created PR comment body should render stable history-pair subtitles.'
+  }
+  if ($global:RecordedPosts[0].body -notmatch [regex]::Escape('<p><code>base-01 -&gt; head-01</code></p>') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('Base subject 1') -or
+    $global:RecordedPosts[0].body -notmatch [regex]::Escape('Head subject 1')) {
+    throw 'Created PR comment body should surface revision refs and commit-subject context.'
+  }
   if ([regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/base\.png').Count -ne 2 -or
     [regex]::Matches($global:RecordedPosts[0].body, 'https://raw\.githubusercontent\.com/.+?/head\.png').Count -ne 2) {
     throw 'Created PR comment body should embed four preview image URLs.'
   }
   if ($global:RecordedPosts[0].body -match [regex]::Escape('| front-panel |') -or
     $global:RecordedPosts[0].body -match [regex]::Escape('| block-diagram |') -or
-    $global:RecordedPosts[0].body -match [regex]::Escape('| attributes |')) {
-    throw 'Created PR comment body should not surface execution modes in reviewer-facing preview headings.'
+    $global:RecordedPosts[0].body -match [regex]::Escape('| attributes |') -or
+    $global:RecordedPosts[0].body -match [regex]::Escape('Front Panel Overview')) {
+    throw 'Created PR comment body should not surface execution modes or report captions in reviewer-facing preview headings.'
   }
   if ($global:RecordedRefCreates.Count -ne 1) {
     throw 'Expected one preview branch creation request.'

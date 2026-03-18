@@ -40,8 +40,14 @@ function New-PreviewReportFixture {
 
   return [ordered]@{
     index = $ComparisonIndex
-    base = [ordered]@{ ref = $BaseRef }
-    head = [ordered]@{ ref = $HeadRef }
+    base = [ordered]@{
+      ref = $BaseRef
+      short = ('base-{0:D2}' -f $ComparisonIndex)
+    }
+    head = [ordered]@{
+      ref = $HeadRef
+      short = ('head-{0:D2}' -f $ComparisonIndex)
+    }
     result = [ordered]@{
       reportHtml = $reportHtmlPath
     }
@@ -162,6 +168,14 @@ try {
   }
   if ($receipt.commentPreviewPairs[1].baseImageRelativePath -ne 'targets/001-demo/history/front-panel/Demo.vi-002-artifacts/compare-report_files/fp_1.png') {
     throw 'Expected reviewer selection to collapse mode-duplicated preview pairs while preserving comparison order.'
+  }
+  if ([string]$receipt.commentPreviewPairs[0].comparison.baseShortRef -ne 'base-01' -or
+    [string]$receipt.commentPreviewPairs[0].comparison.headShortRef -ne 'head-01') {
+    throw 'Expected preview manifest pairs to preserve comparison short refs for reviewer rendering.'
+  }
+  if ($null -ne $receipt.commentPreviewPairs[0].comparison.baseSubject -or
+    $null -ne $receipt.commentPreviewPairs[0].comparison.headSubject) {
+    throw 'Preview manifest fixture without a repository root should not invent commit subjects.'
   }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw

@@ -242,6 +242,72 @@ function ConvertTo-HtmlText {
   return [System.Net.WebUtility]::HtmlEncode($Value)
 }
 
+function ConvertTo-ShortRef {
+  param([AllowNull()][string]$Ref)
+
+  $refValue = Get-OptionalString -Value $Ref
+  if ([string]::IsNullOrWhiteSpace($refValue)) {
+    return $null
+  }
+
+  if ($refValue.Length -le 12) {
+    return $refValue
+  }
+
+  return $refValue.Substring(0, 12)
+}
+
+function Get-ReviewerPreviewComparisonIndex {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  return [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
+}
+
+function Get-ReviewerPreviewRevisionContext {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  $baseShortRef = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'baseShortRef'))
+  if ([string]::IsNullOrWhiteSpace($baseShortRef)) {
+    $baseShortRef = ConvertTo-ShortRef -Ref (Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'baseRef')))
+  }
+
+  $headShortRef = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'headShortRef'))
+  if ([string]::IsNullOrWhiteSpace($headShortRef)) {
+    $headShortRef = ConvertTo-ShortRef -Ref (Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'headRef')))
+  }
+
+  if ([string]::IsNullOrWhiteSpace($baseShortRef) -and [string]::IsNullOrWhiteSpace($headShortRef)) {
+    return $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($baseShortRef)) {
+    return $headShortRef
+  }
+
+  if ([string]::IsNullOrWhiteSpace($headShortRef)) {
+    return $baseShortRef
+  }
+
+  return '{0} -> {1}' -f $baseShortRef, $headShortRef
+}
+
+function Get-ReviewerPreviewDetailLines {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $baseSubject = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'baseSubject'))
+  if (-not [string]::IsNullOrWhiteSpace($baseSubject)) {
+    $lines.Add('Base: {0}' -f $baseSubject) | Out-Null
+  }
+
+  $headSubject = Get-OptionalString -Value (Get-NestedValue -Object $PreviewPair -Path @('comparison', 'headSubject'))
+  if (-not [string]::IsNullOrWhiteSpace($headSubject)) {
+    $lines.Add('Head: {0}' -f $headSubject) | Out-Null
+  }
+
+  return @($lines | ForEach-Object { $_ })
+}
+
 function Get-ReviewerPreviewTitle {
   param([Parameter(Mandatory = $true)][object]$PreviewPair)
 
@@ -251,13 +317,7 @@ function Get-ReviewerPreviewTitle {
 function Get-ReviewerPreviewSubtitle {
   param([Parameter(Mandatory = $true)][object]$PreviewPair)
 
-  $comparisonIndex = [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
-  $label = Get-OptionalString -Value $PreviewPair.label
-  if ([string]::IsNullOrWhiteSpace($label)) {
-    return 'Comparison {0}' -f $comparisonIndex
-  }
-
-  return 'Comparison {0} - {1}' -f $comparisonIndex, $label
+  return 'History pair {0}' -f (Get-ReviewerPreviewComparisonIndex -PreviewPair $PreviewPair)
 }
 
 function ConvertTo-GitHubContentPath {
@@ -405,6 +465,13 @@ function New-CommentPreviewMarkdown {
   foreach ($previewPair in $PreviewPairs) {
     $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
     $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
+    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewPair
+    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewPair)
+    $detailHtml = if ($detailLines.Count -eq 0) {
+      ''
+    } else {
+      '<div class="comparevi-preview-history">' + (($detailLines | ForEach-Object { '<p>' + (ConvertTo-HtmlText $_) + '</p>' }) -join '') + '</div>'
+    }
     $baseUrl = [string]$previewPair.baseImageUrl
     $headUrl = [string]$previewPair.headImageUrl
     $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
@@ -412,6 +479,12 @@ function New-CommentPreviewMarkdown {
     $headAlt = '{0} head' -f $subtitle
     $lines.Add(('<h4><code>{0}</code></h4>' -f (ConvertTo-HtmlText $title))) | Out-Null
     $lines.Add(('<p>{0}</p>' -f (ConvertTo-HtmlText $subtitle))) | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($revisionContext)) {
+      $lines.Add(('<p><code>{0}</code></p>' -f (ConvertTo-HtmlText $revisionContext))) | Out-Null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($detailHtml)) {
+      $lines.Add($detailHtml) | Out-Null
+    }
     $lines.Add('') | Out-Null
     $lines.Add('<table>') | Out-Null
     $lines.Add('<thead><tr><th>Base</th><th>Head</th></tr></thead>') | Out-Null
