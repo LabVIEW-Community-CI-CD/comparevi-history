@@ -111,6 +111,7 @@ jobs:
             'scripts/Write-CompareVIHistoryPullRequestDiscovery.ps1',
             'scripts/Write-CompareVIHistoryAutomaticPullRequestDiscovery.ps1',
             'scripts/Invoke-CompareVIHistoryReviewBundleCompiler.ps1',
+            'scripts/CompareVIHistoryReviewBundleProjection.psm1',
             'scripts/Write-CompareVIHistoryPullRequestPreviewManifest.ps1',
             'scripts/Write-CompareVIHistoryRevisionCatalog.ps1',
             'scripts/Write-CompareVIHistoryChunkPlan.ps1',
@@ -150,6 +151,7 @@ jobs:
             'scripts/Test-CompareVIHistoryAutomaticPullRequestRun.ps1',
             'scripts/Test-CompareVIHistoryPullRequestPreviewManifest.ps1',
             'scripts/Test-CompareVIHistoryReviewBundleCompiler.ps1',
+            'scripts/Test-CompareVIHistoryReviewBundleProjection.ps1',
             'scripts/Test-CompareVIHistoryAgentCanaryEvaluation.ps1',
             'scripts/Test-CompareVIHistoryPullRequestCommentPublication.ps1',
             'scripts/Test-CompareVIHistoryTemplateContracts.ps1'
@@ -210,6 +212,7 @@ jobs:
             'scripts/Test-CompareVIHistoryAutomaticPullRequestRun.ps1',
             'scripts/Test-CompareVIHistoryPullRequestPreviewManifest.ps1',
             'scripts/Test-CompareVIHistoryReviewBundleCompiler.ps1',
+            'scripts/Test-CompareVIHistoryReviewBundleProjection.ps1',
             'scripts/Test-CompareVIHistoryAgentCanaryEvaluation.ps1',
             'scripts/Test-CompareVIHistoryPullRequestCommentPublication.ps1',
             'scripts/Test-CompareVIHistoryRequest.ps1',
