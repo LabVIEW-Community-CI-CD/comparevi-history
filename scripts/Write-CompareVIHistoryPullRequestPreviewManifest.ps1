@@ -402,6 +402,40 @@ function Get-PreviewPairReviewerIdentityKey {
     $(if ([string]::IsNullOrWhiteSpace([string]$PreviewPair.headImageSha256)) { [string]$PreviewPair.headImageRelativePath } else { [string]$PreviewPair.headImageSha256 })
 }
 
+function Get-ReviewerPreviewSurfaceKind {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  switch ([string]$PreviewPair.mode) {
+    'front-panel' { return 'front-panel' }
+    'block-diagram' { return 'block-diagram' }
+    default { return $null }
+  }
+}
+
+function Get-ReviewerPreviewSurfaceLabel {
+  param(
+    [AllowNull()]
+    [string]$SurfaceKind,
+    [AllowNull()]
+    [string]$FallbackLabel
+  )
+
+  switch ($SurfaceKind) {
+    'front-panel' { return 'Front panel' }
+    'block-diagram' { return 'Block diagram' }
+    default {
+      if (-not [string]::IsNullOrWhiteSpace($FallbackLabel)) {
+        return $FallbackLabel
+      }
+
+      return 'Preview'
+    }
+  }
+}
+
 function Get-ReviewerPreviewPairArray {
   param(
     [AllowNull()]
@@ -437,6 +471,106 @@ function Select-PreviewPairs {
     Get-ReviewerPreviewPairArray -Value $PreviewPairs |
       Select-Object -First $Limit
   )
+}
+
+function Get-ReviewerPreviewCardKey {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  return '{0}|{1}' -f `
+    [string]$PreviewPair.targetId, `
+    [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
+}
+
+function New-ReviewerPreviewSurface {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object]$PreviewPair
+  )
+
+  $surfaceKind = Get-ReviewerPreviewSurfaceKind -PreviewPair $PreviewPair
+  if ([string]::IsNullOrWhiteSpace($surfaceKind)) {
+    $surfaceKind = 'preview'
+  }
+
+  return [ordered]@{
+    surfaceKind = $surfaceKind
+    surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind $surfaceKind -FallbackLabel ([string]$PreviewPair.label)
+    mode = Get-OptionalString -Value $PreviewPair.mode
+    label = [string]$PreviewPair.label
+    reportHtmlRelativePath = Get-OptionalString -Value $PreviewPair.reportHtmlRelativePath
+    baseImageRelativePath = [string]$PreviewPair.baseImageRelativePath
+    headImageRelativePath = [string]$PreviewPair.headImageRelativePath
+    baseByteLength = [int64](Get-NestedValue -Object $PreviewPair -Path @('baseByteLength') -Default 0)
+    headByteLength = [int64](Get-NestedValue -Object $PreviewPair -Path @('headByteLength') -Default 0)
+    baseImageSha256 = Get-OptionalString -Value $PreviewPair.baseImageSha256
+    headImageSha256 = Get-OptionalString -Value $PreviewPair.headImageSha256
+    sortKey = Get-OptionalString -Value $PreviewPair.sortKey
+  }
+}
+
+function New-ReviewerPreviewCards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [object[]]$SelectedPreviewPairs,
+    [AllowEmptyCollection()]
+    [object[]]$AllPreviewPairs = @()
+  )
+
+  $orderedAllPreviewPairs = @(ConvertTo-PreviewPairArray -Value $AllPreviewPairs)
+  if ($orderedAllPreviewPairs.Count -eq 0) {
+    $orderedAllPreviewPairs = @(ConvertTo-PreviewPairArray -Value $SelectedPreviewPairs)
+  }
+
+  $cards = New-Object System.Collections.Generic.List[object]
+  $seenCards = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($selectedPreviewPair in @(ConvertTo-PreviewPairArray -Value $SelectedPreviewPairs)) {
+    $cardKey = Get-ReviewerPreviewCardKey -PreviewPair $selectedPreviewPair
+    if (-not $seenCards.Add($cardKey)) {
+      continue
+    }
+
+    $matchingPairs = @(
+      $orderedAllPreviewPairs |
+        Where-Object {
+          (Get-ReviewerPreviewCardKey -PreviewPair $_) -eq $cardKey
+        }
+    )
+    if ($matchingPairs.Count -eq 0) {
+      $matchingPairs = @($selectedPreviewPair)
+    }
+
+    $surfaces = New-Object System.Collections.Generic.List[object]
+    $seenSurfaceKinds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($matchingPair in $matchingPairs) {
+      $surfaceKind = Get-ReviewerPreviewSurfaceKind -PreviewPair $matchingPair
+      if ([string]::IsNullOrWhiteSpace($surfaceKind)) {
+        continue
+      }
+
+      if (-not $seenSurfaceKinds.Add($surfaceKind)) {
+        continue
+      }
+
+      $surfaces.Add((New-ReviewerPreviewSurface -PreviewPair $matchingPair)) | Out-Null
+    }
+
+    if ($surfaces.Count -eq 0) {
+      $surfaces.Add((New-ReviewerPreviewSurface -PreviewPair $selectedPreviewPair)) | Out-Null
+    }
+
+    $cards.Add([ordered]@{
+        targetId = [string]$selectedPreviewPair.targetId
+        targetPath = [string]$selectedPreviewPair.targetPath
+        comparison = $selectedPreviewPair.comparison
+        sortKey = Get-OptionalString -Value $selectedPreviewPair.sortKey
+        surfaces = @($surfaces | ForEach-Object { $_ })
+      }) | Out-Null
+  }
+
+  return @($cards | ForEach-Object { $_ })
 }
 
 function Get-ReportPreviewPairs {
@@ -610,10 +744,19 @@ $orderedPreviewPairs = @(ConvertTo-PreviewPairArray -Value $allPreviewPairs)
 $reviewerPreviewPairs = @(Get-ReviewerPreviewPairArray -Value $orderedPreviewPairs)
 $commentPreviewPairs = @(Select-PreviewPairs -PreviewPairs $orderedPreviewPairs -Limit $CommentPreviewPairCap)
 $indexPreviewPairs = @(Select-PreviewPairs -PreviewPairs $orderedPreviewPairs -Limit $IndexPreviewPairCap)
+$reviewerPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $reviewerPreviewPairs -AllPreviewPairs $orderedPreviewPairs)
+$commentPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $commentPreviewPairs -AllPreviewPairs $orderedPreviewPairs)
+$indexPreviewCards = @(New-ReviewerPreviewCards -SelectedPreviewPairs $indexPreviewPairs -AllPreviewPairs $orderedPreviewPairs)
 $targetReceiptArray = @($targetReceipts | ForEach-Object { $_ })
 $orderedPreviewPairArray = @($orderedPreviewPairs | ForEach-Object { $_ })
 $commentPreviewPairArray = @($commentPreviewPairs | ForEach-Object { $_ })
 $indexPreviewPairArray = @($indexPreviewPairs | ForEach-Object { $_ })
+$reviewerPreviewCardArray = @($reviewerPreviewCards | ForEach-Object { $_ })
+$commentPreviewCardArray = @($commentPreviewCards | ForEach-Object { $_ })
+$indexPreviewCardArray = @($indexPreviewCards | ForEach-Object { $_ })
+$reviewerPreviewSurfaceCount = [int](@($reviewerPreviewCards | ForEach-Object { @(ConvertTo-ObjectArray -Value $_.surfaces).Count } | Measure-Object -Sum).Sum)
+$commentPreviewSurfaceCount = [int](@($commentPreviewCards | ForEach-Object { @(ConvertTo-ObjectArray -Value $_.surfaces).Count } | Measure-Object -Sum).Sum)
+$indexPreviewSurfaceCount = [int](@($indexPreviewCards | ForEach-Object { @(ConvertTo-ObjectArray -Value $_.surfaces).Count } | Measure-Object -Sum).Sum)
 
 $receipt = [ordered]@{
   schema = 'comparevi-history/pr-preview-manifest@v1'
@@ -625,19 +768,30 @@ $receipt = [ordered]@{
     previewPairCount = $orderedPreviewPairs.Count
     rawPreviewPairCount = $orderedPreviewPairs.Count
     reviewerPreviewPairCount = $reviewerPreviewPairs.Count
+    reviewerPreviewCardCount = $reviewerPreviewCards.Count
+    reviewerPreviewSurfaceCount = $reviewerPreviewSurfaceCount
     commentPreviewPairCap = [int]$CommentPreviewPairCap
     commentSelectionPolicy = 'reviewer-canonical@v1'
     commentPreviewPairCount = $commentPreviewPairs.Count
     commentPreviewPairOmittedCount = [Math]::Max($reviewerPreviewPairs.Count - $commentPreviewPairs.Count, 0)
+    commentPreviewCardCount = $commentPreviewCards.Count
+    commentPreviewSurfaceCount = $commentPreviewSurfaceCount
+    commentCardSelectionPolicy = 'reviewer-multisurface@v1'
     indexPreviewPairCap = [int]$IndexPreviewPairCap
     indexSelectionPolicy = 'reviewer-canonical@v1'
     indexPreviewPairCount = $indexPreviewPairs.Count
     indexPreviewPairOmittedCount = [Math]::Max($reviewerPreviewPairs.Count - $indexPreviewPairs.Count, 0)
+    indexPreviewCardCount = $indexPreviewCards.Count
+    indexPreviewSurfaceCount = $indexPreviewSurfaceCount
+    indexCardSelectionPolicy = 'reviewer-multisurface@v1'
   }
   targets = $targetReceiptArray
   previewPairs = $orderedPreviewPairArray
   commentPreviewPairs = $commentPreviewPairArray
   indexPreviewPairs = $indexPreviewPairArray
+  reviewerPreviewCards = $reviewerPreviewCardArray
+  commentPreviewCards = $commentPreviewCardArray
+  indexPreviewCards = $indexPreviewCardArray
 }
 
 $receipt | ConvertTo-Json -Depth 64 | Set-Content -LiteralPath $outputPathResolved -Encoding utf8
@@ -650,6 +804,12 @@ Write-ActionOutput -Key 'comment-preview-pair-count' -Value ([string]$commentPre
 Write-ActionOutput -Key 'comment-preview-pair-omitted-count' -Value ([string][Math]::Max($reviewerPreviewPairs.Count - $commentPreviewPairs.Count, 0))
 Write-ActionOutput -Key 'index-preview-pair-count' -Value ([string]$indexPreviewPairs.Count)
 Write-ActionOutput -Key 'index-preview-pair-omitted-count' -Value ([string][Math]::Max($reviewerPreviewPairs.Count - $indexPreviewPairs.Count, 0))
+Write-ActionOutput -Key 'reviewer-preview-card-count' -Value ([string]$reviewerPreviewCards.Count)
+Write-ActionOutput -Key 'reviewer-preview-surface-count' -Value ([string]$reviewerPreviewSurfaceCount)
+Write-ActionOutput -Key 'comment-preview-card-count' -Value ([string]$commentPreviewCards.Count)
+Write-ActionOutput -Key 'comment-preview-surface-count' -Value ([string]$commentPreviewSurfaceCount)
+Write-ActionOutput -Key 'index-preview-card-count' -Value ([string]$indexPreviewCards.Count)
+Write-ActionOutput -Key 'index-preview-surface-count' -Value ([string]$indexPreviewSurfaceCount)
 
 if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
   @(
@@ -657,7 +817,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ''
     ('- Preview manifest: `{0}`' -f $outputPathResolved)
     ('- Raw preview pairs: `{0}`' -f $orderedPreviewPairs.Count)
-    ('- Reviewer preview pairs: `{0}`' -f $reviewerPreviewPairs.Count)
+    ('- Reviewer preview cards: `{0}` across `{1}` visual surfaces' -f $reviewerPreviewCards.Count, $reviewerPreviewSurfaceCount)
     ('- Comment preview pairs: `{0}` shown, `{1}` omitted, cap `{2}`' -f $commentPreviewPairs.Count, [Math]::Max($reviewerPreviewPairs.Count - $commentPreviewPairs.Count, 0), [int]$CommentPreviewPairCap)
     ('- Index preview pairs: `{0}` shown, `{1}` omitted, cap `{2}`' -f $indexPreviewPairs.Count, [Math]::Max($reviewerPreviewPairs.Count - $indexPreviewPairs.Count, 0), [int]$IndexPreviewPairCap)
   ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append

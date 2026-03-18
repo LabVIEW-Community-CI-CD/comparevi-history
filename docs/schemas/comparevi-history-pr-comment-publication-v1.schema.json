@@ -119,9 +119,56 @@
           "type": "integer",
           "minimum": 0
         },
+        "publishedSurfaceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "publishedImageCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "commentPreviewCards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "targetId",
+              "targetPath",
+              "comparison",
+              "surfaces"
+            ],
+            "properties": {
+              "targetId": { "type": "string", "minLength": 1 },
+              "targetPath": { "type": "string", "minLength": 1 },
+              "comparison": { "type": "object" },
+              "surfaces": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "surfaceKind",
+                    "surfaceLabel",
+                    "reportHtmlRelativePath",
+                    "baseImagePath",
+                    "baseImageUrl",
+                    "headImagePath",
+                    "headImageUrl"
+                  ],
+                  "properties": {
+                    "surfaceKind": { "type": "string", "minLength": 1 },
+                    "surfaceLabel": { "type": "string", "minLength": 1 },
+                    "reportHtmlRelativePath": { "type": ["string", "null"] },
+                    "baseImagePath": { "type": "string", "minLength": 1 },
+                    "baseImageUrl": { "type": "string", "minLength": 1 },
+                    "headImagePath": { "type": "string", "minLength": 1 },
+                    "headImageUrl": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          }
         },
         "commentPreviewPairs": {
           "type": "array",

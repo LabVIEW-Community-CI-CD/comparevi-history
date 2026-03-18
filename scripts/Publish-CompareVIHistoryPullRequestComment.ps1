@@ -320,6 +320,156 @@ function Get-ReviewerPreviewSubtitle {
   return 'History pair {0}' -f (Get-ReviewerPreviewComparisonIndex -PreviewPair $PreviewPair)
 }
 
+function Get-ReviewerPreviewSurfaceKind {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  switch ([string]$PreviewPair.mode) {
+    'front-panel' { return 'front-panel' }
+    'block-diagram' { return 'block-diagram' }
+    default { return $null }
+  }
+}
+
+function Get-ReviewerPreviewSurfaceLabel {
+  param(
+    [AllowNull()][string]$SurfaceKind,
+    [AllowNull()][string]$FallbackLabel
+  )
+
+  switch ($SurfaceKind) {
+    'front-panel' { return 'Front panel' }
+    'block-diagram' { return 'Block diagram' }
+    default {
+      if (-not [string]::IsNullOrWhiteSpace($FallbackLabel)) {
+        return $FallbackLabel
+      }
+
+      return 'Preview'
+    }
+  }
+}
+
+function Get-ReviewerPreviewCardKey {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  return '{0}|{1}' -f `
+    [string]$PreviewPair.targetId, `
+    [int](Get-NestedValue -Object $PreviewPair -Path @('comparison', 'index') -Default 0)
+}
+
+function New-ReviewerPreviewManifestSurface {
+  param([Parameter(Mandatory = $true)][object]$PreviewPair)
+
+  $surfaceKind = Get-ReviewerPreviewSurfaceKind -PreviewPair $PreviewPair
+  if ([string]::IsNullOrWhiteSpace($surfaceKind)) {
+    $surfaceKind = 'preview'
+  }
+
+  return [ordered]@{
+    surfaceKind = $surfaceKind
+    surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind $surfaceKind -FallbackLabel ([string]$PreviewPair.label)
+    mode = Get-OptionalString -Value $PreviewPair.mode
+    label = [string]$PreviewPair.label
+    reportHtmlRelativePath = Get-OptionalString -Value $PreviewPair.reportHtmlRelativePath
+    baseImageRelativePath = [string]$PreviewPair.baseImageRelativePath
+    headImageRelativePath = [string]$PreviewPair.headImageRelativePath
+  }
+}
+
+function New-ReviewerPreviewCards {
+  param(
+    [AllowEmptyCollection()][object[]]$SelectedPreviewPairs = @(),
+    [AllowEmptyCollection()][object[]]$AllPreviewPairs = @(),
+    [AllowEmptyCollection()][object[]]$ExistingCards = @()
+  )
+
+  if ($ExistingCards.Count -gt 0) {
+    return @(
+      ConvertTo-ObjectArray -Value $ExistingCards |
+        Sort-Object {
+          $comparisonIndex = [int](Get-NestedValue -Object $_ -Path @('comparison', 'index') -Default 0)
+          '{0}|{1:D4}' -f [string]$_.targetPath, $comparisonIndex
+        }
+    )
+  }
+
+  $orderedAllPreviewPairs = @(
+    ConvertTo-ObjectArray -Value $AllPreviewPairs |
+      Sort-Object {
+        $sortKey = Get-OptionalString -Value $_.sortKey
+        if ([string]::IsNullOrWhiteSpace($sortKey)) {
+          [string]$_.label
+        } else {
+          $sortKey
+        }
+      }
+  )
+  if ($orderedAllPreviewPairs.Count -eq 0) {
+    $orderedAllPreviewPairs = @(
+      ConvertTo-ObjectArray -Value $SelectedPreviewPairs |
+        Sort-Object {
+          $sortKey = Get-OptionalString -Value $_.sortKey
+          if ([string]::IsNullOrWhiteSpace($sortKey)) {
+            [string]$_.label
+          } else {
+            $sortKey
+          }
+        }
+    )
+  }
+
+  $cards = New-Object System.Collections.Generic.List[object]
+  $seenCards = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($selectedPreviewPair in @(
+      ConvertTo-ObjectArray -Value $SelectedPreviewPairs |
+        Sort-Object {
+          $sortKey = Get-OptionalString -Value $_.sortKey
+          if ([string]::IsNullOrWhiteSpace($sortKey)) {
+            [string]$_.label
+          } else {
+            $sortKey
+          }
+        }
+    )) {
+    $cardKey = Get-ReviewerPreviewCardKey -PreviewPair $selectedPreviewPair
+    if (-not $seenCards.Add($cardKey)) {
+      continue
+    }
+
+    $matchingPairs = @(
+      $orderedAllPreviewPairs |
+        Where-Object { (Get-ReviewerPreviewCardKey -PreviewPair $_) -eq $cardKey }
+    )
+    if ($matchingPairs.Count -eq 0) {
+      $matchingPairs = @($selectedPreviewPair)
+    }
+
+    $surfaces = New-Object System.Collections.Generic.List[object]
+    $seenSurfaces = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($matchingPair in $matchingPairs) {
+      $surface = New-ReviewerPreviewManifestSurface -PreviewPair $matchingPair
+      if (-not $seenSurfaces.Add([string]$surface.surfaceKind)) {
+        continue
+      }
+
+      $surfaces.Add($surface) | Out-Null
+    }
+
+    if ($surfaces.Count -eq 0) {
+      $surfaces.Add((New-ReviewerPreviewManifestSurface -PreviewPair $selectedPreviewPair)) | Out-Null
+    }
+
+    $cards.Add([ordered]@{
+        targetId = [string]$selectedPreviewPair.targetId
+        targetPath = [string]$selectedPreviewPair.targetPath
+        comparison = $selectedPreviewPair.comparison
+        surfaces = @($surfaces | ForEach-Object { $_ })
+      }) | Out-Null
+  }
+
+  return @($cards | ForEach-Object { $_ })
+}
+
 function ConvertTo-GitHubContentPath {
   param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -450,33 +600,28 @@ function ConvertTo-BlobGitHubUrl {
 function New-CommentPreviewMarkdown {
   param(
     [Parameter(Mandatory = $true)]
-    [object[]]$PreviewPairs,
+    [object[]]$PreviewCards,
     [AllowNull()]
     [string]$RunUrl
   )
 
-  if ($PreviewPairs.Count -eq 0) {
+  if ($PreviewCards.Count -eq 0) {
     return ''
   }
 
   $lines = New-Object System.Collections.Generic.List[string]
   $lines.Add('### Preview gallery') | Out-Null
   $lines.Add('') | Out-Null
-  foreach ($previewPair in $PreviewPairs) {
-    $title = Get-ReviewerPreviewTitle -PreviewPair $previewPair
-    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewPair
-    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewPair
-    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewPair)
+  foreach ($previewCard in $PreviewCards) {
+    $title = Get-ReviewerPreviewTitle -PreviewPair $previewCard
+    $subtitle = Get-ReviewerPreviewSubtitle -PreviewPair $previewCard
+    $revisionContext = Get-ReviewerPreviewRevisionContext -PreviewPair $previewCard
+    $detailLines = @(Get-ReviewerPreviewDetailLines -PreviewPair $previewCard)
     $detailHtml = if ($detailLines.Count -eq 0) {
       ''
     } else {
       '<div class="comparevi-preview-history">' + (($detailLines | ForEach-Object { '<p>' + (ConvertTo-HtmlText $_) + '</p>' }) -join '') + '</div>'
     }
-    $baseUrl = [string]$previewPair.baseImageUrl
-    $headUrl = [string]$previewPair.headImageUrl
-    $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
-    $baseAlt = '{0} base' -f $subtitle
-    $headAlt = '{0} head' -f $subtitle
     $lines.Add(('<h4><code>{0}</code></h4>' -f (ConvertTo-HtmlText $title))) | Out-Null
     $lines.Add(('<p>{0}</p>' -f (ConvertTo-HtmlText $subtitle))) | Out-Null
     if (-not [string]::IsNullOrWhiteSpace($revisionContext)) {
@@ -485,14 +630,23 @@ function New-CommentPreviewMarkdown {
     if (-not [string]::IsNullOrWhiteSpace($detailHtml)) {
       $lines.Add($detailHtml) | Out-Null
     }
-    $lines.Add('') | Out-Null
-    $lines.Add('<table>') | Out-Null
-    $lines.Add('<thead><tr><th>Base</th><th>Head</th></tr></thead>') | Out-Null
-    $lines.Add('<tbody><tr>') | Out-Null
-    $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $baseAlt), (ConvertTo-HtmlText $baseUrl))) | Out-Null
-    $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $headAlt), (ConvertTo-HtmlText $headUrl))) | Out-Null
-    $lines.Add('</tr></tbody>') | Out-Null
-    $lines.Add('</table>') | Out-Null
+    foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
+      $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+      $baseUrl = [string]$surface.baseImageUrl
+      $headUrl = [string]$surface.headImageUrl
+      $linkUrl = if ([string]::IsNullOrWhiteSpace($RunUrl)) { $headUrl } else { $RunUrl }
+      $baseAlt = '{0} base' -f $surfaceLabel
+      $headAlt = '{0} head' -f $surfaceLabel
+      $lines.Add('') | Out-Null
+      $lines.Add(('<p><strong>{0}</strong></p>' -f (ConvertTo-HtmlText $surfaceLabel))) | Out-Null
+      $lines.Add('<table>') | Out-Null
+      $lines.Add('<thead><tr><th>Base</th><th>Head</th></tr></thead>') | Out-Null
+      $lines.Add('<tbody><tr>') | Out-Null
+      $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $baseAlt), (ConvertTo-HtmlText $baseUrl))) | Out-Null
+      $lines.Add(('<td><a href="{0}"><img alt="{1}" src="{2}" width="320"></a></td>' -f (ConvertTo-HtmlText $linkUrl), (ConvertTo-HtmlText $headAlt), (ConvertTo-HtmlText $headUrl))) | Out-Null
+      $lines.Add('</tr></tbody>') | Out-Null
+      $lines.Add('</table>') | Out-Null
+    }
     if (-not [string]::IsNullOrWhiteSpace($RunUrl)) {
       $lines.Add(('<p><a href="{0}">workflow run</a></p>' -f (ConvertTo-HtmlText $RunUrl))) | Out-Null
     }
@@ -541,8 +695,11 @@ function Publish-CommentPreviewSurface {
   Ensure-PreviewBranch -RepositorySlug $RepositorySlug -BranchName $BranchName | Out-Null
 
   $prNumber = [int](Get-OptionalString -Value (Get-NestedValue -Object $PreviewManifest -Path @('pullRequest', 'number') -Default 0))
-  $previewPairs = @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $PreviewManifest -Path @('commentPreviewPairs') -Default @()))
-  if ($previewPairs.Count -eq 0) {
+  $previewCards = @(New-ReviewerPreviewCards `
+      -SelectedPreviewPairs @($PreviewManifest.commentPreviewPairs | ForEach-Object { $_ }) `
+      -AllPreviewPairs @($PreviewManifest.previewPairs | ForEach-Object { $_ }) `
+      -ExistingCards @($PreviewManifest.commentPreviewCards | ForEach-Object { $_ }))
+  if ($previewCards.Count -eq 0) {
     return [ordered]@{
       status = 'not-required'
       reason = 'no-comment-preview-pairs'
@@ -552,52 +709,87 @@ function Publish-CommentPreviewSurface {
       manifestUrl = $null
       previewPairCount = 0
       publishedImageCount = 0
+      publishedSurfaceCount = 0
+      commentPreviewCards = @()
       commentPreviewPairs = @()
     }
   }
 
   $runRoot = '{0}/pull-request-{1}/workflow-run-{2}' -f $RootPath.TrimEnd('/'), ('{0:D5}' -f $prNumber), $ExecutionRunId
+  $publishedPreviewCards = New-Object System.Collections.Generic.List[object]
   $publishedPreviewPairs = New-Object System.Collections.Generic.List[object]
   $publishedImageCount = 0
-  $pairOrdinal = 1
-  foreach ($previewPair in $previewPairs) {
-    $pairRoot = '{0}/{1}-{2}' -f $runRoot, ('{0:D3}' -f $pairOrdinal), (ConvertTo-Slug -Value ([string]$previewPair.label) -Fallback 'preview')
-    $baseRelativePath = [string]$previewPair.baseImageRelativePath
-    $headRelativePath = [string]$previewPair.headImageRelativePath
-    $baseImagePath = Join-Path $ArtifactRoot ($baseRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
-    $headImagePath = Join-Path $ArtifactRoot ($headRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
-    if (-not (Test-Path -LiteralPath $baseImagePath -PathType Leaf)) {
-      throw "Preview base image was missing from the downloaded artifact: $baseRelativePath"
-    }
-    if (-not (Test-Path -LiteralPath $headImagePath -PathType Leaf)) {
-      throw "Preview head image was missing from the downloaded artifact: $headRelativePath"
-    }
+  $publishedSurfaceCount = 0
+  $cardOrdinal = 1
+  foreach ($previewCard in $previewCards) {
+    $cardRoot = '{0}/{1}-{2}' -f $runRoot, ('{0:D3}' -f $cardOrdinal), ('history-pair-' + ('{0:D2}' -f (Get-ReviewerPreviewComparisonIndex -PreviewPair $previewCard)))
+    $publishedSurfaces = New-Object System.Collections.Generic.List[object]
+    $surfaceOrdinal = 1
+    foreach ($surface in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $previewCard -Path @('surfaces') -Default @()))) {
+      $surfaceLabel = Get-ReviewerPreviewSurfaceLabel -SurfaceKind (Get-OptionalString -Value $surface.surfaceKind) -FallbackLabel (Get-OptionalString -Value $surface.surfaceLabel)
+      $surfaceSlug = ConvertTo-Slug -Value (Get-OptionalString -Value $surface.surfaceKind) -Fallback ('surface-' + ('{0:D2}' -f $surfaceOrdinal))
+      $surfaceRoot = '{0}/{1}-{2}' -f $cardRoot, ('{0:D2}' -f $surfaceOrdinal), $surfaceSlug
+      $baseRelativePath = [string]$surface.baseImageRelativePath
+      $headRelativePath = [string]$surface.headImageRelativePath
+      $baseImagePath = Join-Path $ArtifactRoot ($baseRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+      $headImagePath = Join-Path $ArtifactRoot ($headRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+      if (-not (Test-Path -LiteralPath $baseImagePath -PathType Leaf)) {
+        throw "Preview base image was missing from the downloaded artifact: $baseRelativePath"
+      }
+      if (-not (Test-Path -LiteralPath $headImagePath -PathType Leaf)) {
+        throw "Preview head image was missing from the downloaded artifact: $headRelativePath"
+      }
 
-    $baseExtension = [System.IO.Path]::GetExtension($baseImagePath)
-    $headExtension = [System.IO.Path]::GetExtension($headImagePath)
-    $basePublishPath = '{0}/base{1}' -f $pairRoot, $baseExtension
-    $headPublishPath = '{0}/head{1}' -f $pairRoot, $headExtension
+      $baseExtension = [System.IO.Path]::GetExtension($baseImagePath)
+      $headExtension = [System.IO.Path]::GetExtension($headImagePath)
+      $basePublishPath = '{0}/base{1}' -f $surfaceRoot, $baseExtension
+      $headPublishPath = '{0}/head{1}' -f $surfaceRoot, $headExtension
 
-    $messageBase = 'comparevi-history: publish PR preview images for run {0}' -f $ExecutionRunId
-    Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath -Bytes ([System.IO.File]::ReadAllBytes($baseImagePath)) -Message $messageBase | Out-Null
-    Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $headPublishPath -Bytes ([System.IO.File]::ReadAllBytes($headImagePath)) -Message $messageBase | Out-Null
-    $publishedImageCount += 2
+      $messageBase = 'comparevi-history: publish PR preview images for run {0}' -f $ExecutionRunId
+      Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath -Bytes ([System.IO.File]::ReadAllBytes($baseImagePath)) -Message $messageBase | Out-Null
+      Set-RepositoryContent -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $headPublishPath -Bytes ([System.IO.File]::ReadAllBytes($headImagePath)) -Message $messageBase | Out-Null
+      $publishedImageCount += 2
+      $publishedSurfaceCount += 1
 
-    $publishedPreviewPairs.Add([ordered]@{
-        targetId = [string]$previewPair.targetId
-        targetPath = [string]$previewPair.targetPath
-        mode = [string]$previewPair.mode
-        label = [string]$previewPair.label
-        sectionKind = [string]$previewPair.sectionKind
-        comparison = $previewPair.comparison
-        reportHtmlRelativePath = Get-OptionalString -Value $previewPair.reportHtmlRelativePath
+      $publishedSurface = [ordered]@{
+        surfaceKind = Get-OptionalString -Value $surface.surfaceKind
+        surfaceLabel = $surfaceLabel
+        reportHtmlRelativePath = Get-OptionalString -Value $surface.reportHtmlRelativePath
         baseImagePath = $basePublishPath
         baseImageUrl = ConvertTo-RawGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $basePublishPath
         headImagePath = $headPublishPath
         headImageUrl = ConvertTo-RawGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $headPublishPath
-      }) | Out-Null
+      }
+      $publishedSurfaces.Add($publishedSurface) | Out-Null
+      $surfaceOrdinal += 1
+    }
 
-    $pairOrdinal += 1
+    $publishedCard = [ordered]@{
+      targetId = [string]$previewCard.targetId
+      targetPath = [string]$previewCard.targetPath
+      comparison = $previewCard.comparison
+      surfaces = @($publishedSurfaces | ForEach-Object { $_ })
+    }
+    $publishedPreviewCards.Add($publishedCard) | Out-Null
+
+    $representativeSurface = @($publishedSurfaces | Select-Object -First 1)
+    if ($null -ne $representativeSurface) {
+      $publishedPreviewPairs.Add([ordered]@{
+          targetId = [string]$previewCard.targetId
+          targetPath = [string]$previewCard.targetPath
+          mode = Get-OptionalString -Value $representativeSurface.surfaceKind
+          label = Get-OptionalString -Value $representativeSurface.surfaceLabel
+          sectionKind = 'overview'
+          comparison = $previewCard.comparison
+          reportHtmlRelativePath = Get-OptionalString -Value $representativeSurface.reportHtmlRelativePath
+          baseImagePath = [string]$representativeSurface.baseImagePath
+          baseImageUrl = [string]$representativeSurface.baseImageUrl
+          headImagePath = [string]$representativeSurface.headImagePath
+          headImageUrl = [string]$representativeSurface.headImageUrl
+        }) | Out-Null
+    }
+
+    $cardOrdinal += 1
   }
 
   $publishedManifestPath = "$runRoot/preview-manifest.json"
@@ -607,6 +799,7 @@ function Publish-CommentPreviewSurface {
     repository = $RepositorySlug
     branch = $BranchName
     root = $runRoot
+    previewCards = @($publishedPreviewCards | ForEach-Object { $_ })
     previewPairs = @($publishedPreviewPairs | ForEach-Object { $_ })
   }
   $publishedManifestBytes = [System.Text.Encoding]::UTF8.GetBytes(($publishedManifest | ConvertTo-Json -Depth 32))
@@ -619,8 +812,10 @@ function Publish-CommentPreviewSurface {
     root = $runRoot
     manifestPath = $publishedManifestPath
     manifestUrl = ConvertTo-BlobGitHubUrl -RepositorySlug $RepositorySlug -BranchName $BranchName -Path $publishedManifestPath
-    previewPairCount = $publishedPreviewPairs.Count
+    previewPairCount = $publishedPreviewCards.Count
     publishedImageCount = $publishedImageCount
+    publishedSurfaceCount = $publishedSurfaceCount
+    commentPreviewCards = @($publishedPreviewCards | ForEach-Object { $_ })
     commentPreviewPairs = @($publishedPreviewPairs | ForEach-Object { $_ })
   }
 }
@@ -689,6 +884,8 @@ $previewPublication = [ordered]@{
   manifestUrl = $null
   previewPairCount = 0
   publishedImageCount = 0
+  publishedSurfaceCount = 0
+  commentPreviewCards = @()
   commentPreviewPairs = @()
 }
 
@@ -740,7 +937,7 @@ try {
       $previewManifest | Add-Member -NotePropertyName pullRequest -NotePropertyValue $prRun.pullRequest -Force
       if ([int](Get-NestedValue -Object $previewManifest -Path @('summary', 'commentPreviewPairCount') -Default 0) -gt 0) {
         $previewPublication = Publish-CommentPreviewSurface -RepositorySlug $Repository -BranchName $PreviewBranch -RootPath $PreviewRoot -ExecutionRunId $WorkflowRunId -ArtifactRoot $artifactRoot -PreviewManifest $previewManifest
-        $previewMarkdown = New-CommentPreviewMarkdown -PreviewPairs @($previewPublication.commentPreviewPairs | ForEach-Object { $_ }) -RunUrl $workflowRunUrl
+        $previewMarkdown = New-CommentPreviewMarkdown -PreviewCards @($previewPublication.commentPreviewCards | ForEach-Object { $_ }) -RunUrl $workflowRunUrl
         $commentBody = Insert-PreviewGallery -CommentBody $commentBody -PreviewMarkdown $previewMarkdown
         $commentBody | Set-Content -LiteralPath $commentBodyPath -Encoding utf8
       } else {
@@ -753,6 +950,8 @@ try {
         manifestUrl = $null
         previewPairCount = 0
         publishedImageCount = 0
+        publishedSurfaceCount = 0
+        commentPreviewCards = @()
         commentPreviewPairs = @()
       }
     }
@@ -829,6 +1028,7 @@ Write-ActionOutput -Key 'preview-publication-reason' -Value ([string]$previewPub
 Write-ActionOutput -Key 'preview-manifest-url' -Value $(if ([string]::IsNullOrWhiteSpace([string]$previewPublication.manifestUrl)) { '' } else { [string]$previewPublication.manifestUrl })
 Write-ActionOutput -Key 'preview-pair-count' -Value ([string]$previewPublication.previewPairCount)
 Write-ActionOutput -Key 'published-image-count' -Value ([string]$previewPublication.publishedImageCount)
+Write-ActionOutput -Key 'published-surface-count' -Value ([string](Get-NestedValue -Object $previewPublication -Path @('publishedSurfaceCount') -Default 0))
 
 if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
   @(
@@ -845,6 +1045,7 @@ if (-not [string]::IsNullOrWhiteSpace($StepSummaryPath)) {
     ('- Preview publication reason: `{0}`' -f [string]$previewPublication.reason)
     ('- Preview publication manifest: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$previewPublication.manifestUrl)) { 'n/a' } else { [string]$previewPublication.manifestUrl }))
     ('- Published preview pairs: `{0}`' -f [string]$previewPublication.previewPairCount)
+    ('- Published preview surfaces: `{0}`' -f [string](Get-NestedValue -Object $previewPublication -Path @('publishedSurfaceCount') -Default 0))
     ('- Published preview images: `{0}`' -f [string]$previewPublication.publishedImageCount)
     ('- Receipt: `{0}`' -f $receiptPath)
   ) | Out-File -FilePath $StepSummaryPath -Encoding utf8 -Append

@@ -134,14 +134,28 @@ try {
   if ($receipt.summary.rawPreviewPairCount -ne 6 -or $receipt.summary.reviewerPreviewPairCount -ne 2) {
     throw 'Expected explicit raw and reviewer preview pair counts in the preview manifest summary.'
   }
+  if ($receipt.summary.reviewerPreviewCardCount -ne 2 -or
+    $receipt.summary.reviewerPreviewSurfaceCount -ne 4) {
+    throw 'Expected reviewer preview card and surface counts in the preview manifest summary.'
+  }
   if ($receipt.summary.commentSelectionPolicy -ne 'reviewer-canonical@v1' -or $receipt.summary.indexSelectionPolicy -ne 'reviewer-canonical@v1') {
     throw 'Expected explicit reviewer-canonical selection policies in the preview manifest summary.'
   }
   if ($receipt.summary.commentPreviewPairCount -ne 2 -or $receipt.summary.commentPreviewPairOmittedCount -ne 0) {
     throw 'Comment preview pair selection mismatch.'
   }
+  if ($receipt.summary.commentPreviewCardCount -ne 2 -or
+    $receipt.summary.commentPreviewSurfaceCount -ne 4 -or
+    $receipt.summary.commentCardSelectionPolicy -ne 'reviewer-multisurface@v1') {
+    throw 'Comment preview card summary mismatch.'
+  }
   if ($receipt.summary.indexPreviewPairCount -ne 2 -or $receipt.summary.indexPreviewPairOmittedCount -ne 0) {
     throw 'Index preview pair selection mismatch.'
+  }
+  if ($receipt.summary.indexPreviewCardCount -ne 2 -or
+    $receipt.summary.indexPreviewSurfaceCount -ne 4 -or
+    $receipt.summary.indexCardSelectionPolicy -ne 'reviewer-multisurface@v1') {
+    throw 'Index preview card summary mismatch.'
   }
   if ($receipt.targets.Count -ne 1 -or $receipt.targets[0].previewPairCount -ne 6) {
     throw 'Target preview pair count mismatch.'
@@ -177,6 +191,24 @@ try {
     $null -ne $receipt.commentPreviewPairs[0].comparison.headSubject) {
     throw 'Preview manifest fixture without a repository root should not invent commit subjects.'
   }
+  if ($receipt.commentPreviewCards.Count -ne 2 -or $receipt.indexPreviewCards.Count -ne 2) {
+    throw 'Expected reviewer preview cards for both comment and index surfaces.'
+  }
+  $commentCardSurfaceSummary = @(
+    $receipt.commentPreviewCards[0].surfaces |
+      ForEach-Object { [string]$_.surfaceKind }
+  ) -join ','
+  if ($commentCardSurfaceSummary -ne 'front-panel,block-diagram') {
+    throw "Expected the first reviewer card to surface both front-panel and block-diagram images. Actual: $commentCardSurfaceSummary"
+  }
+  if ($receipt.commentPreviewCards[0].surfaces[0].surfaceLabel -ne 'Front panel' -or
+    $receipt.commentPreviewCards[0].surfaces[1].surfaceLabel -ne 'Block diagram') {
+    throw 'Reviewer cards should use reviewer-facing surface labels.'
+  }
+  if ($receipt.commentPreviewCards[0].surfaces[0].baseImageRelativePath -ne 'targets/001-demo/history/front-panel/Demo.vi-001-artifacts/compare-report_files/fp_1.png' -or
+    $receipt.commentPreviewCards[0].surfaces[1].baseImageRelativePath -ne 'targets/001-demo/history/block-diagram/Demo.vi-001-artifacts/compare-report_files/fp_1.png') {
+    throw 'Reviewer cards should preserve both front-panel and block-diagram image paths for the same history pair.'
+  }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw
   foreach ($requiredKey in @(
@@ -187,7 +219,13 @@ try {
       'comment-preview-pair-count=2',
       'comment-preview-pair-omitted-count=0',
       'index-preview-pair-count=2',
-      'index-preview-pair-omitted-count=0'
+      'index-preview-pair-omitted-count=0',
+      'reviewer-preview-card-count=2',
+      'reviewer-preview-surface-count=4',
+      'comment-preview-card-count=2',
+      'comment-preview-surface-count=4',
+      'index-preview-card-count=2',
+      'index-preview-surface-count=4'
     )) {
     if ($outputText -notmatch [regex]::Escape($requiredKey)) {
       throw "Expected GitHub output '$requiredKey'."
