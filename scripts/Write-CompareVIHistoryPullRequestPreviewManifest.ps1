@@ -453,6 +453,242 @@ function Normalize-ReviewerChangeDetailHeading {
   return (($normalizedHeading -replace '^\d+\.\s*', '').Trim())
 }
 
+function Get-ReviewerChangeDetailSectionOrdinal {
+  param(
+    [AllowNull()]
+    [string]$Heading
+  )
+
+  $normalizedHeading = Get-OptionalString -Value $Heading
+  if ([string]::IsNullOrWhiteSpace($normalizedHeading)) {
+    return $null
+  }
+
+  $ordinalMatch = [regex]::Match($normalizedHeading, '^\s*(?<ordinal>\d+)\.')
+  if (-not $ordinalMatch.Success) {
+    return $null
+  }
+
+  return [int]$ordinalMatch.Groups['ordinal'].Value
+}
+
+function Get-ReviewerChangeDetailLineParts {
+  param(
+    [AllowNull()]
+    [string]$DetailLine
+  )
+
+  $normalizedDetailLine = Get-OptionalString -Value $DetailLine
+  if ([string]::IsNullOrWhiteSpace($normalizedDetailLine)) {
+    return [ordered]@{
+      subject = $null
+      action = $null
+    }
+  }
+
+  $prefix = $normalizedDetailLine
+  $colonIndex = $prefix.IndexOf(':')
+  if ($colonIndex -ge 0) {
+    $prefix = $prefix.Substring(0, $colonIndex)
+  }
+
+  $prefix = ($prefix -replace '\s+', ' ').Trim()
+  if ([string]::IsNullOrWhiteSpace($prefix)) {
+    return [ordered]@{
+      subject = $null
+      action = $null
+    }
+  }
+
+  $subject = $prefix
+  $action = $null
+  $actionMatch = [regex]::Match($prefix, '^(?<subject>.*?)\s*-\s*(?<action>[^-].+?)$')
+  if ($actionMatch.Success) {
+    $subject = ($actionMatch.Groups['subject'].Value -replace '\s+', ' ').Trim()
+    $action = ($actionMatch.Groups['action'].Value -replace '\s+', ' ').Trim()
+  }
+
+  if ([string]::IsNullOrWhiteSpace($subject)) {
+    $subject = $null
+  }
+
+  if ([string]::IsNullOrWhiteSpace($action)) {
+    $action = $null
+  }
+
+  return [ordered]@{
+    subject = $subject
+    action = $action
+  }
+}
+
+function Get-ReviewerSemanticHeadingFromSection {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$SectionHeading,
+    [AllowNull()]
+    [string]$DetailLine
+  )
+
+  $normalizedHeading = Normalize-ReviewerChangeDetailHeading -Heading $SectionHeading
+  if ([string]::IsNullOrWhiteSpace($normalizedHeading)) {
+    return 'Change details'
+  }
+
+  $detailParts = Get-ReviewerChangeDetailLineParts -DetailLine $DetailLine
+  $subject = Get-OptionalString -Value $detailParts.subject
+  $action = (Get-OptionalString -Value $detailParts.action)
+  if (-not [string]::IsNullOrWhiteSpace($action)) {
+    $action = $action.ToLowerInvariant()
+  }
+
+  switch -Regex ($normalizedHeading) {
+    '^Block Diagram objects$' {
+      switch ($action) {
+        'moved' { return 'Block diagram moves' }
+        'resized' { return 'Block diagram resizing' }
+        'deleted' { return 'Removed block diagram objects' }
+        'added' { return 'Added block diagram objects' }
+        default { return 'Block diagram object changes' }
+      }
+    }
+    '^Front Panel objects$' {
+      switch ($action) {
+        'moved' { return 'Front panel layout moves' }
+        'resized' { return 'Front panel resizing' }
+        'deleted' { return 'Removed front panel objects' }
+        'added' { return 'Added front panel objects' }
+        default { return 'Front panel object changes' }
+      }
+    }
+    '^VI Attribute\b' {
+      if ($subject -match '^VI Version$') {
+        return 'VI version changes'
+      }
+
+      if ($subject -match '^Execution\b') {
+        return 'Execution changes'
+      }
+
+      if ($subject -match '^Icon\b') {
+        return 'Icon changes'
+      }
+
+      return 'VI attribute changes'
+    }
+    default {
+      return $normalizedHeading
+    }
+  }
+}
+
+function Get-ReviewerChangeDetailSectionsFromReport {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ReportHtmlPath,
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot
+  )
+
+  if (-not (Test-Path -LiteralPath $ReportHtmlPath -PathType Leaf)) {
+    return [ordered]@{
+      reportHtml = $null
+      sections = @()
+    }
+  }
+
+  $reportHtml = Get-Content -LiteralPath $ReportHtmlPath -Raw
+  if ([string]::IsNullOrWhiteSpace($reportHtml)) {
+    return [ordered]@{
+      reportHtml = $reportHtml
+      sections = @()
+    }
+  }
+
+  $sections = New-Object System.Collections.Generic.List[object]
+  $detailPattern = '(?is)(?<open><details(?<detailsAttributes>[^>]*)>)\s*<summary(?<summaryAttributes>[^>]*)>(?<summary>.*?)</summary>(?<body>.*?)</details>'
+  $matches = [regex]::Matches($reportHtml, $detailPattern)
+  if ($matches.Count -eq 0) {
+    return [ordered]@{
+      reportHtml = $reportHtml
+      sections = @()
+    }
+  }
+
+  $builder = New-Object System.Text.StringBuilder
+  $cursor = 0
+  $sectionIndex = 0
+  $htmlChanged = $false
+
+  foreach ($match in $matches) {
+    $null = $builder.Append($reportHtml.Substring($cursor, $match.Index - $cursor))
+
+    $blockHtml = [string]$match.Value
+    $bodyHtml = [string]$match.Groups['body'].Value
+    if ($bodyHtml -match 'detailed-description-list') {
+      $sectionIndex += 1
+      $summaryText = ConvertFrom-HtmlText -Value ([string]$match.Groups['summary'].Value)
+      $heading = Normalize-ReviewerChangeDetailHeading -Heading $summaryText
+      if ([string]::IsNullOrWhiteSpace($heading)) {
+        $heading = 'Change details'
+      }
+
+      $sectionOrdinal = Get-ReviewerChangeDetailSectionOrdinal -Heading $summaryText
+      if ($null -eq $sectionOrdinal) {
+        $sectionOrdinal = $sectionIndex
+      }
+
+      $existingIdMatch = [regex]::Match([string]$match.Groups['detailsAttributes'].Value, '\bid="(?<id>[^"]+)"')
+      $anchorId = Get-OptionalString -Value $existingIdMatch.Groups['id'].Value
+      if ([string]::IsNullOrWhiteSpace($anchorId)) {
+        $anchorId = 'comparevi-change-{0:D3}-{1}' -f $sectionOrdinal, (ConvertTo-Slug -Value $heading -Fallback 'change-detail')
+        $openTag = [string]$match.Groups['open'].Value
+        $updatedOpenTag = if ($openTag -match '\bid="[^"]+"') {
+          $openTag
+        } else {
+          $openTag.Insert($openTag.Length - 1, (' id="{0}"' -f $anchorId))
+        }
+        $blockHtml = $updatedOpenTag + $blockHtml.Substring($openTag.Length)
+        $htmlChanged = $true
+      }
+
+      $detailLines = @(
+        [regex]::Matches($bodyHtml, '(?is)<li class="[^"]*diff-detail[^"]*">(?<detail>.*?)</li>') |
+          ForEach-Object { ConvertFrom-HtmlText -Value ([string]$_.Groups['detail'].Value) } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+      )
+
+      if ($detailLines.Count -gt 0) {
+        $sections.Add([ordered]@{
+            index = $sectionIndex
+            ordinal = [int]$sectionOrdinal
+            heading = $heading
+            anchorId = $anchorId
+            reportHtmlRelativePath = ('{0}#{1}' -f (Resolve-RelativePath -Path $ReportHtmlPath -ResultsRoot $ResultsRoot), $anchorId)
+            detailLines = $detailLines
+          }) | Out-Null
+      }
+    }
+
+    $null = $builder.Append($blockHtml)
+    $cursor = $match.Index + $match.Length
+  }
+
+  if ($cursor -lt $reportHtml.Length) {
+    $null = $builder.Append($reportHtml.Substring($cursor))
+  }
+
+  $updatedReportHtml = $builder.ToString()
+  if ($htmlChanged -and -not [string]::Equals($updatedReportHtml, $reportHtml, [System.StringComparison]::Ordinal)) {
+    Set-Content -LiteralPath $ReportHtmlPath -Encoding utf8 -Value $updatedReportHtml
+  }
+
+  return [ordered]@{
+    reportHtml = $updatedReportHtml
+    sections = @($sections | ForEach-Object { $_ })
+  }
+}
+
 function Get-ReportIncludedCategories {
   param(
     [Parameter(Mandatory = $true)]
@@ -497,7 +733,8 @@ function Get-ReviewerChangeDetailsFromReport {
     return $null
   }
 
-  $reportHtml = Get-Content -LiteralPath $ReportHtmlPath -Raw
+  $sectionReceipt = Get-ReviewerChangeDetailSectionsFromReport -ReportHtmlPath $ReportHtmlPath -ResultsRoot $ResultsRoot
+  $reportHtml = [string](Get-NestedValue -Object $sectionReceipt -Path @('reportHtml') -Default '')
   if ([string]::IsNullOrWhiteSpace($reportHtml)) {
     return $null
   }
@@ -505,46 +742,40 @@ function Get-ReviewerChangeDetailsFromReport {
   $includedCategories = @(Get-ReportIncludedCategories -ReportHtml $reportHtml)
   $groupMap = @{}
   $groupOrder = New-Object System.Collections.Generic.List[string]
-  $detailPattern = '(?is)<details[^>]*>\s*<summary[^>]*>(?<summary>.*?)</summary>(?<body>.*?)</details>'
-  foreach ($detailMatch in [regex]::Matches($reportHtml, $detailPattern)) {
-    $bodyHtml = [string]$detailMatch.Groups['body'].Value
-    if ($bodyHtml -notmatch 'detailed-description-list') {
-      continue
+  foreach ($section in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $sectionReceipt -Path @('sections') -Default @()))) {
+    $sectionHeading = Get-OptionalString -Value (Get-NestedValue -Object $section -Path @('heading'))
+    $sectionOrdinal = [int](Get-NestedValue -Object $section -Path @('ordinal') -Default 0)
+    $sectionPath = Get-OptionalString -Value (Get-NestedValue -Object $section -Path @('reportHtmlRelativePath'))
+    $sectionLinkRecord = [ordered]@{
+      sectionOrdinal = $sectionOrdinal
+      label = ('section {0}' -f $sectionOrdinal)
+      reportHtmlRelativePath = $sectionPath
     }
 
-    $heading = Normalize-ReviewerChangeDetailHeading -Heading (ConvertFrom-HtmlText -Value ([string]$detailMatch.Groups['summary'].Value))
-    if ([string]::IsNullOrWhiteSpace($heading)) {
-      $heading = 'Change details'
-    }
-
-    $detailLines = @(
-      [regex]::Matches($bodyHtml, '(?is)<li class="[^"]*diff-detail[^"]*">(?<detail>.*?)</li>') |
-        ForEach-Object { ConvertFrom-HtmlText -Value ([string]$_.Groups['detail'].Value) } |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )
-    if ($detailLines.Count -eq 0) {
-      continue
-    }
-
-    if (-not $groupMap.ContainsKey($heading)) {
-      $groupMap[$heading] = [ordered]@{
-        heading = $heading
-        sectionCount = 0
-        detailCount = 0
-        sampleDetails = New-Object System.Collections.Generic.List[string]
-      }
-      $groupOrder.Add($heading) | Out-Null
-    }
-
-    $groupRecord = $groupMap[$heading]
-    $groupRecord.sectionCount = [int]$groupRecord.sectionCount + 1
-    $groupRecord.detailCount = [int]$groupRecord.detailCount + $detailLines.Count
-    foreach ($detailLine in $detailLines) {
-      if ($groupRecord.sampleDetails.Count -ge $reviewerChangeDetailSampleCap) {
-        continue
+    $sectionGroupKeys = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($detailLine in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $section -Path @('detailLines') -Default @()))) {
+      $semanticHeading = Get-ReviewerSemanticHeadingFromSection -SectionHeading $sectionHeading -DetailLine ([string]$detailLine)
+      if (-not $groupMap.ContainsKey($semanticHeading)) {
+        $groupMap[$semanticHeading] = [ordered]@{
+          heading = $semanticHeading
+          sectionCount = 0
+          detailCount = 0
+          sampleDetails = New-Object System.Collections.Generic.List[string]
+          sectionLinks = New-Object System.Collections.Generic.List[object]
+        }
+        $groupOrder.Add($semanticHeading) | Out-Null
       }
 
-      $groupRecord.sampleDetails.Add($detailLine) | Out-Null
+      $groupRecord = $groupMap[$semanticHeading]
+      if ($sectionGroupKeys.Add($semanticHeading)) {
+        $groupRecord.sectionCount = [int]$groupRecord.sectionCount + 1
+        $groupRecord.sectionLinks.Add($sectionLinkRecord) | Out-Null
+      }
+
+      $groupRecord.detailCount = [int]$groupRecord.detailCount + 1
+      if ($groupRecord.sampleDetails.Count -lt $reviewerChangeDetailSampleCap) {
+        $groupRecord.sampleDetails.Add([string]$detailLine) | Out-Null
+      }
     }
   }
 
@@ -566,6 +797,8 @@ function Get-ReviewerChangeDetailsFromReport {
         detailCount = [int]$groupRecord.detailCount
         sampleDetails = $sampleDetails
         omittedDetailCount = [Math]::Max([int]$groupRecord.detailCount - $sampleDetails.Count, 0)
+        primaryReportHtmlRelativePath = $(if ($groupRecord.sectionLinks.Count -gt 0) { Get-OptionalString -Value $groupRecord.sectionLinks[0].reportHtmlRelativePath } else { $null })
+        sectionLinks = @($groupRecord.sectionLinks | ForEach-Object { $_ })
       }) | Out-Null
   }
 

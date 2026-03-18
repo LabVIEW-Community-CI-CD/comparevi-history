@@ -303,6 +303,60 @@ function Get-ReviewerPreviewSurfaceLabel {
   }
 }
 
+function New-MarkdownChangeDetailSectionLinkLine {
+  param(
+    [AllowNull()]
+    [object[]]$SectionLinks = @()
+  )
+
+  $sectionLinkItems = @(
+    ConvertTo-ObjectArray -Value $SectionLinks |
+      ForEach-Object {
+        $label = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('label'))
+        $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+        if ([string]::IsNullOrWhiteSpace($label) -or [string]::IsNullOrWhiteSpace($path)) {
+          return $null
+        }
+
+        '[{0}]({1})' -f $label, $path
+      } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  if ($sectionLinkItems.Count -eq 0) {
+    return $null
+  }
+
+  return '  - Exact sections: {0}' -f ($sectionLinkItems -join ', ')
+}
+
+function New-HtmlChangeDetailSectionLinks {
+  param(
+    [AllowNull()]
+    [object[]]$SectionLinks = @()
+  )
+
+  $linkItems = @(
+    ConvertTo-ObjectArray -Value $SectionLinks |
+      ForEach-Object {
+        $label = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('label'))
+        $path = Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('reportHtmlRelativePath'))
+        if ([string]::IsNullOrWhiteSpace($label) -or [string]::IsNullOrWhiteSpace($path)) {
+          return $null
+        }
+
+        '<a href="' + (Escape-Html $path) + '">' + (Escape-Html $label) + '</a>'
+      } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+
+  if ($linkItems.Count -eq 0) {
+    return ''
+  }
+
+  return '<li><strong>Exact sections:</strong> ' + ($linkItems -join ', ') + '</li>'
+}
+
 function New-MarkdownChangeDetailsLines {
   param(
     [AllowNull()]
@@ -328,15 +382,25 @@ function New-MarkdownChangeDetailsLines {
   }
   foreach ($group in $groups) {
     $heading = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
     $sectionCount = [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0)
     $detailCount = [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0)
-    $lines.Add(('- `{0}`: `{1}` details across `{2}` sections' -f $heading, $detailCount, $sectionCount)) | Out-Null
+    $headingLabel = if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+      ('`{0}`' -f $heading)
+    } else {
+      ('[`{0}`]({1})' -f $heading, $primaryReportHtmlRelativePath)
+    }
+    $lines.Add(('- {0}: `{1}` details across `{2}` sections' -f $headingLabel, $detailCount, $sectionCount)) | Out-Null
     foreach ($sampleDetail in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sampleDetails') -Default @()))) {
       $lines.Add(('  - {0}' -f [string]$sampleDetail)) | Out-Null
     }
     $omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
     if ($omittedDetailCount -gt 0) {
       $lines.Add(('  - +{0} more details in report' -f $omittedDetailCount)) | Out-Null
+    }
+    $sectionLinkLine = New-MarkdownChangeDetailSectionLinkLine -SectionLinks @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()))
+    if (-not [string]::IsNullOrWhiteSpace($sectionLinkLine)) {
+      $lines.Add($sectionLinkLine) | Out-Null
     }
   }
   $omittedGroupCount = [int](Get-NestedValue -Object $ChangeDetails -Path @('omittedGroupCount') -Default 0)
@@ -371,7 +435,13 @@ function New-HtmlChangeDetailsBlock {
     $items.Add('<li><strong>Included categories:</strong> ' + (Escape-Html ($includedCategories -join ', ')) + '</li>') | Out-Null
   }
   foreach ($group in @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $ChangeDetails -Path @('groups') -Default @()))) {
-    $heading = Escape-Html (Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading')))
+    $headingText = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('heading'))
+    $primaryReportHtmlRelativePath = Get-OptionalString -Value (Get-NestedValue -Object $group -Path @('primaryReportHtmlRelativePath'))
+    $heading = if ([string]::IsNullOrWhiteSpace($primaryReportHtmlRelativePath)) {
+      Escape-Html $headingText
+    } else {
+      '<a href="' + (Escape-Html $primaryReportHtmlRelativePath) + '">' + (Escape-Html $headingText) + '</a>'
+    }
     $sectionCount = [int](Get-NestedValue -Object $group -Path @('sectionCount') -Default 0)
     $detailCount = [int](Get-NestedValue -Object $group -Path @('detailCount') -Default 0)
     $sampleList = New-Object System.Collections.Generic.List[string]
@@ -381,6 +451,10 @@ function New-HtmlChangeDetailsBlock {
     $omittedDetailCount = [int](Get-NestedValue -Object $group -Path @('omittedDetailCount') -Default 0)
     if ($omittedDetailCount -gt 0) {
       $sampleList.Add('<li>+' + $omittedDetailCount + ' more details in report</li>') | Out-Null
+    }
+    $sectionLinksHtml = New-HtmlChangeDetailSectionLinks -SectionLinks @(ConvertTo-ObjectArray -Value (Get-NestedValue -Object $group -Path @('sectionLinks') -Default @()))
+    if (-not [string]::IsNullOrWhiteSpace($sectionLinksHtml)) {
+      $sampleList.Add($sectionLinksHtml) | Out-Null
     }
     $nestedList = if ($sampleList.Count -gt 0) { '<ul>' + ($sampleList -join '') + '</ul>' } else { '' }
     $items.Add('<li><strong>' + $heading + ':</strong> ' + $detailCount + ' details across ' + $sectionCount + ' sections' + $nestedList + '</li>') | Out-Null

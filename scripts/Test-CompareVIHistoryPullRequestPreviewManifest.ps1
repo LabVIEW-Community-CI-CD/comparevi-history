@@ -60,7 +60,8 @@ $(if ($ComparisonIndex -eq 1) {
 <details open>
 <summary class="difference-heading">2. Block Diagram objects</summary>
 <ol class="detailed-description-list" type="A">
-<li class="diff-detail">Boolean Constant - moved : changed from "(675,231)" to "(675,231)"</li>
+<li class="diff-detail">Case Structure - resized : changed from "702*298" to "702*370"</li>
+<li class="diff-detail"> - resized : changed from "690*23" to "690*25"</li>
 </ol>
 </details>
 '@
@@ -273,19 +274,36 @@ try {
   if ((@($receipt.commentPreviewCards[0].changeDetails.includedCategories) -join ',') -ne 'Block Diagram Functional,VI Attribute') {
     throw 'Reviewer cards should preserve included categories from the attributes compare report.'
   }
-  if ([string]$receipt.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block Diagram objects' -or
-    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].detailCount -ne 4 -or
-    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionCount -ne 2 -or
-    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].omittedDetailCount -ne 1) {
-    throw 'Reviewer cards should aggregate repeated attributes-report sections into a bounded change-detail summary.'
+  if ([string]$receipt.commentPreviewCards[0].changeDetails.groups[0].heading -ne 'Block diagram moves' -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].detailCount -ne 3 -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionCount -ne 1 -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[0].omittedDetailCount -ne 0) {
+    throw 'Reviewer cards should split coarse block diagram sections into semantic move groups.'
   }
   if ($receipt.commentPreviewCards[0].changeDetails.groups[0].sampleDetails.Count -ne 3 -or
     $receipt.commentPreviewCards[0].changeDetails.groups[0].sampleDetails[0] -notmatch 'Property Node - moved') {
     throw 'Reviewer cards should preserve the first bounded change-detail samples.'
   }
-  if ([string]$receipt.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI Attribute - Miscellaneous' -or
+  if ([string]$receipt.commentPreviewCards[0].changeDetails.groups[1].heading -ne 'Block diagram resizing' -or
+    [int]$receipt.commentPreviewCards[0].changeDetails.groups[1].detailCount -ne 2 -or
+    [string]$receipt.commentPreviewCards[0].changeDetails.groups[1].primaryReportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-002-block-diagram-objects') {
+    throw 'Reviewer cards should surface semantic resize groups with exact section anchors.'
+  }
+  if ($receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks.Count -ne 1 -or
+    [string]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].reportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-001-artifacts/compare-report.html#comparevi-change-001-block-diagram-objects' -or
+    [string]$receipt.commentPreviewCards[0].changeDetails.groups[0].sectionLinks[0].label -ne 'section 1') {
+    throw 'Reviewer cards should expose exact section links for semantic groups.'
+  }
+  if ([string]$receipt.commentPreviewCards[1].changeDetails.groups[0].heading -ne 'VI version changes' -or
+    [string]$receipt.commentPreviewCards[1].changeDetails.groups[0].primaryReportHtmlRelativePath -ne 'targets/001-demo/history/attributes/Demo.vi-002-artifacts/compare-report.html#comparevi-change-001-vi-attribute-miscellaneous' -or
     $receipt.commentPreviewCards[1].changeDetails.groups[0].sampleDetails[0] -notmatch 'VI Version : changed from "21\.0" to "20\.0"') {
     throw 'Reviewer cards should preserve distinct VI attribute change summaries for later history pairs.'
+  }
+
+  $anchoredReportHtml = Get-Content -LiteralPath (Join-Path $targetRoot 'attributes/Demo.vi-001-artifacts/compare-report.html') -Raw
+  if ($anchoredReportHtml -notmatch [regex]::Escape('id="comparevi-change-001-block-diagram-objects"') -or
+    $anchoredReportHtml -notmatch [regex]::Escape('id="comparevi-change-002-block-diagram-objects"')) {
+    throw 'Attributes compare reports should be stamped with deterministic section anchors for reviewer deep links.'
   }
 
   $outputText = Get-Content -LiteralPath $outputPath -Raw

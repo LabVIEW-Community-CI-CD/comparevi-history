@@ -229,7 +229,9 @@
         "sectionCount",
         "detailCount",
         "sampleDetails",
-        "omittedDetailCount"
+        "omittedDetailCount",
+        "primaryReportHtmlRelativePath",
+        "sectionLinks"
       ],
       "properties": {
         "heading": { "type": "string", "minLength": 1 },
@@ -239,7 +241,26 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
-        "omittedDetailCount": { "type": "integer", "minimum": 0 }
+        "omittedDetailCount": { "type": "integer", "minimum": 0 },
+        "primaryReportHtmlRelativePath": { "type": ["string", "null"] },
+        "sectionLinks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/changeDetailSectionLink" }
+        }
+      }
+    },
+    "changeDetailSectionLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sectionOrdinal",
+        "label",
+        "reportHtmlRelativePath"
+      ],
+      "properties": {
+        "sectionOrdinal": { "type": "integer", "minimum": 0 },
+        "label": { "type": "string", "minLength": 1 },
+        "reportHtmlRelativePath": { "type": "string", "minLength": 1 }
       }
     },
     "changeDetails": {
