@@ -597,8 +597,10 @@ $rawPreviewPairCount = 0
 $reviewerPreviewPairCount = 0
 $commentPreviewPairCount = 0
 $commentPreviewPairOmittedCount = 0
+$commentPreviewCardCount = 0
 $indexPreviewPairCount = 0
 $indexPreviewPairOmittedCount = 0
+$indexPreviewCardCount = 0
 $commentPreviewPairCap = 0
 $indexPreviewPairCap = 0
 $indexPreviewCards = @()
@@ -630,9 +632,11 @@ if ($null -ne $targetManifest) {
   $commentPreviewPairCap = [int]$previewManifest.summary.commentPreviewPairCap
   $commentPreviewPairCount = [int]$previewManifest.summary.commentPreviewPairCount
   $commentPreviewPairOmittedCount = [int]$previewManifest.summary.commentPreviewPairOmittedCount
+  $commentPreviewCardCount = [int](Get-NestedValue -Object $previewManifest -Path @('summary', 'commentPreviewCardCount') -Default 0)
   $indexPreviewPairCap = [int]$previewManifest.summary.indexPreviewPairCap
   $indexPreviewPairCount = [int]$previewManifest.summary.indexPreviewPairCount
   $indexPreviewPairOmittedCount = [int]$previewManifest.summary.indexPreviewPairOmittedCount
+  $indexPreviewCardCount = [int](Get-NestedValue -Object $previewManifest -Path @('summary', 'indexPreviewCardCount') -Default 0)
   $indexPreviewCards = @(New-ReviewerPreviewCards `
       -SelectedPreviewPairs @($previewManifest.indexPreviewPairs | ForEach-Object { $_ }) `
       -AllPreviewPairs @($previewManifest.previewPairs | ForEach-Object { $_ }) `
@@ -682,7 +686,7 @@ $commentLines.Add(('- Failed targets: `{0}`' -f $failedTargetCount)) | Out-Null
 $commentLines.Add(('- Total processed pairs: `{0}`' -f $totalProcessed)) | Out-Null
 $commentLines.Add(('- Total diffs: `{0}`' -f $totalDiffs)) | Out-Null
 if ($reviewerPreviewPairCount -gt 0) {
-  $commentLines.Add(('- Reviewer preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $commentPreviewPairCount, $commentPreviewPairOmittedCount, $commentPreviewPairCap)) | Out-Null
+  $commentLines.Add(('- Reviewer preview gallery: `{0}` history pairs shown, `{1}` omitted, cap `{2}`' -f $commentPreviewCardCount, $commentPreviewPairOmittedCount, $commentPreviewPairCap)) | Out-Null
   if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) {
     $commentLines.Add(('- Raw preview surfaces collapsed for review: `{0}` raw -> `{1}` reviewer-canonical' -f $rawPreviewPairCount, $reviewerPreviewPairCount)) | Out-Null
   }
@@ -740,7 +744,7 @@ if ($null -ne $previewManifestPathResolved -and (Test-Path -LiteralPath $preview
   $indexLines.Add(('- Preview manifest: [pr-preview-manifest.json](pr-preview-manifest.json)')) | Out-Null
 }
 if ($reviewerPreviewPairCount -gt 0) {
-  $indexLines.Add(('- Reviewer preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $indexPreviewPairCount, $indexPreviewPairOmittedCount, $indexPreviewPairCap)) | Out-Null
+  $indexLines.Add(('- Reviewer preview gallery: `{0}` history pairs shown, `{1}` omitted, cap `{2}`' -f $indexPreviewCardCount, $indexPreviewPairOmittedCount, $indexPreviewPairCap)) | Out-Null
   if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) {
     $indexLines.Add(('- Raw preview surfaces collapsed for review: `{0}` raw -> `{1}` reviewer-canonical' -f $rawPreviewPairCount, $reviewerPreviewPairCount)) | Out-Null
   }
@@ -847,7 +851,7 @@ $indexHtml = @"
     <li>Discovery receipt: <a href="changed-vi-discovery.json">changed-vi-discovery.json</a></li>
     <li>Aggregate receipt: <a href="pr-run.json">pr-run.json</a></li>
     $(if ($null -ne $previewManifestPathResolved -and (Test-Path -LiteralPath $previewManifestPathResolved -PathType Leaf)) { '<li>Preview manifest: <a href="pr-preview-manifest.json">pr-preview-manifest.json</a></li>' } else { '' })
-    $(if ($reviewerPreviewPairCount -gt 0) { '<li>Reviewer preview gallery: <code>' + $indexPreviewPairCount + '</code> shown, <code>' + $indexPreviewPairOmittedCount + '</code> omitted, cap <code>' + $indexPreviewPairCap + '</code></li>' } else { '' })
+    $(if ($reviewerPreviewPairCount -gt 0) { '<li>Reviewer preview gallery: <code>' + $indexPreviewCardCount + '</code> history pairs shown, <code>' + $indexPreviewPairOmittedCount + '</code> omitted, cap <code>' + $indexPreviewPairCap + '</code></li>' } else { '' })
     $(if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) { '<li>Raw preview surfaces collapsed for review: <code>' + $rawPreviewPairCount + '</code> raw -> <code>' + $reviewerPreviewPairCount + '</code> reviewer-canonical</li>' } else { '' })
   </ul>
   $(New-HtmlPreviewGallery -PreviewCards $indexPreviewCards)
@@ -881,8 +885,8 @@ $stepSummaryLines.Add(('- Aggregate receipt: `{0}`' -f $prRunPath)) | Out-Null
 $stepSummaryLines.Add(('- Index markdown: `{0}`' -f $indexMdPath)) | Out-Null
 $stepSummaryLines.Add(('- Index HTML: `{0}`' -f $indexHtmlPath)) | Out-Null
 $stepSummaryLines.Add(('- Preview manifest: `{0}`' -f $(if ($null -eq $previewManifestPathResolved) { 'n/a' } else { $previewManifestPathResolved }))) | Out-Null
-$stepSummaryLines.Add(('- Reviewer preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $commentPreviewPairCount, $commentPreviewPairOmittedCount, $commentPreviewPairCap)) | Out-Null
-$stepSummaryLines.Add(('- Index preview gallery: `{0}` shown, `{1}` omitted, cap `{2}`' -f $indexPreviewPairCount, $indexPreviewPairOmittedCount, $indexPreviewPairCap)) | Out-Null
+$stepSummaryLines.Add(('- Reviewer preview gallery: `{0}` history pairs shown, `{1}` omitted, cap `{2}`' -f $commentPreviewCardCount, $commentPreviewPairOmittedCount, $commentPreviewPairCap)) | Out-Null
+$stepSummaryLines.Add(('- Index preview gallery: `{0}` history pairs shown, `{1}` omitted, cap `{2}`' -f $indexPreviewCardCount, $indexPreviewPairOmittedCount, $indexPreviewPairCap)) | Out-Null
 if ($rawPreviewPairCount -gt $reviewerPreviewPairCount) {
   $stepSummaryLines.Add(('- Raw preview surfaces collapsed for review: `{0}` raw -> `{1}` reviewer-canonical' -f $rawPreviewPairCount, $reviewerPreviewPairCount)) | Out-Null
 }
