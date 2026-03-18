@@ -19,11 +19,20 @@ on:
       - scripts/Assert-CompareVIHistoryPublishedRun.ps1
       - scripts/Resolve-CompareVIHistoryReleasePublishReadiness.ps1
       - scripts/Test-CompareVIHistoryReleasePublishReadiness.ps1
+      - scripts/Invoke-CompareVIHistoryReviewBundleCompiler.ps1
+      - scripts/Publish-CompareVIHistoryReviewCompilerArtifact.ps1
+      - scripts/Test-CompareVIHistoryReviewBundleCompiler.ps1
+      - scripts/Test-CompareVIHistoryReviewBundleGoldenContract.ps1
+      - scripts/Test-CompareVIHistoryReviewCompilerArtifact.ps1
+      - scripts/CompareVIHistoryReviewBundleFixture.psm1
       - scripts/Sync-CompareVIHistoryPublishedTemplates.ps1
       - scripts/Test-CompareVIHistoryTemplateContracts.ps1
+      - src/CompareVIHistory.ReviewCompiler/**
       - docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md
+      - docs/schemas/comparevi-history-review-compiler-release-v1.schema.json
       - docs/examples/comparevi-history-workflow-dispatch.yml
       - docs/examples/comparevi-history-comment-gated.yml
+      - tests/fixtures/review-bundle-v1/**
   workflow_dispatch:
     inputs:
       backend_ref:
@@ -501,6 +510,21 @@ jobs:
           git tag "$IMMUTABLE_TAG" "${{ steps.prepare.outputs.target-sha }}"
           git push origin "refs/tags/$IMMUTABLE_TAG"
 
+      - name: Package review compiler release assets
+        id: compiler_assets
+        shell: pwsh
+        env:
+          IMMUTABLE_TAG: ${{ needs.validate.outputs.immutable_tag }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          & "$PWD/scripts/Publish-CompareVIHistoryReviewCompilerArtifact.ps1" `
+            -Version $env:IMMUTABLE_TAG `
+            -OutputDir 'release-assets' `
+            -GitHubOutputPath $env:GITHUB_OUTPUT `
+            -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
+
       - name: Create GitHub release
         shell: bash
         env:
@@ -509,6 +533,9 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$IMMUTABLE_TAG" \
+            release-assets/*.zip \
+            release-assets/comparevi-history-review-compiler-release.json \
+            release-assets/SHA256SUMS.txt \
             --title "comparevi-history $IMMUTABLE_TAG" \
             --notes-file release-notes.md
 
@@ -537,6 +564,7 @@ jobs:
             echo "- Major tag: \`${MAJOR_TAG}\`"
             echo "- Backend tag: \`${BACKEND_TAG}\`"
             echo "- Backend ref: \`${BACKEND_SHA}\`"
+            echo "- Review compiler assets: \`comparevi-history-review-compiler-${IMMUTABLE_TAG}-<rid>.zip\`, \`comparevi-history-review-compiler-release.json\`, \`SHA256SUMS.txt\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   published-consumer:
