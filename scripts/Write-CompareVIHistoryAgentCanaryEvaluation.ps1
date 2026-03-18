@@ -179,11 +179,27 @@ function Find-Artifact {
   $response = Invoke-GitHubJson -Method Get -Uri $uri
   $artifacts = @($response.artifacts | Where-Object { $null -ne $_ })
   $exact = @($artifacts | Where-Object { [string]$_.name -eq $RequestedArtifactName } | Select-Object -First 1)
-  if ($exact) {
-    return $exact
+  if ($exact.Count -gt 0) {
+    return $exact[0]
   }
 
-  return @($artifacts | Where-Object { [string]$_.name -like "$RequestedArtifactName*" } | Select-Object -First 1)
+  $prefix = @($artifacts | Where-Object { [string]$_.name -like "$RequestedArtifactName*" } | Select-Object -First 1)
+  if ($prefix.Count -gt 0) {
+    return $prefix[0]
+  }
+
+  # workflow_run follow-ons can know the publisher run id but not always the execution-derived artifact name.
+  # When the publisher exposes a single artifact, treat it as the canonical publication payload.
+  if ($artifacts.Count -eq 1) {
+    return $artifacts[0]
+  }
+
+  $publicationArtifacts = @($artifacts | Where-Object { [string]$_.name -like 'comparevi-history-pr-diagnostics-publish-*' })
+  if ($publicationArtifacts.Count -eq 1) {
+    return $publicationArtifacts[0]
+  }
+
+  return $null
 }
 
 function Find-ExpandedArtifactFile {
@@ -231,11 +247,12 @@ if (-not (Test-Path -LiteralPath $canaryPolicyPathResolved -PathType Leaf)) {
 
 New-Item -ItemType Directory -Path $resultsDirResolved -Force | Out-Null
 
-$effectiveArtifactName = if ([string]::IsNullOrWhiteSpace($ArtifactName)) {
+$requestedArtifactName = if ([string]::IsNullOrWhiteSpace($ArtifactName)) {
   "comparevi-history-pr-diagnostics-publish-$WorkflowRunId"
 } else {
   $ArtifactName.Trim()
 }
+$effectiveArtifactName = $requestedArtifactName
 
 $receiptPath = Join-Path $resultsDirResolved 'agent-canary-evaluation.json'
 $downloadZipPath = Join-Path $resultsDirResolved 'publication-artifact.zip'
@@ -269,10 +286,11 @@ try {
     throw "Unsupported canary policy schema in '$canaryPolicyPathResolved': $($canaryPolicy.schema)"
   }
 
-  $artifact = Find-Artifact -RepositorySlug $Repository -RunId $WorkflowRunId -RequestedArtifactName $effectiveArtifactName
+  $artifact = Find-Artifact -RepositorySlug $Repository -RunId $WorkflowRunId -RequestedArtifactName $requestedArtifactName
   if (-not $artifact) {
-    throw "missing-publication-artifact:$effectiveArtifactName"
+    throw "missing-publication-artifact:$requestedArtifactName"
   }
+  $effectiveArtifactName = [string]$artifact.name
 
   Invoke-WebRequest -Uri ([string]$artifact.archive_download_url) -Headers (Get-GitHubHeaders) -OutFile $downloadZipPath
   Expand-Archive -Path $downloadZipPath -DestinationPath $publicationArtifactRoot -Force

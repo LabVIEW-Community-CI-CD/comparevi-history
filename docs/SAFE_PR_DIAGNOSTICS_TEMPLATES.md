@@ -153,6 +153,9 @@ Consumer repositories should not contain:
   `<!-- comparevi-history:pull-request-diagnostics -->`.
 - The agent-canary evaluation template expects the publication artifact to contain `pr-comment-publication.json` plus
   the expanded execution artifact with `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`.
+- The agent-canary evaluation template should not try to predict a publication artifact name from the publisher
+  `workflow_run` id. The reusable evaluator resolves the publication artifact from the completed publisher run and treats
+  `artifact_name` as an override only.
 - The agent-canary lane is same-repo only, uses branch prefix `agent-canary/`, requires the `agent-canary` label, and
   expects one long-lived draft PR instead of a stream of throwaway proof branches.
 - The action owns reviewer-facing rendering. Consumers should publish PR comments from `public-comment-path` and append

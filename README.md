@@ -282,6 +282,8 @@ The canary lane is intentionally narrow:
 The evaluator consumes publication receipts and artifact contents only:
 
 - it downloads the publication artifact from `CompareVI History Pull Request Diagnostics Publish`
+- it resolves that publication artifact from the completed publisher run instead of requiring the consumer to predict a
+  publisher-artifact name from the `workflow_run` payload
 - it reads `pr-comment-publication.json`, `pr-run.json`, `changed-vi-discovery.json`, `index.md`, and `index.html`
 - it verifies the changed-VI count, selected-target count, canonical canary path, explicit public modes, raw
   `noisePolicy = include`, sticky comment publication, and `artifact-index` reviewer surface

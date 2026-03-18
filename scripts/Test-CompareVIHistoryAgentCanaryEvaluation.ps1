@@ -343,11 +343,20 @@ try {
 
     $methodKey = if ([string]::IsNullOrWhiteSpace($Method)) { 'Get' } else { $Method }
     if ($methodKey -eq 'Get' -and $Uri -like 'https://api.github.com/repos/*/actions/runs/*/artifacts?per_page=100') {
+      $artifactNames = @()
+      if ($global:MockScenario -is [System.Collections.IDictionary] -and $global:MockScenario.Contains('ArtifactNames')) {
+        $artifactNames = @($global:MockScenario.ArtifactNames)
+      } elseif ($global:MockScenario -is [System.Collections.IDictionary] -and $global:MockScenario.Contains('ArtifactName') -and -not [string]::IsNullOrWhiteSpace($global:MockScenario.ArtifactName)) {
+        $artifactNames = @($global:MockScenario.ArtifactName)
+      }
+
       return @{
         artifacts = @(
-          @{
-            name = $global:MockScenario.ArtifactName
-            archive_download_url = 'https://example.test/publication-artifact.zip'
+          $artifactNames | ForEach-Object {
+            @{
+              name = $_
+              archive_download_url = 'https://example.test/publication-artifact.zip'
+            }
           }
         )
       }
@@ -418,6 +427,9 @@ try {
   if ($successReceipt.publication.status -ne 'succeeded' -or $successReceipt.execution.finalStatus -ne 'succeeded') {
     throw 'Success case status propagation mismatch.'
   }
+  if ($successReceipt.artifactName -ne 'comparevi-history-pr-diagnostics-publish-444') {
+    throw 'Success case should preserve the resolved artifact name.'
+  }
   if (-not (Test-Path -LiteralPath $successReceipt.outputs.indexMarkdownPath -PathType Leaf) -or
     -not (Test-Path -LiteralPath $successReceipt.outputs.indexHtmlPath -PathType Leaf)) {
     throw 'Success case should preserve index surfaces.'
@@ -463,6 +475,32 @@ try {
     $skipReceipt.summary.failureReasons -notcontains 'missing-required-label:agent-canary' -or
     $skipReceipt.summary.failureReasons -notcontains 'pr-not-draft') {
     throw 'Non-canary skip reasons mismatch.'
+  }
+
+  $fallbackRoot = Join-Path $tempRoot 'fallback'
+  New-Item -ItemType Directory -Path $fallbackRoot -Force | Out-Null
+  $fallbackFixture = New-PublicationArtifactZip -RootPath $fallbackRoot -HeadRef 'feature/not-a-canary' -Draft $false -Labels @('triage')
+  $global:MockScenario = @{
+    ArtifactNames = @('comparevi-history-pr-diagnostics-publish-333')
+    ZipPath = $fallbackFixture.ZipPath
+    PullRequestDraft = $fallbackFixture.Draft
+    PullRequestLabels = $fallbackFixture.Labels
+  }
+
+  $fallbackJson = & $scriptPath `
+    -Repository 'LabVIEW-Community-CI-CD/labview-icon-editor-demo' `
+    -WorkflowRunId '4451' `
+    -ArtifactName 'comparevi-history-pr-diagnostics-publish-4451' `
+    -CanaryPolicyPath $policyPath `
+    -GitHubToken 'token' `
+    -ResultsDir (Join-Path $fallbackRoot 'results')
+
+  $fallbackReceipt = $fallbackJson | ConvertFrom-Json -Depth 64
+  if ($fallbackReceipt.artifactName -ne 'comparevi-history-pr-diagnostics-publish-333') {
+    throw 'Fallback resolution should use the actual publisher artifact name.'
+  }
+  if ($fallbackReceipt.summary.status -ne 'skipped' -or $fallbackReceipt.summary.reason -ne 'non-canary-pr') {
+    throw 'Fallback resolution should still skip non-canary PRs cleanly.'
   }
 
   $wrongPathRoot = Join-Path $tempRoot 'wrong-path'

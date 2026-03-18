@@ -153,7 +153,7 @@ Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*actions:\s+read\s*$
 Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*contents:\s+read\s*$' -Message 'Agent canary template must request contents: read.'
 Assert-Match -Content $agentCanaryTemplate -Pattern '(?m)^\s*pull-requests:\s+read\s*$' -Message 'Agent canary template must request pull-requests: read so labels and draft state can be evaluated deterministically.'
 Assert-Match -Content $agentCanaryTemplate -Pattern 'workflow_run_id:\s+\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Agent canary template must route workflow_run.id into the reusable evaluator.'
-Assert-Match -Content $agentCanaryTemplate -Pattern 'artifact_name:\s+comparevi-history-pr-diagnostics-publish-\$\{\{ github\.event\.workflow_run\.id \}\}' -Message 'Agent canary template must resolve the deterministic publication artifact name.'
+Assert-NotMatch -Content $agentCanaryTemplate -Pattern '(?m)^\s*artifact_name:\s*$' -Message 'Agent canary template should let the reusable evaluator resolve the publisher artifact from the completed workflow run.'
 Assert-Match -Content $agentCanaryTemplate -Pattern 'canary_policy_path:\s+\.github/comparevi-history-agent-canary\.json' -Message 'Agent canary template must consume the checked-in agent-canary policy.'
 Assert-Match -Content $agentCanaryTemplate -Pattern 'platform_ref:\s+v1' -Message 'Agent canary template must keep platform_ref aligned with the workflow pin.'
 

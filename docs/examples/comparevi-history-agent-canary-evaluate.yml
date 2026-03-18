@@ -19,6 +19,5 @@ jobs:
     with:
       consumer_repository: ${{ github.repository }}
       workflow_run_id: ${{ github.event.workflow_run.id }}
-      artifact_name: comparevi-history-pr-diagnostics-publish-${{ github.event.workflow_run.id }}
       canary_policy_path: .github/comparevi-history-agent-canary.json
       platform_ref: v1
