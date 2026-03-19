@@ -7,6 +7,8 @@ param(
   [Parameter(Mandatory = $true, ParameterSetName = 'changed')]
   [string]$BaseRef,
   [string]$HeadRef = 'HEAD',
+  [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+  [string]$Profile = 'dev-fast',
   [string]$ConsumerRepository,
   [string]$ResultsDir = 'tests/results/local-review',
   [string]$Mode = 'attributes,front-panel,block-diagram',
@@ -18,6 +20,7 @@ param(
   [string]$ToolingRoot,
   [string]$CompareviRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   [string]$CompareviRef,
+  [string]$WarmRuntimeDir,
   [string]$ContainerImage,
   [string]$CompilerPath,
   [string]$CompilerRepository = 'LabVIEW-Community-CI-CD/comparevi-history',
@@ -25,12 +28,14 @@ param(
   [string]$CompilerRuntimeIdentifier,
   [string]$GitHubToken,
   [switch]$SkipImagePull,
+  [switch]$SkipDevImageBuild,
   [string]$GitHubOutputPath,
   [string]$StepSummaryPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$localReviewTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 $publicModesAllowed = @('attributes', 'front-panel', 'block-diagram')
 $publicModeSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -129,6 +134,25 @@ function ConvertTo-ObjectArray {
   }
 
   return @($items | ForEach-Object { $_ })
+}
+
+function Get-OptionalPropertyValue {
+  param(
+    [AllowNull()]$InputObject,
+    [Parameter(Mandatory = $true)][string]$PropertyName,
+    $Default = $null
+  )
+
+  if ($null -eq $InputObject) {
+    return $Default
+  }
+
+  $property = $InputObject.PSObject.Properties[$PropertyName]
+  if ($null -eq $property) {
+    return $Default
+  }
+
+  return $property.Value
 }
 
 function Invoke-GitCapture {
@@ -838,6 +862,7 @@ $compilerInfo = if ($null -ne $resolvedCompilerExecutable) {
 
 $targetManifestPath = $null
 $manifestTargets = New-Object System.Collections.Generic.List[object]
+$runtimeReceipts = New-Object System.Collections.Generic.List[object]
 $effectiveToolingRoot = if ([string]::IsNullOrWhiteSpace($ToolingRoot)) { $null } else { (Resolve-AbsolutePath -Path $ToolingRoot -BasePath (Get-Location).Path) }
 $invocationScriptPath = if ([string]::IsNullOrWhiteSpace($InvokeScriptPath)) { $null } else { (Resolve-AbsolutePath -Path $InvokeScriptPath -BasePath $consumerRootResolved) }
 
@@ -853,6 +878,7 @@ if ($discoveryStatus -eq 'ready') {
       $fastLoopArgs = @{
         ConsumerRepositoryRoot = $consumerRootResolved
         ViPath = [string]$selectedTarget.targetPath
+        RuntimeProfile = $Profile
         ConsumerRef = $headSha
         SourceBranchRef = $sourceBranchRef
         ConsumerRepository = $consumerRepositorySlug
@@ -866,6 +892,9 @@ if ($discoveryStatus -eq 'ready') {
       if ($null -ne $CompareTimeoutSeconds) {
         $fastLoopArgs.CompareTimeoutSeconds = [int]$CompareTimeoutSeconds
       }
+      if (-not [string]::IsNullOrWhiteSpace($WarmRuntimeDir)) {
+        $fastLoopArgs.WarmRuntimeDir = $WarmRuntimeDir
+      }
       if ($null -ne $effectiveToolingRoot) {
         $fastLoopArgs.ToolingRoot = $effectiveToolingRoot
       }
@@ -878,12 +907,18 @@ if ($discoveryStatus -eq 'ready') {
       if ($targetOrdinal -gt 1 -or $SkipImagePull.IsPresent) {
         $fastLoopArgs.SkipImagePull = $true
       }
+      if ($SkipDevImageBuild.IsPresent) {
+        $fastLoopArgs.SkipDevImageBuild = $true
+      }
       if (-not [string]::IsNullOrWhiteSpace($invocationScriptPath)) {
         $fastLoopArgs.InvokeScriptPath = $invocationScriptPath
       }
 
-      $localFastLoopJson = & (Join-Path $repoRoot 'scripts' 'Invoke-CompareVIHistoryManualExplorationFastLoop.ps1') @fastLoopArgs
-      $localFastLoopReceipt = $localFastLoopJson | ConvertFrom-Json -Depth 64
+      & (Join-Path $repoRoot 'scripts' 'Invoke-CompareVIHistoryManualExplorationFastLoop.ps1') @fastLoopArgs | Out-Null
+      if (-not (Test-Path -LiteralPath $localFastLoopPath -PathType Leaf)) {
+        throw "Local fast-loop receipt was not written: $localFastLoopPath"
+      }
+      $localFastLoopReceipt = Read-JsonFile -Path $localFastLoopPath
     } catch {
       $caughtException = $_
       if (Test-Path -LiteralPath $localFastLoopPath -PathType Leaf) {
@@ -893,6 +928,9 @@ if ($discoveryStatus -eq 'ready') {
 
     if ($null -ne $localFastLoopReceipt -and -not [string]::IsNullOrWhiteSpace([string]$localFastLoopReceipt.tooling.root)) {
       $effectiveToolingRoot = [string]$localFastLoopReceipt.tooling.root
+    }
+    if ($null -ne $localFastLoopReceipt) {
+      $runtimeReceipts.Add($localFastLoopReceipt) | Out-Null
     }
 
     $publicRunReceipt = $null
@@ -997,6 +1035,16 @@ $publicStepSummaryPathValue = Get-OptionalString -Value $prRunReceipt.outputs.pu
 $indexMarkdownPathValue = Get-OptionalString -Value $prRunReceipt.outputs.indexMarkdownPath
 $indexHtmlPathValue = Get-OptionalString -Value $prRunReceipt.outputs.indexHtmlPath
 $reviewBundlePathValue = Join-Path $resultsDirResolved 'review-bundle.json'
+$normalizedRuntimeReceipts = @(
+  $runtimeReceipts |
+    ForEach-Object { ConvertTo-ObjectArray -Value $_ } |
+    ForEach-Object { $_ }
+)
+$runtimeImages = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'image') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeToolSources = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'toolSource') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeReuseStates = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'cacheReuseState') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeTemperatureClasses = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'coldWarmClass') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeWarmDirs = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'warmRuntimeDir') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 
 $consumerReceipt = [ordered]@{
   repositoryRoot = $consumerRootResolved
@@ -1009,13 +1057,16 @@ $consumerReceipt = [ordered]@{
 }
 
 $invocationReceipt = [ordered]@{
+  runtimeProfile = $Profile
   requestedViPaths = $requestedViPaths
   requestedModes = @($requestedModes)
   noisePolicy = $NoisePolicy
   includeMergeParents = [bool]$IncludeMergeParents.IsPresent
   compareTimeoutSeconds = $compareTimeoutValue
   skipImagePull = [bool]$SkipImagePull.IsPresent
+  skipDevImageBuild = [bool]$SkipDevImageBuild.IsPresent
   containerImage = $containerImageValue
+  warmRuntimeDir = Get-OptionalString -Value $WarmRuntimeDir
 }
 
 $projectionReceipt = [ordered]@{
@@ -1045,11 +1096,27 @@ $summaryReceipt = [ordered]@{
   finalReason = [string]$prRunReceipt.summary.finalReason
 }
 
+$runtimeReceipt = [ordered]@{
+  profile = $Profile
+  image = if ($runtimeImages.Count -eq 1) { $runtimeImages[0] } elseif ($runtimeImages.Count -gt 1) { $runtimeImages -join ', ' } else { $containerImageValue }
+  toolSource = if ($runtimeToolSources.Count -eq 1) { $runtimeToolSources[0] } elseif ($runtimeToolSources.Count -gt 1) { 'mixed' } else { $null }
+  cacheReuseState = if ($runtimeReuseStates.Count -eq 1) { $runtimeReuseStates[0] } elseif ($runtimeReuseStates.Count -gt 1) { 'mixed' } else { $null }
+  coldWarmClass = if ($runtimeTemperatureClasses.Count -eq 1) { $runtimeTemperatureClasses[0] } elseif ($runtimeTemperatureClasses.Count -gt 1) { 'mixed' } else { $null }
+  warmRuntimeDir = if ($runtimeWarmDirs.Count -eq 1) { $runtimeWarmDirs[0] } elseif ($runtimeWarmDirs.Count -gt 1) { $runtimeWarmDirs -join ', ' } else { Get-OptionalString -Value $WarmRuntimeDir }
+}
+$localReviewTimer.Stop()
+$timingsReceipt = [ordered]@{
+  elapsedMilliseconds = [int]$localReviewTimer.ElapsedMilliseconds
+  elapsedSeconds = [math]::Round($localReviewTimer.Elapsed.TotalSeconds, 3)
+}
+
 $localReceipt = [ordered]@{
   schema = 'comparevi-history/local-review@v1'
   generatedAtUtc = [DateTime]::UtcNow.ToString('o')
   consumer = $consumerReceipt
   invocation = $invocationReceipt
+  runtime = $runtimeReceipt
+  timings = $timingsReceipt
   compiler = $compilerInfo
   projections = $projectionReceipt
   outputs = $outputReceipt
@@ -1067,6 +1134,11 @@ $localReceipt = [ordered]@{
   ('- Target-runs projection: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace($targetManifestPath)) { 'n/a' } else { $targetManifestPath }))
   ('- PR-run compatibility projection: `{0}`' -f [string]$prRunReceipt.outputs.prRunPath)
   ('- PR-comment compatibility projection: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$prRunReceipt.outputs.publicCommentPath)) { 'n/a' } else { [string]$prRunReceipt.outputs.publicCommentPath }))
+  ('- Runtime profile: `{0}`' -f $Profile)
+  ('- Runtime image: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$runtimeReceipt.image)) { 'n/a' } else { [string]$runtimeReceipt.image }))
+  ('- Runtime cache reuse: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$runtimeReceipt.cacheReuseState)) { 'n/a' } else { [string]$runtimeReceipt.cacheReuseState }))
+  ('- Runtime cold/warm class: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$runtimeReceipt.coldWarmClass)) { 'n/a' } else { [string]$runtimeReceipt.coldWarmClass }))
+  ('- Elapsed seconds: `{0}`' -f [string]$timingsReceipt.elapsedSeconds)
   ('- Compiler source: `{0}`' -f [string]$compilerInfo.source)
   ('- Compiler executable: `{0}`' -f [string]$compilerInfo.executablePath)
   ('- Final status: `{0}`' -f [string]$prRunReceipt.summary.finalStatus)

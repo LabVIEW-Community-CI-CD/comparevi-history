@@ -171,6 +171,44 @@ $outputs = @(
 $outputs | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
 '@ | Set-Content -LiteralPath (Join-Path $toolingToolsDir 'Compare-VIHistory.ps1') -Encoding utf8
 
+  @'
+param([string]$Tag = 'comparevi-vi-history-dev:local')
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+@{
+  tag = $Tag
+  status = 'built'
+} | ConvertTo-Json -Depth 8
+'@ | Set-Content -LiteralPath (Join-Path $toolingToolsDir 'Build-VIHistoryDevImage.ps1') -Encoding utf8
+
+  @'
+param(
+  [string]$Action = 'status',
+  [string]$RepoRoot,
+  [string]$ResultsRoot,
+  [string]$RuntimeDir,
+  [string]$Image = 'comparevi-vi-history-dev:local'
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+@{
+  schema = 'comparevi/local-runtime-state@v1'
+  action = $Action
+  outcome = 'reused'
+  image = $Image
+  container = @{
+    name = 'comparevi-history-runtime'
+  }
+  mounts = @{
+    repoHostPath = $RepoRoot
+    repoContainerPath = '/opt/comparevi/source'
+    resultsHostPath = $ResultsRoot
+    resultsContainerPath = '/opt/comparevi/vi-history/results'
+  }
+  runtimeDir = $RuntimeDir
+} | ConvertTo-Json -Depth 8
+'@ | Set-Content -LiteralPath (Join-Path $toolingToolsDir 'Manage-VIHistoryRuntimeInDocker.ps1') -Encoding utf8
+
   $resultsDir = Join-Path $tempRoot 'results'
   $receiptJson = & $scriptPath `
     -ConsumerRepositoryRoot $consumerRoot `
@@ -238,6 +276,64 @@ $outputs | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
   $modeSummary = Get-Content -LiteralPath $receipt.outputs.modeSummaryJsonPath -Raw | ConvertFrom-Json -Depth 64
   if ($modeSummary.metadata.captureCount -ne 1 -or $modeSummary.metadata.imageArtifactCount -ne 1) {
     throw 'Local fast loop must surface capture/image metadata.'
+  }
+
+  $devFastResultsDir = Join-Path $tempRoot 'results-dev-fast'
+  $devFastReceiptJson = & $scriptPath `
+    -ConsumerRepositoryRoot $consumerRoot `
+    -ViPath 'Tooling/deployment/VIP_Pre-Install Custom Action.vi' `
+    -ConsumerRef 'HEAD' `
+    -ResultsDir $devFastResultsDir `
+    -ToolingRoot $toolingRoot `
+    -RuntimeProfile 'dev-fast' `
+    -ContainerImage 'comparevi-vi-history-dev:local' `
+    -SkipImagePull
+
+  $devFastReceipt = $devFastReceiptJson | ConvertFrom-Json -Depth 20
+  if ($devFastReceipt.runtime.profile -ne 'dev-fast') {
+    throw 'Dev-fast local fast loop profile mismatch.'
+  }
+  if ($devFastReceipt.runtime.image -ne 'comparevi-vi-history-dev:local') {
+    throw 'Dev-fast local fast loop image mismatch.'
+  }
+  if (@('built-local-image', 'existing-local-image') -notcontains [string]$devFastReceipt.runtime.cacheReuseState) {
+    throw 'Dev-fast local fast loop must surface image-build or local-image reuse state.'
+  }
+  if (@('cold', 'warm') -notcontains [string]$devFastReceipt.runtime.coldWarmClass) {
+    throw 'Dev-fast local fast loop must classify the runtime temperature.'
+  }
+
+  $warmRuntimeDir = Join-Path $tempRoot 'runtime'
+  $warmDevResultsDir = Join-Path $tempRoot 'results-warm-dev'
+  $warmDevReceiptJson = & $scriptPath `
+    -ConsumerRepositoryRoot $consumerRoot `
+    -ViPath 'Tooling/deployment/VIP_Pre-Install Custom Action.vi' `
+    -ConsumerRef 'HEAD' `
+    -ResultsDir $warmDevResultsDir `
+    -ToolingRoot $toolingRoot `
+    -RuntimeProfile 'warm-dev' `
+    -ContainerImage 'comparevi-vi-history-dev:local' `
+    -WarmRuntimeDir $warmRuntimeDir `
+    -SkipImagePull
+
+  $warmDevReceipt = $warmDevReceiptJson | ConvertFrom-Json -Depth 20
+  if ($warmDevReceipt.runtime.profile -ne 'warm-dev') {
+    throw 'Warm-dev local fast loop profile mismatch.'
+  }
+  if ($warmDevReceipt.runtime.image -ne 'comparevi-vi-history-dev:local') {
+    throw 'Warm-dev local fast loop image mismatch.'
+  }
+  if ([string]$warmDevReceipt.runtime.cacheReuseState -ne 'warm-runtime-reused') {
+    throw 'Warm-dev local fast loop must surface warm-runtime reuse.'
+  }
+  if ([string]$warmDevReceipt.runtime.coldWarmClass -ne 'warm') {
+    throw 'Warm-dev local fast loop must classify the runtime as warm.'
+  }
+  if ([string]$warmDevReceipt.runtime.warmRuntimeDir -ne $warmRuntimeDir) {
+    throw 'Warm-dev local fast loop warm-runtime directory mismatch.'
+  }
+  if ([string]$warmDevReceipt.runtime.warmRuntime.container.name -ne 'comparevi-history-runtime') {
+    throw 'Warm-dev local fast loop runtime receipt must preserve the reused container name.'
   }
 
   $failedMissingAdapter = $false

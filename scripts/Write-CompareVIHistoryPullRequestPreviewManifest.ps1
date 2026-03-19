@@ -1600,8 +1600,10 @@ function Convert-ReviewBundleTargetReceipt {
 function Select-RepresentativePreviewPairsForCards {
   param(
     [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
     [object[]]$Cards,
     [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
     [object[]]$AllPreviewPairs
   )
 
