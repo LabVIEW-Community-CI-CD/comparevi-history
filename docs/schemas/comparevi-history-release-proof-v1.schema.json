@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labview-community-ci-cd.github.io/comparevi-history/schemas/comparevi-history-release-proof-v1.schema.json",
+  "title": "comparevi-history release proof receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAtUtc",
+    "version",
+    "releaseAssets",
+    "runtime",
+    "fixture",
+    "outputs",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "comparevi-history/release-proof@v1"
+    },
+    "generatedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "releaseAssets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseAssetsDir",
+        "releaseManifestPath",
+        "checksumsPath",
+        "selectedAsset"
+      ],
+      "properties": {
+        "releaseAssetsDir": { "type": "string", "minLength": 1 },
+        "releaseManifestPath": { "type": "string", "minLength": 1 },
+        "checksumsPath": { "type": "string", "minLength": 1 },
+        "selectedAsset": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "runtimeIdentifier",
+            "fileName",
+            "sha256",
+            "packageDirectory",
+            "entryExecutable",
+            "archivePath",
+            "packageRoot",
+            "executablePath"
+          ],
+          "properties": {
+            "runtimeIdentifier": { "type": "string", "minLength": 1 },
+            "fileName": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "packageDirectory": { "type": "string", "minLength": 1 },
+            "entryExecutable": { "type": "string", "minLength": 1 },
+            "archivePath": { "type": "string", "minLength": 1 },
+            "packageRoot": { "type": "string", "minLength": 1 },
+            "executablePath": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeIdentifier",
+        "containerImage",
+        "containerExecutionKind",
+        "dockerExecutablePath",
+        "containerInvokerScriptPath",
+        "imagePulled"
+      ],
+      "properties": {
+        "runtimeIdentifier": { "type": "string", "minLength": 1 },
+        "containerImage": { "type": "string", "minLength": 1 },
+        "containerExecutionKind": {
+          "type": "string",
+          "enum": ["docker", "script-override"]
+        },
+        "dockerExecutablePath": { "type": ["string", "null"] },
+        "containerInvokerScriptPath": { "type": ["string", "null"] },
+        "imagePulled": { "type": "boolean" }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetRunsManifestPath",
+        "expectedBundlePath",
+        "outputBundlePath"
+      ],
+      "properties": {
+        "targetRunsManifestPath": { "type": ["string", "null"] },
+        "expectedBundlePath": { "type": "string", "minLength": 1 },
+        "outputBundlePath": { "type": ["string", "null"] }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptPath",
+        "summaryPath",
+        "logPath"
+      ],
+      "properties": {
+        "receiptPath": { "type": "string", "minLength": 1 },
+        "summaryPath": { "type": "string", "minLength": 1 },
+        "logPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finalStatus",
+        "finalReason",
+        "goldenBaselineMatched",
+        "errorMessage"
+      ],
+      "properties": {
+        "finalStatus": {
+          "type": "string",
+          "enum": ["succeeded", "failed"]
+        },
+        "finalReason": {
+          "type": "string",
+          "enum": ["release-proof-succeeded", "release-proof-failed"]
+        },
+        "goldenBaselineMatched": { "type": "boolean" },
+        "errorMessage": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

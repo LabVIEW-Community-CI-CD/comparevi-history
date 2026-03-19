@@ -467,6 +467,35 @@ Example:
 pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalProof.ps1
 ```
 
+## Release proof
+
+For pre-publication release validation, use
+[`scripts/Invoke-CompareVIHistoryReleaseProof.ps1`](scripts/Invoke-CompareVIHistoryReleaseProof.ps1).
+It validates the staged self-contained compiler release assets against the pinned NI Ubuntu runtime before immutable tag
+publication.
+
+The canonical release-proof receipt is `release-proof.json` (`comparevi-history/release-proof@v1`).
+The script also writes:
+
+- `release-proof-summary.md`
+- `release-proof.log`
+
+The default results root is:
+
+- `tests/results/release-proof`
+
+The release-proof gate is intentionally asset-first:
+
+- it consumes the staged `comparevi-history-review-compiler-release.json`
+- it verifies the selected runtime asset against `SHA256SUMS.txt`
+- it extracts the packaged compiler asset instead of using the source project
+- it executes that packaged compiler against the canonical synthetic review-bundle fixture
+- it proves the runtime contract inside the pinned `nationalinstruments/labview:2026q1-linux` plane by default
+- it fails closed when the packaged compiler output drifts from `tests/fixtures/review-bundle-v1/review-bundle.json`
+
+This keeps release publication tied to the exact assets that were proven, rather than repackaging or revalidating a
+different compiler surface after the proof gate.
+
 ## Corpus evidence indexing
 
 For corpus-scale deterministic processing, use
