@@ -317,6 +317,7 @@ try {
       -ResultsDir $explicitResults `
       -ToolingRoot $toolingRoot `
       -CompilerPath $compilerPath `
+      -ContainerImage 'comparevi-vi-history-dev:local' `
       -SkipImagePull) | ConvertFrom-Json -Depth 64
 
   if ([string]$explicitReceipt.schema -ne 'comparevi-history/local-review@v1') {
@@ -332,8 +333,11 @@ try {
     [string]$explicitReceipt.runtime.profile -ne 'dev-fast') {
     throw 'Explicit local-review runtime profile mismatch.'
   }
+  if ([string]$explicitReceipt.invocation.containerImage -ne 'comparevi-vi-history-dev:local') {
+    throw 'Explicit local-review should preserve the selected accelerated container image.'
+  }
   if ([string]$explicitReceipt.runtime.image -ne 'comparevi-vi-history-dev:local') {
-    throw 'Explicit local-review should use the accelerated dev image by default.'
+    throw 'Explicit local-review should use the selected accelerated dev image.'
   }
   if (@('built-local-image', 'existing-local-image') -notcontains [string]$explicitReceipt.runtime.cacheReuseState) {
     throw 'Explicit local-review should surface either a cold dev-image build or a warm local-image reuse state.'
