@@ -10,6 +10,7 @@
     "consumer",
     "invocation",
     "runtime",
+    "operatorSession",
     "timings",
     "compiler",
     "projections",
@@ -115,6 +116,42 @@
         "cacheReuseState": { "type": ["string", "null"] },
         "coldWarmClass": { "type": ["string", "null"] },
         "warmRuntimeDir": { "type": ["string", "null"] }
+      }
+    },
+    "operatorSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "facadeSchema",
+        "toolingRoot",
+        "toolingSource",
+        "toolingRef",
+        "sessionPaths",
+        "localRefinementReceiptPaths",
+        "benchmarkPaths",
+        "reviewReceiptPaths"
+      ],
+      "properties": {
+        "facadeSchema": { "type": ["string", "null"] },
+        "toolingRoot": { "type": ["string", "null"] },
+        "toolingSource": { "type": ["string", "null"] },
+        "toolingRef": { "type": ["string", "null"] },
+        "sessionPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "localRefinementReceiptPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "benchmarkPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reviewReceiptPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "timings": {

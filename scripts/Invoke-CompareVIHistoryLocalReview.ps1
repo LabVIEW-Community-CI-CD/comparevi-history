@@ -155,6 +155,43 @@ function Get-OptionalPropertyValue {
   return $property.Value
 }
 
+function Get-NestedValue {
+  param(
+    [AllowNull()]$Object,
+    [Parameter(Mandatory = $true)][string[]]$Path,
+    $Default = $null
+  )
+
+  $current = $Object
+  foreach ($segment in $Path) {
+    if ($null -eq $current) {
+      return $Default
+    }
+
+    if ($current -is [System.Collections.IDictionary]) {
+      if (-not $current.Contains($segment)) {
+        return $Default
+      }
+
+      $current = $current[$segment]
+      continue
+    }
+
+    $property = $current.PSObject.Properties[$segment]
+    if ($null -eq $property) {
+      return $Default
+    }
+
+    $current = $property.Value
+  }
+
+  if ($null -eq $current) {
+    return $Default
+  }
+
+  return $current
+}
+
 function Invoke-GitCapture {
   param(
     [Parameter(Mandatory = $true)]
@@ -566,6 +603,109 @@ function Resolve-PublishedCompiler {
   }
 }
 
+function Resolve-ToolingMetadata {
+  param([Parameter(Mandatory = $true)][string]$ToolingRootPath)
+
+  $metadataPath = Join-Path $ToolingRootPath 'comparevi-tools-release.json'
+  if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+    return $null
+  }
+
+  return Read-JsonFile -Path $metadataPath
+}
+
+function Resolve-CompareVIToolsModulePath {
+  param([Parameter(Mandatory = $true)][string]$ToolingRootPath)
+
+  $modulePath = Join-Path $ToolingRootPath 'tools' 'CompareVI.Tools' 'CompareVI.Tools.psd1'
+  if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+    throw "CompareVI.Tools module manifest was not found under the resolved tooling root: $modulePath"
+  }
+
+  return $modulePath
+}
+
+function Resolve-CompareVITooling {
+  param(
+    [AllowNull()]
+    [string]$ProvidedToolingRoot,
+    [Parameter(Mandatory = $true)]
+    [string]$Repository,
+    [AllowNull()]
+    [string]$RequestedRef,
+    [Parameter(Mandatory = $true)]
+    [string]$DefaultRefPath,
+    [Parameter(Mandatory = $true)]
+    [string]$DestinationPath,
+    [AllowNull()]
+    [string]$Token
+  )
+
+  $toolingRootResolved = $null
+  $toolingSource = $null
+  $effectiveCompareviRef = $null
+  $hostedRunnerDefaultImage = $null
+
+  if (-not [string]::IsNullOrWhiteSpace($ProvidedToolingRoot)) {
+    $toolingRootResolved = Resolve-AbsolutePath -Path $ProvidedToolingRoot -BasePath (Get-Location).Path
+    if (-not (Test-Path -LiteralPath $toolingRootResolved -PathType Container)) {
+      throw "Tooling root not found: $toolingRootResolved"
+    }
+    $toolingSource = 'provided-tooling-root'
+    $effectiveCompareviRef = if ([string]::IsNullOrWhiteSpace($RequestedRef)) { 'provided-tooling-root' } else { $RequestedRef.Trim() }
+  } else {
+    $resolveOutputPath = Join-Path $DestinationPath 'resolve-backend.out'
+    & (Join-Path $repoRoot 'scripts' 'Resolve-CompareVIHistoryBackend.ps1') `
+      -Repository $Repository `
+      -RequestedRef $RequestedRef `
+      -DefaultRefPath $DefaultRefPath `
+      -ActionRef 'local-review' `
+      -ToolingPath (Join-Path $DestinationPath '.comparevi-history-tools') `
+      -AllowSourceFallback `
+      -GitHubToken $Token `
+      -GitHubOutputPath $resolveOutputPath | Out-Null
+
+    $backendValues = Read-KeyValueFile -Path $resolveOutputPath
+    $toolingSource = [string]$backendValues['tooling-source']
+    $effectiveCompareviRef = [string]$backendValues['comparevi-ref']
+    if ([string]::IsNullOrWhiteSpace($toolingSource)) {
+      throw 'Failed to resolve CompareVI.Tools backend tooling for local review.'
+    }
+
+    if ($toolingSource -eq 'bundle') {
+      $acquireOutputPath = Join-Path $DestinationPath 'acquire-backend.out'
+      & (Join-Path $repoRoot 'scripts' 'Acquire-CompareVIToolsBundle.ps1') `
+        -Repository $Repository `
+        -ReleaseTag ([string]$backendValues['release-tag']) `
+        -BundleAssetName ([string]$backendValues['bundle-asset-name']) `
+        -BundleAssetUrl ([string]$backendValues['bundle-asset-url']) `
+        -BundleAssetDigest ([string]$backendValues['bundle-asset-digest']) `
+        -DestinationPath ([string]$backendValues['tooling-path']) `
+        -GitHubToken $Token `
+        -GitHubOutputPath $acquireOutputPath | Out-Null
+
+      $acquireValues = Read-KeyValueFile -Path $acquireOutputPath
+      $toolingRootResolved = Resolve-AbsolutePath -Path ([string]$acquireValues['tooling-path']) -BasePath (Get-Location).Path
+      $hostedRunnerDefaultImage = Get-OptionalString -Value $acquireValues['hosted-runner-default-image']
+    } else {
+      throw 'Local review requires a released CompareVI.Tools bundle by default. Supply -ToolingRoot explicitly for unreleased backend work.'
+    }
+  }
+
+  $metadata = Resolve-ToolingMetadata -ToolingRootPath $toolingRootResolved
+  if ([string]::IsNullOrWhiteSpace($hostedRunnerDefaultImage) -and $null -ne $metadata) {
+    $hostedRunnerDefaultImage = Get-OptionalString -Value (Get-NestedValue -Object $metadata -Path @('consumerContract', 'hostedNiLinuxRunner', 'defaultImage'))
+  }
+
+  return [ordered]@{
+    root = $toolingRootResolved
+    source = $toolingSource
+    compareviRef = $effectiveCompareviRef
+    hostedRunnerDefaultImage = $hostedRunnerDefaultImage
+    modulePath = Resolve-CompareVIToolsModulePath -ToolingRootPath $toolingRootResolved
+  }
+}
+
 function Resolve-ExplicitChanges {
   param(
     [Parameter(Mandatory = $true)]
@@ -862,93 +1002,120 @@ $compilerInfo = if ($null -ne $resolvedCompilerExecutable) {
 
 $targetManifestPath = $null
 $manifestTargets = New-Object System.Collections.Generic.List[object]
-$runtimeReceipts = New-Object System.Collections.Generic.List[object]
-$effectiveToolingRoot = if ([string]::IsNullOrWhiteSpace($ToolingRoot)) { $null } else { (Resolve-AbsolutePath -Path $ToolingRoot -BasePath (Get-Location).Path) }
-$invocationScriptPath = if ([string]::IsNullOrWhiteSpace($InvokeScriptPath)) { $null } else { (Resolve-AbsolutePath -Path $InvokeScriptPath -BasePath $consumerRootResolved) }
+$operatorSessionReceipts = New-Object System.Collections.Generic.List[object]
+$compareVITooling = $null
+$effectiveCompareviRef = $null
+$toolingSource = $null
+$localReviewHookPath = Join-Path $repoRoot 'scripts' 'Invoke-CompareVIHistoryLocalReviewHook.ps1'
 
 if ($discoveryStatus -eq 'ready') {
+  $compareVITooling = Resolve-CompareVITooling `
+    -ProvidedToolingRoot $ToolingRoot `
+    -Repository $CompareviRepository `
+    -RequestedRef $CompareviRef `
+    -DefaultRefPath (Join-Path $repoRoot 'comparevi-backend-ref.txt') `
+    -DestinationPath $resultsDirResolved `
+    -Token $resolvedGitHubToken
+  $effectiveCompareviRef = [string]$compareVITooling.compareviRef
+  $toolingSource = [string]$compareVITooling.source
+
+  foreach ($loadedModule in @(Get-Module -Name 'CompareVI.Tools' -All)) {
+    Remove-Module -ModuleInfo $loadedModule -Force -ErrorAction SilentlyContinue
+  }
+  Import-Module -Name ([string]$compareVITooling.modulePath) -Force | Out-Null
+
   $targetOrdinal = 0
   foreach ($selectedTarget in @($selectedTargets | ForEach-Object { $_ })) {
     $targetOrdinal += 1
     $targetResultsDir = Join-Path $resultsDirResolved ('targets/{0:D3}-{1}' -f $targetOrdinal, [string]$selectedTarget.targetId)
-    $localFastLoopPath = Join-Path $targetResultsDir 'local-fast-loop.json'
-    $localFastLoopReceipt = $null
+    $operatorSessionPath = Join-Path $targetResultsDir 'local-operator-session.json'
+    $reviewProjectionReceiptPath = Join-Path $targetResultsDir 'local-target-review.json'
+    $operatorSessionReceipt = $null
+    $reviewProjectionReceipt = $null
     $caughtException = $null
     try {
-      $fastLoopArgs = @{
-        ConsumerRepositoryRoot = $consumerRootResolved
-        ViPath = [string]$selectedTarget.targetPath
-        RuntimeProfile = $Profile
-        ConsumerRef = $headSha
-        SourceBranchRef = $sourceBranchRef
-        ConsumerRepository = $consumerRepositorySlug
-        ResultsDir = $targetResultsDir
-        Mode = ($requestedModes -join ',')
-        NoisePolicy = $NoisePolicy
-        IncludeMergeParents = $IncludeMergeParents.IsPresent
-        CompareviRepository = $CompareviRepository
-        GitHubToken = $resolvedGitHubToken
+      $reviewCommandArguments = New-Object System.Collections.Generic.List[string]
+      foreach ($argument in @(
+          $consumerRootResolved,
+          [string]$selectedTarget.targetId,
+          [string]$selectedTarget.targetPath,
+          $(if ([string]::IsNullOrWhiteSpace($sourceBranchRef)) { '' } else { $sourceBranchRef }),
+          $consumerRepositorySlug,
+          $headSha,
+          ([string]::Join(',', @($selectedTarget.requestedModes | ForEach-Object { [string]$_ }))),
+          [string]$selectedTarget.requestedModeSource,
+          [string]$selectedTarget.targetSource,
+          [string]$selectedTarget.currentPath,
+          $(if ([string]::IsNullOrWhiteSpace([string]$selectedTarget.previousPath)) { '' } else { [string]$selectedTarget.previousPath }),
+          [string]$selectedTarget.changeStatus,
+          ([string][bool]$selectedTarget.keepArtifactsOnNoDiff)
+        )) {
+        $reviewCommandArguments.Add([string]$argument) | Out-Null
       }
-      if ($null -ne $CompareTimeoutSeconds) {
-        $fastLoopArgs.CompareTimeoutSeconds = [int]$CompareTimeoutSeconds
+
+      $operatorSessionArgs = @{
+        Profile = $Profile
+        RepoRoot = $consumerRootResolved
+        ResultsRoot = $targetResultsDir
+        HistoryTargetPath = [string]$selectedTarget.targetPath
+        HistoryBranchRef = $headSha
+        HistoryBaselineRef = $sourceBranchRef
+        ReviewCommandPath = $localReviewHookPath
+        ReviewCommandArguments = @($reviewCommandArguments | ForEach-Object { $_ })
+        ReviewWorkingDirectory = $repoRoot
+        ReviewReceiptPath = $reviewProjectionReceiptPath
+        SessionManifestPath = $operatorSessionPath
       }
       if (-not [string]::IsNullOrWhiteSpace($WarmRuntimeDir)) {
-        $fastLoopArgs.WarmRuntimeDir = $WarmRuntimeDir
+        $operatorSessionArgs.WarmRuntimeDir = $WarmRuntimeDir
       }
-      if ($null -ne $effectiveToolingRoot) {
-        $fastLoopArgs.ToolingRoot = $effectiveToolingRoot
-      }
-      if (-not [string]::IsNullOrWhiteSpace($CompareviRef)) {
-        $fastLoopArgs.CompareviRef = $CompareviRef
+      $selectedTargetMaxCommitCount = Get-NestedValue -Object $selectedTarget -Path @('history', 'branchBudget', 'maxCommitCount')
+      if ($null -ne $selectedTargetMaxCommitCount) {
+        $operatorSessionArgs.HistoryMaxCommitCount = [int]$selectedTargetMaxCommitCount
       }
       if (-not [string]::IsNullOrWhiteSpace($ContainerImage)) {
-        $fastLoopArgs.ContainerImage = $ContainerImage
-      }
-      if ($targetOrdinal -gt 1 -or $SkipImagePull.IsPresent) {
-        $fastLoopArgs.SkipImagePull = $true
+        if ($Profile -eq 'proof') {
+          $operatorSessionArgs.ProofImage = $ContainerImage.Trim()
+        } else {
+          $operatorSessionArgs.DevImage = $ContainerImage.Trim()
+        }
+      } elseif ($Profile -eq 'proof' -and -not [string]::IsNullOrWhiteSpace([string]$compareVITooling.hostedRunnerDefaultImage)) {
+        $operatorSessionArgs.ProofImage = [string]$compareVITooling.hostedRunnerDefaultImage
       }
       if ($SkipDevImageBuild.IsPresent) {
-        $fastLoopArgs.SkipDevImageBuild = $true
-      }
-      if (-not [string]::IsNullOrWhiteSpace($invocationScriptPath)) {
-        $fastLoopArgs.InvokeScriptPath = $invocationScriptPath
+        $operatorSessionArgs.SkipDevImageBuild = $true
       }
 
-      & (Join-Path $repoRoot 'scripts' 'Invoke-CompareVIHistoryManualExplorationFastLoop.ps1') @fastLoopArgs | Out-Null
-      if (-not (Test-Path -LiteralPath $localFastLoopPath -PathType Leaf)) {
-        throw "Local fast-loop receipt was not written: $localFastLoopPath"
-      }
-      $localFastLoopReceipt = Read-JsonFile -Path $localFastLoopPath
+      $operatorSessionReceipt = Invoke-CompareVIHistoryLocalOperatorSessionFacade @operatorSessionArgs
     } catch {
       $caughtException = $_
-      if (Test-Path -LiteralPath $localFastLoopPath -PathType Leaf) {
-        $localFastLoopReceipt = Read-JsonFile -Path $localFastLoopPath
+      if (Test-Path -LiteralPath $operatorSessionPath -PathType Leaf) {
+        $operatorSessionReceipt = Read-JsonFile -Path $operatorSessionPath
       }
     }
 
-    if ($null -ne $localFastLoopReceipt -and -not [string]::IsNullOrWhiteSpace([string]$localFastLoopReceipt.tooling.root)) {
-      $effectiveToolingRoot = [string]$localFastLoopReceipt.tooling.root
-    }
-    if ($null -ne $localFastLoopReceipt) {
-      $runtimeReceipts.Add($localFastLoopReceipt) | Out-Null
+    if ($null -ne $operatorSessionReceipt) {
+      $operatorSessionReceipts.Add($operatorSessionReceipt) | Out-Null
     }
 
-    $publicRunReceipt = $null
-    $publicRunPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.publicRunPath })
-    if (-not [string]::IsNullOrWhiteSpace($publicRunPath) -and (Test-Path -LiteralPath $publicRunPath -PathType Leaf)) {
-      $publicRunReceipt = Read-JsonFile -Path $publicRunPath
+    $resolvedReviewReceiptPath = Get-OptionalString -Value (Get-NestedValue -Object $operatorSessionReceipt -Path @('review', 'outputs', 'receiptPath'))
+    if ([string]::IsNullOrWhiteSpace($resolvedReviewReceiptPath) -and (Test-Path -LiteralPath $reviewProjectionReceiptPath -PathType Leaf)) {
+      $resolvedReviewReceiptPath = $reviewProjectionReceiptPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($resolvedReviewReceiptPath) -and (Test-Path -LiteralPath $resolvedReviewReceiptPath -PathType Leaf)) {
+      $reviewProjectionReceipt = Read-JsonFile -Path $resolvedReviewReceiptPath
     }
 
-    $targetFinalStatus = if ($null -ne $localFastLoopReceipt) { Get-OptionalString -Value $localFastLoopReceipt.summary.finalStatus } else { 'failed' }
+    $targetFinalStatus = if ($null -ne $reviewProjectionReceipt) { Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('summary', 'finalStatus')) } else { Get-OptionalString -Value (Get-NestedValue -Object $operatorSessionReceipt -Path @('finalStatus')) }
     if ([string]::IsNullOrWhiteSpace($targetFinalStatus)) {
-      $targetFinalStatus = if ($null -ne $publicRunReceipt) { [string]$publicRunReceipt.summary.finalStatus } else { 'failed' }
+      $targetFinalStatus = 'failed'
     }
-    $targetFinalReason = if ($null -ne $localFastLoopReceipt) { Get-OptionalString -Value $localFastLoopReceipt.summary.finalReason } else { 'local-fast-loop-failed' }
+    $targetFinalReason = if ($null -ne $reviewProjectionReceipt) { Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('summary', 'finalReason')) } else { Get-OptionalString -Value (Get-NestedValue -Object $operatorSessionReceipt -Path @('failure', 'stage')) }
     if ([string]::IsNullOrWhiteSpace($targetFinalReason)) {
-      $targetFinalReason = if ($null -ne $publicRunReceipt) { [string]$publicRunReceipt.summary.finalReason } else { 'local-fast-loop-failed' }
+      $targetFinalReason = 'local-operator-session-failed'
     }
     if ($null -ne $caughtException -and [string]::IsNullOrWhiteSpace($targetFinalReason)) {
-      $targetFinalReason = 'local-fast-loop-failed'
+      $targetFinalReason = 'local-operator-session-failed'
     }
 
     $manifestTargets.Add([ordered]@{
@@ -964,17 +1131,17 @@ if ($discoveryStatus -eq 'ready') {
         changeStatus = [string]$selectedTarget.changeStatus
         finalStatus = $targetFinalStatus
         finalReason = $targetFinalReason
-        requestPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.requestPath })
-        publicRunPath = $publicRunPath
-        sharedEvidencePath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.sharedEvidencePath })
-        historySummaryJsonPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.historySummaryJson })
-        manifestPath = Get-OptionalString -Value $(if ($null -eq $publicRunReceipt) { $null } else { $publicRunReceipt.outputs.manifestPath })
-        historyReportMdPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.historyReportMd })
-        historyReportHtmlPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.historyReportHtml })
-        modeSummaryJsonPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.modeSummaryJsonPath })
-        modeSummaryPath = Get-OptionalString -Value $(if ($null -eq $localFastLoopReceipt) { $null } else { $localFastLoopReceipt.outputs.modeSummaryPath })
-        totalProcessed = if ($null -eq $publicRunReceipt -or $null -eq $publicRunReceipt.summary.totalProcessed) { $null } else { [int]$publicRunReceipt.summary.totalProcessed }
-        totalDiffs = if ($null -eq $publicRunReceipt -or $null -eq $publicRunReceipt.summary.totalDiffs) { $null } else { [int]$publicRunReceipt.summary.totalDiffs }
+        requestPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'requestPath'))
+        publicRunPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'publicRunPath'))
+        sharedEvidencePath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'sharedEvidencePath'))
+        historySummaryJsonPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'historySummaryJsonPath'))
+        manifestPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'manifestPath'))
+        historyReportMdPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'historyReportMdPath'))
+        historyReportHtmlPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'historyReportHtmlPath'))
+        modeSummaryJsonPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'modeSummaryJsonPath'))
+        modeSummaryPath = Get-OptionalString -Value (Get-NestedValue -Object $reviewProjectionReceipt -Path @('projections', 'modeSummaryPath'))
+        totalProcessed = $(if ($null -eq (Get-NestedValue -Object $reviewProjectionReceipt -Path @('summary', 'totalProcessed'))) { $null } else { [int](Get-NestedValue -Object $reviewProjectionReceipt -Path @('summary', 'totalProcessed')) })
+        totalDiffs = $(if ($null -eq (Get-NestedValue -Object $reviewProjectionReceipt -Path @('summary', 'totalDiffs'))) { $null } else { [int](Get-NestedValue -Object $reviewProjectionReceipt -Path @('summary', 'totalDiffs')) })
       }) | Out-Null
   }
 
@@ -1035,16 +1202,25 @@ $publicStepSummaryPathValue = Get-OptionalString -Value $prRunReceipt.outputs.pu
 $indexMarkdownPathValue = Get-OptionalString -Value $prRunReceipt.outputs.indexMarkdownPath
 $indexHtmlPathValue = Get-OptionalString -Value $prRunReceipt.outputs.indexHtmlPath
 $reviewBundlePathValue = Join-Path $resultsDirResolved 'review-bundle.json'
-$normalizedRuntimeReceipts = @(
-  $runtimeReceipts |
+$normalizedOperatorSessionReceipts = @(
+  $operatorSessionReceipts |
     ForEach-Object { ConvertTo-ObjectArray -Value $_ } |
     ForEach-Object { $_ }
 )
-$runtimeImages = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'image') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeToolSources = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'toolSource') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeReuseStates = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'cacheReuseState') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeTemperatureClasses = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'coldWarmClass') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeWarmDirs = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'warmRuntimeDir') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$normalizedLocalRefinementReceipts = @(
+  $normalizedOperatorSessionReceipts |
+    ForEach-Object { Get-OptionalPropertyValue -InputObject $_ -PropertyName 'localRefinement' } |
+    Where-Object { $null -ne $_ }
+)
+$runtimeImages = @($normalizedLocalRefinementReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'image') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeToolSources = @($normalizedLocalRefinementReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'toolSource') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeReuseStates = @($normalizedLocalRefinementReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'cacheReuseState') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeTemperatureClasses = @($normalizedLocalRefinementReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'coldWarmClass') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$operatorSessionPaths = @($normalizedOperatorSessionReceipts | ForEach-Object { Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('artifacts', 'sessionPath')) } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$localRefinementReceiptPaths = @($normalizedOperatorSessionReceipts | ForEach-Object { Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('artifacts', 'localRefinementPath')) } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$benchmarkPaths = @($normalizedOperatorSessionReceipts | ForEach-Object { Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('artifacts', 'benchmarkPath')) } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$reviewReceiptPaths = @($normalizedOperatorSessionReceipts | ForEach-Object { Get-OptionalString -Value (Get-NestedValue -Object $_ -Path @('artifacts', 'reviewReceiptPath')) } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeWarmDirs = @()
 
 $consumerReceipt = [ordered]@{
   repositoryRoot = $consumerRootResolved
@@ -1087,6 +1263,17 @@ $outputReceipt = [ordered]@{
   indexHtmlPath = $indexHtmlPathValue
 }
 
+$operatorSessionReceipt = [ordered]@{
+  facadeSchema = if ($normalizedOperatorSessionReceipts.Count -eq 0) { $null } else { 'comparevi-tools/local-operator-session-facade@v1' }
+  toolingRoot = if ($null -eq $compareVITooling) { $null } else { [string]$compareVITooling.root }
+  toolingSource = $toolingSource
+  toolingRef = $effectiveCompareviRef
+  sessionPaths = @($operatorSessionPaths)
+  localRefinementReceiptPaths = @($localRefinementReceiptPaths)
+  benchmarkPaths = @($benchmarkPaths)
+  reviewReceiptPaths = @($reviewReceiptPaths)
+}
+
 $summaryReceipt = [ordered]@{
   changedViCount = $changedViFiles.Count
   selectedTargetCount = $selectedTargets.Count
@@ -1116,6 +1303,7 @@ $localReceipt = [ordered]@{
   consumer = $consumerReceipt
   invocation = $invocationReceipt
   runtime = $runtimeReceipt
+  operatorSession = $operatorSessionReceipt
   timings = $timingsReceipt
   compiler = $compilerInfo
   projections = $projectionReceipt
@@ -1138,6 +1326,9 @@ $localReceipt = [ordered]@{
   ('- Runtime image: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$runtimeReceipt.image)) { 'n/a' } else { [string]$runtimeReceipt.image }))
   ('- Runtime cache reuse: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$runtimeReceipt.cacheReuseState)) { 'n/a' } else { [string]$runtimeReceipt.cacheReuseState }))
   ('- Runtime cold/warm class: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$runtimeReceipt.coldWarmClass)) { 'n/a' } else { [string]$runtimeReceipt.coldWarmClass }))
+  ('- Operator session tooling root: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$operatorSessionReceipt.toolingRoot)) { 'n/a' } else { [string]$operatorSessionReceipt.toolingRoot }))
+  ('- Operator session tooling source: `{0}`' -f $(if ([string]::IsNullOrWhiteSpace([string]$operatorSessionReceipt.toolingSource)) { 'n/a' } else { [string]$operatorSessionReceipt.toolingSource }))
+  ('- Operator session receipts: `{0}`' -f $operatorSessionReceipt.sessionPaths.Count)
   ('- Elapsed seconds: `{0}`' -f [string]$timingsReceipt.elapsedSeconds)
   ('- Compiler source: `{0}`' -f [string]$compilerInfo.source)
   ('- Compiler executable: `{0}`' -f [string]$compilerInfo.executablePath)
