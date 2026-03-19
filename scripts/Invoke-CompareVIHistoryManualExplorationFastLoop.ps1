@@ -295,9 +295,10 @@ switch ($runtimeProfileValue) {
         throw "Build-VIHistoryDevImage.ps1 was not found under the resolved tooling root: $buildImageScriptPath"
       }
       & $buildImageScriptPath -Tag $selectedRuntimeImage | Out-Null
-      if ($LASTEXITCODE -ne 0) {
+      if (-not $?) {
         throw "Build-VIHistoryDevImage.ps1 failed while preparing '$selectedRuntimeImage'."
       }
+      $global:LASTEXITCODE = 0
       $cacheReuseState = 'built-local-image'
       $coldWarmClass = 'cold'
     } else {
@@ -314,9 +315,10 @@ switch ($runtimeProfileValue) {
         throw "Build-VIHistoryDevImage.ps1 was not found under the resolved tooling root: $buildImageScriptPath"
       }
       & $buildImageScriptPath -Tag $selectedRuntimeImage | Out-Null
-      if ($LASTEXITCODE -ne 0) {
+      if (-not $?) {
         throw "Build-VIHistoryDevImage.ps1 failed while preparing '$selectedRuntimeImage'."
       }
+      $global:LASTEXITCODE = 0
     }
     if (-not (Test-Path -LiteralPath $warmRuntimeManagerScriptPath -PathType Leaf)) {
       throw "Manage-VIHistoryRuntimeInDocker.ps1 was not found under the resolved tooling root: $warmRuntimeManagerScriptPath"
@@ -335,9 +337,10 @@ switch ($runtimeProfileValue) {
       -ResultsRoot $resultsDirResolved `
       -RuntimeDir $warmRuntimeDirResolved `
       -Image $selectedRuntimeImage
-    if ($LASTEXITCODE -ne 0) {
+    if (-not $?) {
       throw "Manage-VIHistoryRuntimeInDocker.ps1 failed while starting the warm runtime."
     }
+    $global:LASTEXITCODE = 0
     $warmRuntimeState = ($warmRuntimeJson -join "`n") | ConvertFrom-Json -Depth 64
     if ([string]$warmRuntimeState.outcome -eq 'reused') {
       $cacheReuseState = 'warm-runtime-reused'
