@@ -1035,11 +1035,16 @@ $publicStepSummaryPathValue = Get-OptionalString -Value $prRunReceipt.outputs.pu
 $indexMarkdownPathValue = Get-OptionalString -Value $prRunReceipt.outputs.indexMarkdownPath
 $indexHtmlPathValue = Get-OptionalString -Value $prRunReceipt.outputs.indexHtmlPath
 $reviewBundlePathValue = Join-Path $resultsDirResolved 'review-bundle.json'
-$runtimeImages = @($runtimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'image') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeToolSources = @($runtimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'toolSource') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeReuseStates = @($runtimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'cacheReuseState') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeTemperatureClasses = @($runtimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'coldWarmClass') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-$runtimeWarmDirs = @($runtimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'warmRuntimeDir') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$normalizedRuntimeReceipts = @(
+  $runtimeReceipts |
+    ForEach-Object { ConvertTo-ObjectArray -Value $_ } |
+    ForEach-Object { $_ }
+)
+$runtimeImages = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'image') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeToolSources = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'toolSource') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeReuseStates = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'cacheReuseState') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeTemperatureClasses = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'coldWarmClass') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+$runtimeWarmDirs = @($normalizedRuntimeReceipts | ForEach-Object { Get-OptionalString -Value (Get-OptionalPropertyValue -InputObject (Get-OptionalPropertyValue -InputObject $_ -PropertyName 'runtime') -PropertyName 'warmRuntimeDir') } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 
 $consumerReceipt = [ordered]@{
   repositoryRoot = $consumerRootResolved
