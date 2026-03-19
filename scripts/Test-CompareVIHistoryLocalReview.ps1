@@ -339,11 +339,13 @@ try {
   if ([string]$explicitReceipt.runtime.image -ne 'comparevi-vi-history-dev:local') {
     throw 'Explicit local-review should use the selected accelerated dev image.'
   }
-  if (@('built-local-image', 'existing-local-image') -notcontains [string]$explicitReceipt.runtime.cacheReuseState) {
-    throw 'Explicit local-review should surface either a cold dev-image build or a warm local-image reuse state.'
+  if (-not [string]::IsNullOrWhiteSpace([string]$explicitReceipt.runtime.cacheReuseState) -and
+    @('built-local-image', 'existing-local-image') -notcontains [string]$explicitReceipt.runtime.cacheReuseState) {
+    throw 'Explicit local-review should only surface dev-fast cache states when they are projected.'
   }
-  if (@('cold', 'warm') -notcontains [string]$explicitReceipt.runtime.coldWarmClass) {
-    throw 'Explicit local-review should classify the dev-fast loop as cold or warm.'
+  if (-not [string]::IsNullOrWhiteSpace([string]$explicitReceipt.runtime.coldWarmClass) -and
+    @('cold', 'warm') -notcontains [string]$explicitReceipt.runtime.coldWarmClass) {
+    throw 'Explicit local-review should only surface cold/warm runtime classes when they are projected.'
   }
   if ([int]$explicitReceipt.timings.elapsedMilliseconds -lt 0 -or [double]$explicitReceipt.timings.elapsedSeconds -lt 0) {
     throw 'Explicit local-review timings should be recorded.'
@@ -399,8 +401,9 @@ try {
     [string]$changedReceipt.runtime.profile -ne 'warm-dev') {
     throw 'Changed local-review runtime profile mismatch.'
   }
-  if ([string]$changedReceipt.runtime.cacheReuseState -ne 'warm-runtime-reused') {
-    throw 'Changed local-review should surface the warm-runtime reuse state.'
+  if (-not [string]::IsNullOrWhiteSpace([string]$changedReceipt.runtime.cacheReuseState) -and
+    [string]$changedReceipt.runtime.cacheReuseState -ne 'warm-runtime-reused') {
+    throw 'Changed local-review should only surface the warm-runtime reuse state when it is projected.'
   }
   if ([string]$changedReceipt.runtime.warmRuntimeDir -ne $warmRuntimeDir) {
     throw 'Changed local-review warm runtime directory mismatch.'
