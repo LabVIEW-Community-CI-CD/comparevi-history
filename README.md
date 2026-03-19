@@ -400,6 +400,23 @@ The primary local human review surface is `index.html`.
 `pr-comment.md` and the other PR-shaped receipts are compatibility projections so local iteration and hosted PR runs
 stay on one deterministic bundle shape.
 
+The local-review facade is profile-aware:
+
+- `dev-fast`
+  - default profile for local reviewer iteration
+  - uses the local NI-derived acceleration image exposed by `compare-vi-cli-action`
+  - keeps the mounted working tree and the hosted reviewer-bundle shape
+- `warm-dev`
+  - reuses the same acceleration image through a long-lived Docker runtime
+  - records warm-runtime reuse in `local-review.json`
+  - is the right profile for repeated local turns against the same repository
+- `proof`
+  - keeps the canonical `nationalinstruments/labview:2026q1-linux` execution plane
+  - is the explicit local parity profile when you want release/CI runtime truth instead of speed
+
+The local-review receipt records the selected runtime profile, image, tool source, cache reuse state, cold/warm
+classification, and elapsed timings so local evidence stays machine-readable across profiles.
+
 Two selection modes are supported:
 
 - explicit paths:
@@ -410,11 +427,31 @@ pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
   -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi'
 ```
 
+- explicit proof-profile parity run:
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot C:\dev\labview-icon-editor `
+  -Profile proof `
+  -ViPath 'Tooling/deployment/VIP_Post-Install Custom Action.vi'
+```
+
 - git diff between base and head refs:
 
 ```powershell
 pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
   -ConsumerRepositoryRoot C:\dev\labview-icon-editor `
+  -BaseRef develop `
+  -HeadRef HEAD
+```
+
+- repeated-turn warm-runtime loop:
+
+```powershell
+pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
+  -ConsumerRepositoryRoot C:\dev\labview-icon-editor `
+  -Profile warm-dev `
+  -WarmRuntimeDir tests/results/local-review/runtime `
   -BaseRef develop `
   -HeadRef HEAD
 ```
@@ -460,6 +497,9 @@ The local-proof gate freezes the platform against the current checked-in contrac
 Unlike `local-review`, this gate is for `comparevi-history` platform work. It exercises the current branch compiler and
 reviewer-surface contracts through the checked-in synthetic fixture and fails closed when local-review behavior,
 compiled review bundles, reviewer workspaces, preview selection, pair pages, or the corpus pilot baseline drift.
+
+`local-proof` intentionally keeps the stricter proof profile. Use `local-review` for accelerated `dev-fast` and
+`warm-dev` iteration, then use `local-proof` when you want the canonical parity gate before opening a PR.
 
 Example:
 

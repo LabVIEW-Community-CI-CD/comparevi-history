@@ -218,6 +218,57 @@ foreach ($modeName in $requestedModes) {
   'flag-list='
 ) | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
 '@ | Set-Content -LiteralPath (Join-Path $toolsDir 'Compare-VIHistory.ps1') -Encoding utf8
+
+@'
+param([string]$Tag = 'comparevi-vi-history-dev:local')
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+@{
+  tag = $Tag
+  status = 'built'
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSCommandPath) 'build-vi-history-dev-image.json') -Encoding utf8
+'@ | Set-Content -LiteralPath (Join-Path $toolsDir 'Build-VIHistoryDevImage.ps1') -Encoding utf8
+
+@'
+param(
+  [string]$Action = 'status',
+  [string]$RepoRoot,
+  [string]$ResultsRoot,
+  [string]$RuntimeDir,
+  [string]$Image = 'comparevi-vi-history-dev:local'
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$payload = [ordered]@{
+  schema = 'comparevi/local-runtime-state@v1'
+  generatedAt = '2026-03-19T00:00:00Z'
+  action = $Action
+  outcome = 'reused'
+  image = $Image
+  container = [ordered]@{
+    name = 'comparevi-history-test-runtime'
+  }
+  mounts = [ordered]@{
+    repoHostPath = $RepoRoot
+    repoContainerPath = '/opt/comparevi/source'
+    resultsHostPath = $ResultsRoot
+    resultsContainerPath = '/opt/comparevi/vi-history/results'
+  }
+  runtimeDir = $RuntimeDir
+}
+$payload | ConvertTo-Json -Depth 16
+'@ | Set-Content -LiteralPath (Join-Path $toolsDir 'Manage-VIHistoryRuntimeInDocker.ps1') -Encoding utf8
+
+([ordered]@{
+    schema = 'comparevi-tools-release-manifest@v1'
+    generatedAt = '2026-03-19T00:00:00Z'
+    consumerContract = [ordered]@{
+      hostedNiLinuxRunner = [ordered]@{
+        defaultImage = 'nationalinstruments/labview:2026q1-linux'
+      }
+    }
+  } | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath (Join-Path $DestinationRoot 'comparevi-tools-release.json') -Encoding utf8
 }
 
 try {
@@ -277,6 +328,22 @@ try {
   if ([string]$explicitReceipt.compiler.source -ne 'provided-path') {
     throw 'Explicit local-review should use the provided compiler path.'
   }
+  if ([string]$explicitReceipt.invocation.runtimeProfile -ne 'dev-fast' -or
+    [string]$explicitReceipt.runtime.profile -ne 'dev-fast') {
+    throw 'Explicit local-review runtime profile mismatch.'
+  }
+  if ([string]$explicitReceipt.runtime.image -ne 'comparevi-vi-history-dev:local') {
+    throw 'Explicit local-review should use the accelerated dev image by default.'
+  }
+  if (@('built-local-image', 'existing-local-image') -notcontains [string]$explicitReceipt.runtime.cacheReuseState) {
+    throw 'Explicit local-review should surface either a cold dev-image build or a warm local-image reuse state.'
+  }
+  if (@('cold', 'warm') -notcontains [string]$explicitReceipt.runtime.coldWarmClass) {
+    throw 'Explicit local-review should classify the dev-fast loop as cold or warm.'
+  }
+  if ([int]$explicitReceipt.timings.elapsedMilliseconds -lt 0 -or [double]$explicitReceipt.timings.elapsedSeconds -lt 0) {
+    throw 'Explicit local-review timings should be recorded.'
+  }
   foreach ($path in @(
       [string]$explicitReceipt.projections.changedViDiscoveryPath,
       [string]$explicitReceipt.projections.targetRunsManifestPath,
@@ -310,17 +377,32 @@ try {
   }
 
   $changedResults = Join-Path $tempRoot 'results-changed'
+  $warmRuntimeDir = Join-Path $tempRoot 'warm-runtime'
   $changedReceipt = (& $scriptPath `
       -ConsumerRepositoryRoot $consumerRoot `
       -BaseRef $baseCommit `
       -HeadRef 'HEAD' `
+      -Profile 'warm-dev' `
+      -WarmRuntimeDir $warmRuntimeDir `
       -ResultsDir $changedResults `
       -ToolingRoot $toolingRoot `
-      -CompilerPath $compilerPath `
-      -SkipImagePull) | ConvertFrom-Json -Depth 64
+      -CompilerPath $compilerPath) | ConvertFrom-Json -Depth 64
 
   if ([string]$changedReceipt.consumer.selectionMode -ne 'git-diff') {
     throw 'Changed local-review selection mode mismatch.'
+  }
+  if ([string]$changedReceipt.invocation.runtimeProfile -ne 'warm-dev' -or
+    [string]$changedReceipt.runtime.profile -ne 'warm-dev') {
+    throw 'Changed local-review runtime profile mismatch.'
+  }
+  if ([string]$changedReceipt.runtime.cacheReuseState -ne 'warm-runtime-reused') {
+    throw 'Changed local-review should surface the warm-runtime reuse state.'
+  }
+  if ([string]$changedReceipt.runtime.warmRuntimeDir -ne $warmRuntimeDir) {
+    throw 'Changed local-review warm runtime directory mismatch.'
+  }
+  if ([int]$changedReceipt.timings.elapsedMilliseconds -lt 0 -or [double]$changedReceipt.timings.elapsedSeconds -lt 0) {
+    throw 'Changed local-review timings should be recorded.'
   }
   if ([int]$changedReceipt.summary.changedViCount -ne 1 -or [int]$changedReceipt.summary.selectedTargetCount -ne 1) {
     throw 'Changed local-review change-count mismatch.'

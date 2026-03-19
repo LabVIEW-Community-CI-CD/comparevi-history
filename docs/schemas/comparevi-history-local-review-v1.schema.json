@@ -9,6 +9,8 @@
     "generatedAtUtc",
     "consumer",
     "invocation",
+    "runtime",
+    "timings",
     "compiler",
     "projections",
     "outputs",
@@ -52,17 +54,24 @@
       "additionalProperties": false,
       "required": [
         "requestedViPaths",
+        "runtimeProfile",
         "requestedModes",
         "noisePolicy",
         "includeMergeParents",
         "compareTimeoutSeconds",
         "skipImagePull",
+        "skipDevImageBuild",
+        "warmRuntimeDir",
         "containerImage"
       ],
       "properties": {
         "requestedViPaths": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "runtimeProfile": {
+          "type": "string",
+          "enum": ["proof", "dev-fast", "warm-dev"]
         },
         "requestedModes": {
           "type": "array",
@@ -80,7 +89,44 @@
         "includeMergeParents": { "type": "boolean" },
         "compareTimeoutSeconds": { "type": ["integer", "null"], "minimum": 1 },
         "skipImagePull": { "type": "boolean" },
+        "skipDevImageBuild": { "type": "boolean" },
+        "warmRuntimeDir": { "type": ["string", "null"] },
         "containerImage": { "type": ["string", "null"] }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "image",
+        "toolSource",
+        "cacheReuseState",
+        "coldWarmClass",
+        "warmRuntimeDir"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": ["proof", "dev-fast", "warm-dev"]
+        },
+        "image": { "type": ["string", "null"] },
+        "toolSource": { "type": ["string", "null"] },
+        "cacheReuseState": { "type": ["string", "null"] },
+        "coldWarmClass": { "type": ["string", "null"] },
+        "warmRuntimeDir": { "type": ["string", "null"] }
+      }
+    },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "elapsedMilliseconds",
+        "elapsedSeconds"
+      ],
+      "properties": {
+        "elapsedMilliseconds": { "type": "integer", "minimum": 0 },
+        "elapsedSeconds": { "type": "number", "minimum": 0 }
       }
     },
     "compiler": {

@@ -3,6 +3,8 @@ param(
   [string]$ConsumerRepositoryRoot,
   [Parameter(Mandatory = $true)]
   [string]$ViPath,
+  [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+  [string]$RuntimeProfile = 'proof',
   [string]$ConsumerRef = 'HEAD',
   [string]$SourceBranchRef,
   [string]$ConsumerRepository,
@@ -18,9 +20,13 @@ param(
   [string]$ToolingRoot,
   [string]$CompareviRepository = 'LabVIEW-Community-CI-CD/compare-vi-cli-action',
   [string]$CompareviRef,
+  [string]$ProofImage,
+  [string]$DevImage = 'comparevi-vi-history-dev:local',
+  [string]$WarmRuntimeDir,
   [string]$ContainerImage,
   [string]$GitHubToken,
-  [switch]$SkipImagePull
+  [switch]$SkipImagePull,
+  [switch]$SkipDevImageBuild
 )
 
 Set-StrictMode -Version Latest
@@ -136,6 +142,17 @@ function Resolve-ToolingMetadata {
   return Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json -Depth 32
 }
 
+function Test-DockerImageExists {
+  param([Parameter(Mandatory = $true)][string]$ImageName)
+
+  try {
+    & docker image inspect $ImageName *> $null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
+}
+
 function Invoke-DockerPull {
   param([Parameter(Mandatory = $true)][string]$Image)
 
@@ -246,12 +263,90 @@ if ([string]::IsNullOrWhiteSpace($hostedRunnerDefaultImage)) {
     $env:COMPAREVI_NI_LINUX_IMAGE.Trim()
   }
 }
-if (-not [string]::IsNullOrWhiteSpace($ContainerImage)) {
-  $hostedRunnerDefaultImage = $ContainerImage.Trim()
+$runtimeProfileValue = $RuntimeProfile.Trim().ToLowerInvariant()
+$buildImageScriptPath = Join-Path $toolingRootResolved 'tools' 'Build-VIHistoryDevImage.ps1'
+$warmRuntimeManagerScriptPath = Join-Path $toolingRootResolved 'tools' 'Manage-VIHistoryRuntimeInDocker.ps1'
+$selectedRuntimeImage = if (-not [string]::IsNullOrWhiteSpace($ContainerImage)) {
+  $ContainerImage.Trim()
+} elseif ($runtimeProfileValue -eq 'proof') {
+  if ([string]::IsNullOrWhiteSpace($ProofImage)) { $hostedRunnerDefaultImage } else { $ProofImage.Trim() }
+} else {
+  $DevImage.Trim()
 }
+$runtimeToolSource = if ($runtimeProfileValue -eq 'proof') { 'canonical-proof-image' } else { 'local-dev-image' }
+$cacheReuseState = if ($runtimeProfileValue -eq 'proof') { 'canonical-proof-image' } else { 'existing-local-image' }
+$coldWarmClass = 'cold'
+$warmRuntimeState = $null
+$warmRuntimeDirResolved = $null
+$compareTempRoot = $null
 
-if (-not $SkipImagePull.IsPresent) {
-  Invoke-DockerPull -Image $hostedRunnerDefaultImage
+switch ($runtimeProfileValue) {
+  'proof' {
+    if (-not $SkipImagePull.IsPresent) {
+      Invoke-DockerPull -Image $selectedRuntimeImage
+    }
+  }
+  'dev-fast' {
+    if (-not (Test-DockerImageExists -ImageName $selectedRuntimeImage)) {
+      if ($SkipDevImageBuild.IsPresent) {
+        throw "Dev image '$selectedRuntimeImage' is not available locally and -SkipDevImageBuild was requested."
+      }
+      if (-not (Test-Path -LiteralPath $buildImageScriptPath -PathType Leaf)) {
+        throw "Build-VIHistoryDevImage.ps1 was not found under the resolved tooling root: $buildImageScriptPath"
+      }
+      & $buildImageScriptPath -Tag $selectedRuntimeImage | Out-Null
+      if ($LASTEXITCODE -ne 0) {
+        throw "Build-VIHistoryDevImage.ps1 failed while preparing '$selectedRuntimeImage'."
+      }
+      $cacheReuseState = 'built-local-image'
+      $coldWarmClass = 'cold'
+    } else {
+      $cacheReuseState = 'existing-local-image'
+      $coldWarmClass = 'warm'
+    }
+  }
+  'warm-dev' {
+    if (-not (Test-DockerImageExists -ImageName $selectedRuntimeImage)) {
+      if ($SkipDevImageBuild.IsPresent) {
+        throw "Dev image '$selectedRuntimeImage' is not available locally and -SkipDevImageBuild was requested."
+      }
+      if (-not (Test-Path -LiteralPath $buildImageScriptPath -PathType Leaf)) {
+        throw "Build-VIHistoryDevImage.ps1 was not found under the resolved tooling root: $buildImageScriptPath"
+      }
+      & $buildImageScriptPath -Tag $selectedRuntimeImage | Out-Null
+      if ($LASTEXITCODE -ne 0) {
+        throw "Build-VIHistoryDevImage.ps1 failed while preparing '$selectedRuntimeImage'."
+      }
+    }
+    if (-not (Test-Path -LiteralPath $warmRuntimeManagerScriptPath -PathType Leaf)) {
+      throw "Manage-VIHistoryRuntimeInDocker.ps1 was not found under the resolved tooling root: $warmRuntimeManagerScriptPath"
+    }
+    $warmRuntimeDirResolved = if ([string]::IsNullOrWhiteSpace($WarmRuntimeDir)) {
+      Join-Path $resultsDirResolved '.runtime'
+    } else {
+      Resolve-AbsolutePath -Path $WarmRuntimeDir -BasePath $consumerRootResolved
+    }
+    New-Item -ItemType Directory -Path $warmRuntimeDirResolved -Force | Out-Null
+    $compareTempRoot = Join-Path $resultsDirResolved '.compare-temp'
+    New-Item -ItemType Directory -Path $compareTempRoot -Force | Out-Null
+    $warmRuntimeJson = & $warmRuntimeManagerScriptPath `
+      -Action start `
+      -RepoRoot $consumerRootResolved `
+      -ResultsRoot $resultsDirResolved `
+      -RuntimeDir $warmRuntimeDirResolved `
+      -Image $selectedRuntimeImage
+    if ($LASTEXITCODE -ne 0) {
+      throw "Manage-VIHistoryRuntimeInDocker.ps1 failed while starting the warm runtime."
+    }
+    $warmRuntimeState = ($warmRuntimeJson -join "`n") | ConvertFrom-Json -Depth 64
+    if ([string]$warmRuntimeState.outcome -eq 'reused') {
+      $cacheReuseState = 'warm-runtime-reused'
+      $coldWarmClass = 'warm'
+    } else {
+      $cacheReuseState = 'warm-runtime-started'
+      $coldWarmClass = 'cold'
+    }
+  }
 }
 
 $catalogOutputPath = Join-Path $resultsDirResolved 'revision-catalog.out'
@@ -288,7 +383,48 @@ $runOutputPath = Join-Path $resultsDirResolved 'run.out'
 $runOutcome = 'success'
 $runConclusion = 'success'
 $runException = $null
+$runtimeEnvKeys = @(
+  'COMPAREVI_NI_LINUX_IMAGE',
+  'COMPAREVI_COMPARE_TEMP_ROOT',
+  'COMPAREVI_TEMP_ROOT',
+  'COMPAREVI_VI_HISTORY_LOCAL_PROFILE',
+  'COMPAREVI_VI_HISTORY_REUSE_CONTAINER_NAME',
+  'COMPAREVI_VI_HISTORY_REUSE_REPO_HOST_PATH',
+  'COMPAREVI_VI_HISTORY_REUSE_REPO_CONTAINER_PATH',
+  'COMPAREVI_VI_HISTORY_REUSE_RESULTS_HOST_PATH',
+  'COMPAREVI_VI_HISTORY_REUSE_RESULTS_CONTAINER_PATH'
+)
+$previousRuntimeEnv = @{}
+foreach ($runtimeEnvKey in $runtimeEnvKeys) {
+  $previousRuntimeEnv[$runtimeEnvKey] = [System.Environment]::GetEnvironmentVariable($runtimeEnvKey, 'Process')
+}
 try {
+  [System.Environment]::SetEnvironmentVariable('COMPAREVI_NI_LINUX_IMAGE', $selectedRuntimeImage, 'Process')
+  [System.Environment]::SetEnvironmentVariable('COMPAREVI_VI_HISTORY_LOCAL_PROFILE', $runtimeProfileValue, 'Process')
+  if ([string]::IsNullOrWhiteSpace($compareTempRoot)) {
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_COMPARE_TEMP_ROOT', $null, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_TEMP_ROOT', $null, 'Process')
+  } else {
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_COMPARE_TEMP_ROOT', $compareTempRoot, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_TEMP_ROOT', $compareTempRoot, 'Process')
+  }
+  if ($null -ne $warmRuntimeState) {
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_VI_HISTORY_REUSE_CONTAINER_NAME', [string]$warmRuntimeState.container.name, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_VI_HISTORY_REUSE_REPO_HOST_PATH', [string]$warmRuntimeState.mounts.repoHostPath, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_VI_HISTORY_REUSE_REPO_CONTAINER_PATH', [string]$warmRuntimeState.mounts.repoContainerPath, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_VI_HISTORY_REUSE_RESULTS_HOST_PATH', [string]$warmRuntimeState.mounts.resultsHostPath, 'Process')
+    [System.Environment]::SetEnvironmentVariable('COMPAREVI_VI_HISTORY_REUSE_RESULTS_CONTAINER_PATH', [string]$warmRuntimeState.mounts.resultsContainerPath, 'Process')
+  } else {
+    foreach ($runtimeEnvKey in @(
+        'COMPAREVI_VI_HISTORY_REUSE_CONTAINER_NAME',
+        'COMPAREVI_VI_HISTORY_REUSE_REPO_HOST_PATH',
+        'COMPAREVI_VI_HISTORY_REUSE_REPO_CONTAINER_PATH',
+        'COMPAREVI_VI_HISTORY_REUSE_RESULTS_HOST_PATH',
+        'COMPAREVI_VI_HISTORY_REUSE_RESULTS_CONTAINER_PATH'
+      )) {
+      [System.Environment]::SetEnvironmentVariable($runtimeEnvKey, $null, 'Process')
+    }
+  }
   $invokeArgs = @{
     RepositoryRoot = $consumerRootResolved
     ToolingRoot = $toolingRootResolved
@@ -319,6 +455,10 @@ try {
   $runOutcome = 'failure'
   $runConclusion = 'failure'
   $runException = $_
+} finally {
+  foreach ($runtimeEnvKey in $runtimeEnvKeys) {
+    [System.Environment]::SetEnvironmentVariable($runtimeEnvKey, $previousRuntimeEnv[$runtimeEnvKey], 'Process')
+  }
 }
 $runValues = Read-KeyValueFile -Path $runOutputPath
 
@@ -385,9 +525,19 @@ $localReceipt = [ordered]@{
     repository = $CompareviRepository
     ref = $effectiveCompareviRef
     root = $toolingRootResolved
-    hostedImage = $hostedRunnerDefaultImage
-    imagePulled = -not $SkipImagePull.IsPresent
+    hostedImage = $selectedRuntimeImage
+    imagePulled = ($runtimeProfileValue -eq 'proof') -and (-not $SkipImagePull.IsPresent)
     invokeScriptPath = $effectiveInvokeScriptPath
+  }
+  runtime = [ordered]@{
+    profile = $runtimeProfileValue
+    image = $selectedRuntimeImage
+    toolSource = $runtimeToolSource
+    cacheReuseState = $cacheReuseState
+    coldWarmClass = $coldWarmClass
+    warmRuntimeDir = if ([string]::IsNullOrWhiteSpace($warmRuntimeDirResolved)) { $null } else { $warmRuntimeDirResolved }
+    compareTempRoot = if ([string]::IsNullOrWhiteSpace($compareTempRoot)) { $null } else { $compareTempRoot }
+    warmRuntime = if ($null -eq $warmRuntimeState) { $null } else { $warmRuntimeState }
   }
   outputs = [ordered]@{
     resultsRoot = $resultsDirResolved
@@ -422,11 +572,14 @@ $localReceipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $localReceip
   ('- Target path: `{0}`' -f $ViPath)
   ('- Requested modes: `{0}`' -f $Mode)
   ('- Noise policy: `{0}`' -f $NoisePolicy)
+  ('- Runtime profile: `{0}`' -f $runtimeProfileValue)
   ('- Tooling source: `{0}`' -f $toolingSource)
   ('- Tooling ref: `{0}`' -f $effectiveCompareviRef)
   ('- Tooling root: `{0}`' -f $toolingRootResolved)
   ('- Invoke script: `{0}`' -f $effectiveInvokeScriptPath)
-  ('- Hosted image: `{0}`' -f $hostedRunnerDefaultImage)
+  ('- Runtime image: `{0}`' -f $selectedRuntimeImage)
+  ('- Cache reuse state: `{0}`' -f $cacheReuseState)
+  ('- Cold/warm class: `{0}`' -f $coldWarmClass)
   ('- Revision catalog: `{0}`' -f [string]$catalogValues['revision-catalog-path'])
   ('- Public run receipt: `{0}`' -f [string]$publicRunValues['public-run-path'])
   ('- History summary: `{0}`' -f [string]$publicRunValues['history-summary-json'])
