@@ -914,8 +914,11 @@ if ($discoveryStatus -eq 'ready') {
         $fastLoopArgs.InvokeScriptPath = $invocationScriptPath
       }
 
-      $localFastLoopJson = & (Join-Path $repoRoot 'scripts' 'Invoke-CompareVIHistoryManualExplorationFastLoop.ps1') @fastLoopArgs
-      $localFastLoopReceipt = $localFastLoopJson | ConvertFrom-Json -Depth 64
+      & (Join-Path $repoRoot 'scripts' 'Invoke-CompareVIHistoryManualExplorationFastLoop.ps1') @fastLoopArgs | Out-Null
+      if (-not (Test-Path -LiteralPath $localFastLoopPath -PathType Leaf)) {
+        throw "Local fast-loop receipt was not written: $localFastLoopPath"
+      }
+      $localFastLoopReceipt = Read-JsonFile -Path $localFastLoopPath
     } catch {
       $caughtException = $_
       if (Test-Path -LiteralPath $localFastLoopPath -PathType Leaf) {
