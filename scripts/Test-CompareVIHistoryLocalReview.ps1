@@ -27,19 +27,27 @@ function Write-FakeCompareHistoryTooling {
   param([Parameter(Mandatory = $true)][string]$DestinationRoot)
 
   $toolsDir = Join-Path $DestinationRoot 'tools'
-  New-Item -ItemType Directory -Path $toolsDir -Force | Out-Null
-  @'
-param(
-  [string]$TargetPath,
-  [string]$StartRef,
-  [string]$ResultsDir,
-  [string]$Mode,
-  [string]$InvokeScriptPath,
-  [string]$GitHubOutputPath
-)
+  $moduleDir = Join-Path $toolsDir 'CompareVI.Tools'
+  New-Item -ItemType Directory -Path $moduleDir -Force | Out-Null
 
+  @'
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Resolve-AbsolutePath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path,
+    [Parameter(Mandatory = $true)]
+    [string]$BasePath
+  )
+
+  if ([System.IO.Path]::IsPathRooted($Path)) {
+    return [System.IO.Path]::GetFullPath($Path)
+  }
+
+  return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
+}
 
 function New-ReportFixture {
   param(
@@ -130,145 +138,297 @@ $attributeDetails
   }
 }
 
-if ([string]::IsNullOrWhiteSpace($InvokeScriptPath) -or -not (Test-Path -LiteralPath $InvokeScriptPath -PathType Leaf)) {
-  throw 'InvokeScriptPath must point to an existing adapter script.'
-}
-
-New-Item -ItemType Directory -Path $ResultsDir -Force | Out-Null
-$suiteManifestPath = Join-Path $ResultsDir 'manifest.json'
-$historySummaryPath = Join-Path $ResultsDir 'history-summary.json'
-$historyReportMd = Join-Path $ResultsDir 'history-report.md'
-$historyReportHtml = Join-Path $ResultsDir 'history-report.html'
-
-$modeEntries = New-Object System.Collections.Generic.List[object]
-$requestedModes = @($Mode -split '[,;\s]+' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-foreach ($modeName in $requestedModes) {
-  $modeRoot = Join-Path $ResultsDir $modeName
-  New-Item -ItemType Directory -Path $modeRoot -Force | Out-Null
-  $modeManifestPath = Join-Path $modeRoot 'manifest.json'
-  $comparisons = @(
-    (New-ReportFixture -ModeRoot $modeRoot -ModeName $modeName -ComparisonIndex 1),
-    (New-ReportFixture -ModeRoot $modeRoot -ModeName $modeName -ComparisonIndex 2)
+function Write-HistoryFixture {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ResultsRoot,
+    [Parameter(Mandatory = $true)]
+    [string[]]$RequestedModes,
+    [Parameter(Mandatory = $true)]
+    [string]$TargetPath,
+    [Parameter(Mandatory = $true)]
+    [string]$StartRef
   )
 
-  ([ordered]@{
-      schema = 'vi-compare/history@v1'
-      generatedAt = '2026-03-18T00:00:00Z'
-      mode = $modeName
-      comparisons = $comparisons
-      stats = [ordered]@{
-        categoryCounts = [ordered]@{ attributes = 2 }
-        bucketCounts = [ordered]@{ 'metadata-rich' = 1; 'logic-motion' = 1 }
-      }
-    } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
+  $historyResultsRoot = Join-Path $ResultsRoot 'vi-history-report' 'results'
+  New-Item -ItemType Directory -Path $historyResultsRoot -Force | Out-Null
+  $suiteManifestPath = Join-Path $historyResultsRoot 'suite-manifest.json'
+  $historySummaryPath = Join-Path $historyResultsRoot 'history-summary.json'
+  $historyReportMd = Join-Path $historyResultsRoot 'history-report.md'
+  $historyReportHtml = Join-Path $historyResultsRoot 'history-report.html'
 
-  $modeEntries.Add([ordered]@{
-      name = $modeName
-      manifestPath = $modeManifestPath
-      processed = 2
-      diffs = 2
-      signalDiffs = 2
-      noiseCollapsed = 0
-      errors = 0
-      status = 'ok'
-      stopReason = 'completed'
-      flags = @()
-      categoryCounts = [ordered]@{ attributes = 2 }
-      bucketCounts = [ordered]@{ 'metadata-rich' = 1; 'logic-motion' = 1 }
-    }) | Out-Null
-}
+  $modeEntries = New-Object System.Collections.Generic.List[object]
+  foreach ($modeName in $RequestedModes) {
+    $modeRoot = Join-Path $historyResultsRoot $modeName
+    New-Item -ItemType Directory -Path $modeRoot -Force | Out-Null
+    $modeManifestPath = Join-Path $modeRoot 'manifest.json'
+    $comparisons = @(
+      (New-ReportFixture -ModeRoot $modeRoot -ModeName $modeName -ComparisonIndex 1),
+      (New-ReportFixture -ModeRoot $modeRoot -ModeName $modeName -ComparisonIndex 2)
+    )
 
-([ordered]@{
-    schema = 'vi-compare/history-suite@v1'
-    generatedAt = '2026-03-18T00:00:00Z'
-    modes = @($modeEntries | ForEach-Object {
-        [ordered]@{
-          name = $_.name
-          manifestPath = $_.manifestPath
+    ([ordered]@{
+        schema = 'vi-compare/history@v1'
+        generatedAt = '2026-03-18T00:00:00Z'
+        mode = $modeName
+        comparisons = $comparisons
+        stats = [ordered]@{
+          categoryCounts = [ordered]@{ attributes = 2 }
+          bucketCounts = [ordered]@{ 'metadata-rich' = 1; 'logic-motion' = 1 }
         }
-      })
-  } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $suiteManifestPath -Encoding utf8
+      } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $modeManifestPath -Encoding utf8
 
-([ordered]@{
-    schema = 'comparevi-tools/history-facade@v1'
-    targetPath = $TargetPath
-    startRef = $StartRef
-    invokeScriptPath = $InvokeScriptPath
-  } | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $historySummaryPath -Encoding utf8
-'# local history report' | Set-Content -LiteralPath $historyReportMd -Encoding utf8
-'<html><body>local history report</body></html>' | Set-Content -LiteralPath $historyReportHtml -Encoding utf8
-
-@(
-  "target-path=$TargetPath"
-  "manifest-path=$suiteManifestPath"
-  "results-dir=$ResultsDir"
-  "history-summary-json=$historySummaryPath"
-  "history-report-md=$historyReportMd"
-  "history-report-html=$historyReportHtml"
-  "mode-count=$($requestedModes.Count)"
-  'total-processed=2'
-  'total-diffs=2'
-  'stop-reason=completed'
-  'category-counts-json={}'
-  'bucket-counts-json={}'
-  ("mode-manifests-json={0}" -f (($modeEntries.ToArray() | ConvertTo-Json -Depth 16 -Compress)))
-  ("requested-mode-list={0}" -f ($requestedModes -join ','))
-  ("executed-mode-list={0}" -f ($requestedModes -join ','))
-  ("mode-list={0}" -f ($requestedModes -join ','))
-  'flag-list='
-) | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
-'@ | Set-Content -LiteralPath (Join-Path $toolsDir 'Compare-VIHistory.ps1') -Encoding utf8
-
-@'
-param([string]$Tag = 'comparevi-vi-history-dev:local')
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-@{
-  tag = $Tag
-  status = 'built'
-} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSCommandPath) 'build-vi-history-dev-image.json') -Encoding utf8
-'@ | Set-Content -LiteralPath (Join-Path $toolsDir 'Build-VIHistoryDevImage.ps1') -Encoding utf8
-
-@'
-param(
-  [string]$Action = 'status',
-  [string]$RepoRoot,
-  [string]$ResultsRoot,
-  [string]$RuntimeDir,
-  [string]$Image = 'comparevi-vi-history-dev:local'
-)
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-$payload = [ordered]@{
-  schema = 'comparevi/local-runtime-state@v1'
-  generatedAt = '2026-03-19T00:00:00Z'
-  action = $Action
-  outcome = 'reused'
-  image = $Image
-  container = [ordered]@{
-    name = 'comparevi-history-test-runtime'
+    $modeEntries.Add([ordered]@{
+        name = $modeName
+        manifestPath = $modeManifestPath
+      }) | Out-Null
   }
-  mounts = [ordered]@{
-    repoHostPath = $RepoRoot
-    repoContainerPath = '/opt/comparevi/source'
-    resultsHostPath = $ResultsRoot
-    resultsContainerPath = '/opt/comparevi/vi-history/results'
+
+  ([ordered]@{
+      schema = 'vi-compare/history-suite@v1'
+      generatedAt = '2026-03-18T00:00:00Z'
+      modes = @($modeEntries | ForEach-Object {
+          [ordered]@{
+            name = $_.name
+            manifestPath = $_.manifestPath
+          }
+        })
+    } | ConvertTo-Json -Depth 64) | Set-Content -LiteralPath $suiteManifestPath -Encoding utf8
+
+  ([ordered]@{
+      schema = 'comparevi-tools/history-facade@v1'
+      targetPath = $TargetPath
+      startRef = $StartRef
+      summary = [ordered]@{
+        totalProcessed = 2
+        totalDiffs = 2
+      }
+    } | ConvertTo-Json -Depth 20) | Set-Content -LiteralPath $historySummaryPath -Encoding utf8
+  '# local history report' | Set-Content -LiteralPath $historyReportMd -Encoding utf8
+  '<html><body>local history report</body></html>' | Set-Content -LiteralPath $historyReportHtml -Encoding utf8
+
+  return [ordered]@{
+    resultsRoot = $historyResultsRoot
+    manifestPath = $suiteManifestPath
+    historySummaryJsonPath = $historySummaryPath
+    historyReportMdPath = $historyReportMd
+    historyReportHtmlPath = $historyReportHtml
   }
-  runtimeDir = $RuntimeDir
 }
-$payload | ConvertTo-Json -Depth 16
-'@ | Set-Content -LiteralPath (Join-Path $toolsDir 'Manage-VIHistoryRuntimeInDocker.ps1') -Encoding utf8
 
-([ordered]@{
-    schema = 'comparevi-tools-release-manifest@v1'
+function Invoke-CompareVIHistoryLocalOperatorSessionFacade {
+  [CmdletBinding()]
+  param(
+    [ValidateSet('proof', 'dev-fast', 'warm-dev')]
+    [string]$Profile = 'dev-fast',
+    [string]$RepoRoot = '',
+    [string]$HistoryTargetPath = 'fixtures/vi-attr/Head.vi',
+    [string]$HistoryBranchRef = 'HEAD',
+    [string]$HistoryBaselineRef = '',
+    [string]$ResultsRoot = '',
+    [string]$WarmRuntimeDir = '',
+    [string]$ProofImage = 'nationalinstruments/labview:2026q1-linux',
+    [string]$DevImage = 'comparevi-vi-history-dev:local',
+    [string]$ReviewCommandPath = '',
+    [string[]]$ReviewCommandArguments = @(),
+    [string]$ReviewWorkingDirectory = '',
+    [string]$ReviewReceiptPath = '',
+    [string]$SessionManifestPath = '',
+    [switch]$SkipDevImageBuild
+  )
+
+  $resolvedRepoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) { (Get-Location).Path } else { $RepoRoot }
+  $resolvedResultsRoot = if ([string]::IsNullOrWhiteSpace($ResultsRoot)) {
+    Join-Path $resolvedRepoRoot ('tests/results/local-vi-history/{0}' -f $Profile)
+  } else {
+    $ResultsRoot
+  }
+  New-Item -ItemType Directory -Path $resolvedResultsRoot -Force | Out-Null
+
+  $requestedModeLine = $ReviewCommandArguments | Where-Object { $_ -like 'attributes*' -or $_ -like 'front-panel*' -or $_ -like 'block-diagram*' } | Select-Object -First 1
+  $requestedModes = if ([string]::IsNullOrWhiteSpace($requestedModeLine)) {
+    @('attributes', 'front-panel', 'block-diagram')
+  } else {
+    @($requestedModeLine -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+  }
+
+  $historyFixture = Write-HistoryFixture -ResultsRoot $resolvedResultsRoot -RequestedModes $requestedModes -TargetPath $HistoryTargetPath -StartRef $HistoryBranchRef
+  [ordered]@{
+    schema = 'comparevi-review-suite-summary@v1'
     generatedAt = '2026-03-19T00:00:00Z'
-    consumerContract = [ordered]@{
-      hostedNiLinuxRunner = [ordered]@{
-        defaultImage = 'nationalinstruments/labview:2026q1-linux'
+    image = $(if ($Profile -eq 'proof') { $ProofImage } else { $DevImage })
+    scenarios = @(
+      [ordered]@{
+        name = 'vi-history-report'
+        historySummaryPath = $historyFixture.historySummaryJsonPath
+      }
+    )
+  } | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath (Join-Path $resolvedResultsRoot 'review-suite-summary.json') -Encoding utf8
+
+  $cacheReuseState = switch ($Profile) {
+    'proof' { 'canonical-proof-image' }
+    'warm-dev' { 'warm-runtime-reused' }
+    default { 'existing-local-image' }
+  }
+  $coldWarmClass = switch ($Profile) {
+    'proof' { 'cold' }
+    'warm-dev' { 'warm' }
+    default { 'warm' }
+  }
+  $imageUsed = if ($Profile -eq 'proof') { $ProofImage } else { $DevImage }
+  $toolSource = if ($Profile -eq 'proof') { 'canonical-proof-image' } else { 'local-dev-image' }
+  $localRefinementReceiptPath = Join-Path $resolvedResultsRoot 'local-refinement.json'
+  $benchmarkPath = Join-Path $resolvedResultsRoot 'local-refinement-benchmark.json'
+  $sessionPath = if ([string]::IsNullOrWhiteSpace($SessionManifestPath)) {
+    Join-Path $resolvedResultsRoot 'local-operator-session.json'
+  } else {
+    $SessionManifestPath
+  }
+  $reviewReceiptResolved = if ([string]::IsNullOrWhiteSpace($ReviewReceiptPath)) {
+    Join-Path $resolvedResultsRoot 'local-target-review.json'
+  } else {
+    $ReviewReceiptPath
+  }
+
+  ([ordered]@{
+      schema = 'comparevi/local-refinement@v1'
+      generatedAt = '2026-03-19T00:00:00Z'
+      runtimeProfile = $Profile
+      image = $imageUsed
+      toolSource = $toolSource
+      cacheReuseState = $cacheReuseState
+      coldWarmClass = $coldWarmClass
+      benchmarkSampleKind = if ($Profile -eq 'warm-dev') { 'warm-dev-repeat' } elseif ($Profile -eq 'proof') { 'proof-cold' } else { 'dev-fast-repeat' }
+      repoRoot = $resolvedRepoRoot
+      resultsRoot = $resolvedResultsRoot
+      timings = [ordered]@{
+        elapsedMilliseconds = 1200
+        elapsedSeconds = 1.2
+      }
+      finalStatus = 'succeeded'
+    } | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath $localRefinementReceiptPath -Encoding utf8
+
+  ([ordered]@{
+      schema = 'comparevi/local-refinement-benchmark@v1'
+      generatedAt = '2026-03-19T00:00:01Z'
+      latest = [ordered]@{}
+      selectedSamples = [ordered]@{}
+      comparisons = [ordered]@{}
+    } | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath $benchmarkPath -Encoding utf8
+
+  $reviewStatus = 'not-requested'
+  if (-not [string]::IsNullOrWhiteSpace($ReviewCommandPath)) {
+    $reviewWorkingDirectoryResolved = if ([string]::IsNullOrWhiteSpace($ReviewWorkingDirectory)) { $resolvedRepoRoot } else { $ReviewWorkingDirectory }
+    $envState = @{}
+    foreach ($name in @(
+        'COMPAREVI_RUNTIME_PROFILE',
+        'COMPAREVI_LOCAL_REFINEMENT_RECEIPT_PATH',
+        'COMPAREVI_LOCAL_REFINEMENT_BENCHMARK_PATH',
+        'COMPAREVI_LOCAL_REFINEMENT_RESULTS_ROOT',
+        'COMPAREVI_LOCAL_OPERATOR_SESSION_PATH',
+        'COMPAREVI_LOCAL_REFINEMENT_IMAGE',
+        'COMPAREVI_LOCAL_REFINEMENT_TOOL_SOURCE',
+        'COMPAREVI_REVIEW_RECEIPT_PATH'
+      )) {
+      $existingItem = Get-Item ("Env:{0}" -f $name) -ErrorAction SilentlyContinue
+      $envState[$name] = if ($null -eq $existingItem) { $null } else { $existingItem.Value }
+    }
+
+    try {
+      $env:COMPAREVI_RUNTIME_PROFILE = $Profile
+      $env:COMPAREVI_LOCAL_REFINEMENT_RECEIPT_PATH = $localRefinementReceiptPath
+      $env:COMPAREVI_LOCAL_REFINEMENT_BENCHMARK_PATH = $benchmarkPath
+      $env:COMPAREVI_LOCAL_REFINEMENT_RESULTS_ROOT = $resolvedResultsRoot
+      $env:COMPAREVI_LOCAL_OPERATOR_SESSION_PATH = $sessionPath
+      $env:COMPAREVI_LOCAL_REFINEMENT_IMAGE = $imageUsed
+      $env:COMPAREVI_LOCAL_REFINEMENT_TOOL_SOURCE = $toolSource
+      $env:COMPAREVI_REVIEW_RECEIPT_PATH = $reviewReceiptResolved
+      Push-Location $reviewWorkingDirectoryResolved
+      try {
+        & $ReviewCommandPath @ReviewCommandArguments
+        if ($LASTEXITCODE -ne 0) {
+          throw ("Review hook failed with exit code {0}." -f $LASTEXITCODE)
+        }
+      } finally {
+        Pop-Location | Out-Null
+      }
+      $reviewStatus = 'succeeded'
+    } finally {
+      foreach ($entry in $envState.GetEnumerator()) {
+        if ($null -eq $entry.Value) {
+          Remove-Item ("Env:{0}" -f $entry.Key) -ErrorAction SilentlyContinue
+        } else {
+          Set-Item ("Env:{0}" -f $entry.Key) -Value $entry.Value
+        }
       }
     }
-  } | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath (Join-Path $DestinationRoot 'comparevi-tools-release.json') -Encoding utf8
+  }
+
+  $receipt = [ordered]@{
+    schema = 'comparevi-tools/local-operator-session-facade@v1'
+    generatedAtUtc = '2026-03-19T00:00:02Z'
+    backendReceiptSchema = 'comparevi/local-operator-session@v1'
+    runtimeProfile = $Profile
+    repoRoot = $resolvedRepoRoot
+    resultsRoot = $resolvedResultsRoot
+    localRefinement = [ordered]@{
+      schema = 'comparevi/local-refinement@v1'
+      receiptPath = $localRefinementReceiptPath
+      benchmarkPath = $benchmarkPath
+      image = $imageUsed
+      toolSource = $toolSource
+      cacheReuseState = $cacheReuseState
+      coldWarmClass = $coldWarmClass
+      finalStatus = 'succeeded'
+    }
+    review = [ordered]@{
+      status = $reviewStatus
+      commandPath = $ReviewCommandPath
+      workingDirectory = if ([string]::IsNullOrWhiteSpace($ReviewWorkingDirectory)) { $resolvedRepoRoot } else { $ReviewWorkingDirectory }
+      outputs = [ordered]@{
+        receiptPath = $reviewReceiptResolved
+        reviewBundlePath = $null
+        workspaceHtmlPath = $null
+        workspaceMarkdownPath = $null
+        previewManifestPath = $null
+        runPath = $null
+      }
+    }
+    artifacts = [ordered]@{
+      sessionPath = $sessionPath
+      localRefinementPath = $localRefinementReceiptPath
+      benchmarkPath = $benchmarkPath
+      reviewReceiptPath = $reviewReceiptResolved
+    }
+    finalStatus = 'succeeded'
+  }
+
+  $receipt | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $sessionPath -Encoding utf8
+  return [pscustomobject]$receipt
+}
+
+Export-ModuleMember -Function Invoke-CompareVIHistoryLocalOperatorSessionFacade
+'@ | Set-Content -LiteralPath (Join-Path $moduleDir 'CompareVI.Tools.psm1') -Encoding utf8
+
+  @'
+@{
+  RootModule = 'CompareVI.Tools.psm1'
+  ModuleVersion = '9.9.9'
+  GUID = '9e64db64-9484-4b9d-96df-3aa1b44d90d0'
+  PowerShellVersion = '7.0'
+  FunctionsToExport = @('Invoke-CompareVIHistoryLocalOperatorSessionFacade')
+}
+'@ | Set-Content -LiteralPath (Join-Path $moduleDir 'CompareVI.Tools.psd1') -Encoding utf8
+
+  ([ordered]@{
+      schema = 'comparevi-tools-release-manifest@v1'
+      generatedAt = '2026-03-19T00:00:00Z'
+      consumerContract = [ordered]@{
+        hostedNiLinuxRunner = [ordered]@{
+          defaultImage = 'nationalinstruments/labview:2026q1-linux'
+        }
+      }
+    } | ConvertTo-Json -Depth 16) | Set-Content -LiteralPath (Join-Path $DestinationRoot 'comparevi-tools-release.json') -Encoding utf8
 }
 
 try {
@@ -336,6 +496,18 @@ try {
   if ([string]$explicitReceipt.invocation.containerImage -ne 'comparevi-vi-history-dev:local') {
     throw 'Explicit local-review should preserve the selected accelerated container image.'
   }
+  if ([string]$explicitReceipt.operatorSession.facadeSchema -ne 'comparevi-tools/local-operator-session-facade@v1') {
+    throw 'Explicit local-review should record the operator-session facade schema.'
+  }
+  if ([string]$explicitReceipt.operatorSession.toolingSource -ne 'provided-tooling-root') {
+    throw 'Explicit local-review should record the provided tooling root source.'
+  }
+  if ([string]$explicitReceipt.operatorSession.toolingRoot -ne $toolingRoot) {
+    throw 'Explicit local-review should record the resolved tooling root.'
+  }
+  if (@($explicitReceipt.operatorSession.sessionPaths).Count -ne 1 -or @($explicitReceipt.operatorSession.reviewReceiptPaths).Count -ne 1) {
+    throw 'Explicit local-review should record one operator-session receipt and one review-hook receipt.'
+  }
   if ([string]$explicitReceipt.runtime.image -ne 'comparevi-vi-history-dev:local') {
     throw 'Explicit local-review should use the selected accelerated dev image.'
   }
@@ -396,6 +568,9 @@ try {
 
   if ([string]$changedReceipt.consumer.selectionMode -ne 'git-diff') {
     throw 'Changed local-review selection mode mismatch.'
+  }
+  if ([string]$changedReceipt.operatorSession.facadeSchema -ne 'comparevi-tools/local-operator-session-facade@v1') {
+    throw 'Changed local-review should record the operator-session facade schema.'
   }
   if ([string]$changedReceipt.invocation.runtimeProfile -ne 'warm-dev' -or
     [string]$changedReceipt.runtime.profile -ne 'warm-dev') {
