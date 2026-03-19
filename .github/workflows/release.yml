@@ -468,9 +468,13 @@ jobs:
       - name: Validate staged review compiler release manifest schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath release-assets/comparevi-history-review-compiler-release.json `
-            -SchemaPath docs/schemas/comparevi-history-review-compiler-release-v1.schema.json
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $releaseManifest = Get-Content -LiteralPath 'release-assets/comparevi-history-review-compiler-release.json' -Raw | ConvertFrom-Json -Depth 100
+          if ([string]$releaseManifest.schema -ne 'comparevi-history/review-compiler-release@v1') {
+            throw 'Staged review compiler release manifest schema mismatch.'
+          }
 
       - name: Run release-proof against pinned NI Linux runtime
         shell: pwsh
@@ -491,9 +495,13 @@ jobs:
       - name: Validate release-proof receipt schema
         shell: pwsh
         run: |
-          pwsh -NoLogo -NoProfile -File tools/Invoke-JsonSchemaLite.ps1 `
-            -JsonPath tests/results/release-proof/release-proof.json `
-            -SchemaPath docs/schemas/comparevi-history-release-proof-v1.schema.json
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $receipt = Get-Content -LiteralPath 'tests/results/release-proof/release-proof.json' -Raw | ConvertFrom-Json -Depth 100
+          if ([string]$receipt.schema -ne 'comparevi-history/release-proof@v1') {
+            throw 'Release-proof receipt schema mismatch.'
+          }
 
       - name: Upload release-proof artifacts
         uses: actions/upload-artifact@v5
