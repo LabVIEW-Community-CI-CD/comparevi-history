@@ -211,6 +211,8 @@ jobs:
     name: published-consumer-major
     needs: plan
     runs-on: windows-latest
+    outputs:
+      certification_status: ${{ steps.major_status.outputs.result }}
     steps:
       - name: Checkout comparevi-history validation repo
         uses: actions/checkout@v5
@@ -276,6 +278,7 @@ jobs:
 
       - name: Run comparevi-history major facade
         id: history
+        continue-on-error: ${{ needs.plan.outputs.certification_scope == 'advisory' }}
         uses: ./published-facade
         with:
           repository_root: labview-icon-editor
@@ -295,6 +298,8 @@ jobs:
           invoke_script_path: tests/results/_comparevi-history-published/major/Invoke-LVCompare.stub.ps1
 
       - name: Assert major published consumer outputs
+        id: assert_major
+        continue-on-error: ${{ needs.plan.outputs.certification_scope == 'advisory' }}
         shell: pwsh
         env:
           ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1
@@ -358,6 +363,7 @@ jobs:
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
       - name: Upload major published consumer artifacts
+        if: ${{ steps.history.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
           name: comparevi-history-published-major-${{ github.run_id }}
@@ -366,10 +372,26 @@ jobs:
             labview-icon-editor/tests/results/_comparevi-history-published/major/published-evidence.json
           if-no-files-found: error
 
+      - name: Compute major certification status
+        id: major_status
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          history_outcome='${{ steps.history.outcome }}'
+          assert_outcome='${{ steps.assert_major.outcome }}'
+          if [ "$history_outcome" = "success" ] && [ "$assert_outcome" = "success" ]; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+          fi
+
   validate-immutable:
     name: published-consumer-immutable
     needs: plan
     runs-on: windows-latest
+    outputs:
+      certification_status: ${{ steps.immutable_status.outputs.result }}
     steps:
       - name: Checkout comparevi-history validation repo
         uses: actions/checkout@v5
@@ -435,6 +457,7 @@ jobs:
 
       - name: Run comparevi-history immutable facade
         id: history
+        continue-on-error: ${{ needs.plan.outputs.certification_scope == 'advisory' }}
         uses: ./published-facade
         with:
           repository_root: labview-icon-editor
@@ -454,6 +477,8 @@ jobs:
           invoke_script_path: tests/results/_comparevi-history-published/immutable/Invoke-LVCompare.stub.ps1
 
       - name: Assert immutable published consumer outputs
+        id: assert_immutable
+        continue-on-error: ${{ needs.plan.outputs.certification_scope == 'advisory' }}
         shell: pwsh
         env:
           ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@${{ needs.plan.outputs.latest_immutable_tag }}
@@ -517,6 +542,7 @@ jobs:
             -StepSummaryPath $env:GITHUB_STEP_SUMMARY | Out-Null
 
       - name: Upload immutable published consumer artifacts
+        if: ${{ steps.history.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
           name: comparevi-history-published-immutable-${{ github.run_id }}
@@ -524,6 +550,20 @@ jobs:
             ${{ steps.history.outputs['results-dir'] }}/**
             labview-icon-editor/tests/results/_comparevi-history-published/immutable/published-evidence.json
           if-no-files-found: error
+
+      - name: Compute immutable certification status
+        id: immutable_status
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          history_outcome='${{ steps.history.outcome }}'
+          assert_outcome='${{ steps.assert_immutable.outcome }}'
+          if [ "$history_outcome" = "success" ] && [ "$assert_outcome" = "success" ]; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+          fi
 
   certification-ledger:
     name: certification-ledger
@@ -547,8 +587,8 @@ jobs:
           MAX_PAIRS: ${{ needs.plan.outputs.max_pairs }}
           MAX_SIGNAL_PAIRS: ${{ needs.plan.outputs.max_signal_pairs }}
           LATEST_IMMUTABLE_TAG: ${{ needs.plan.outputs.latest_immutable_tag }}
-          MAJOR_RESULT: ${{ needs.validate-major.result }}
-          IMMUTABLE_RESULT: ${{ needs.validate-immutable.result }}
+          MAJOR_RESULT: ${{ needs.validate-major.outputs.certification_status }}
+          IMMUTABLE_RESULT: ${{ needs.validate-immutable.outputs.certification_status }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OUTPUT_PATH: tests/results/certification/${{ needs.plan.outputs.consumer_id }}-certification-ledger.json
         run: |

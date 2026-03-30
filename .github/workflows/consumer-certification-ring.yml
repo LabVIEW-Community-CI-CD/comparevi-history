@@ -95,7 +95,6 @@ jobs:
   certify-advisory:
     if: ${{ needs.plan.outputs.advisory_matrix != '[]' }}
     needs: plan
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
