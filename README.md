@@ -753,10 +753,13 @@ policy there:
   - `smoke-external` from `.github/workflows/smoke.yml`
 - `smoke.yml` runs on pull requests to `main`, pushes to `main`, and manual dispatch so the public platform contract is
   covered before merge and after publish.
-- `.github/workflows/published-consumer-validation.yml` validates the released `v1` tag and the latest immutable facade
-  tag against a checked-out external consumer repository by writing a temporary
-  `.github/comparevi-history-targets.json` catalog and consuming the action-owned public outputs from that synthesized
-  target.
+- `.github/workflows/published-consumer-validation.yml` is the single-consumer certification primitive. It validates the
+  released `v1` tag and the latest immutable facade tag against one checked-out external consumer repository by writing
+  a temporary `.github/comparevi-history-targets.json` catalog and consuming the action-owned public outputs from that
+  synthesized target.
+- `.github/workflows/consumer-certification-ring.yml` is the scheduled/platform supervisor for the standing certified
+  consumer ring declared in `tools/policy/consumer-certification-ring.json`.
+- Support tiers and the current ring are documented in `docs/CERTIFIED_CONSUMER_RING.md`.
 - `release.yml` validates itself on pull requests that touch release plumbing and remains the only path that should
   publish immutable tags or advance `v1`.
 - The branch protection source of truth is `.github/branch-protection-main.json`.
