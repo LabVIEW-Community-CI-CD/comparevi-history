@@ -29,6 +29,10 @@ The machine-readable source of truth for the current ring is
   - Tier: `proving`
   - Scope: `advisory`
   - Role: org-owned admission and proving surface
+- `ni/actor-framework`
+  - Tier: `proving`
+  - Scope: `advisory`
+  - Role: external proving consumer admitted on `develop` using `Core/ActorFramework/Actor/Actor Core.vi`
 
 ## Operating Model
 
