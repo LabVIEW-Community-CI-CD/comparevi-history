@@ -132,7 +132,7 @@ Consumer repositories should not contain:
   `LabVIEW-Community-CI-CD/comparevi-history/.github/workflows/pull-request-diagnostics-canary-evaluate.yml@v1`. It
   exists so a same-repo `workflow_run` can evaluate the publication artifact, confirm the PR is an `agent-canary`
   draft lane, and fail closed without re-running execution or checking out candidate PR code.
-- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.24`. That is the right default when
+- The comment-gated template uses `LabVIEW-Community-CI-CD/comparevi-history@v1.3.25`. That is the right default when
   you want the public PR diagnostics surface frozen to a known immutable release. The release workflow updates that
   immutable pin as part of publish so the published example stays aligned to the latest reviewed immutable tag.
 - The automatic changed-VI execution template keeps the checked-in PR policy and hosted NI Linux adapter on the pull
@@ -191,4 +191,3 @@ Consumer repositories should not contain:
 7. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
 8. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
-
