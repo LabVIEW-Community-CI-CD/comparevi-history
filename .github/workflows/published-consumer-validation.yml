@@ -598,7 +598,7 @@ jobs:
           const path = require('path');
           const majorResult = process.env.MAJOR_RESULT || 'unknown';
           const immutableResult = process.env.IMMUTABLE_RESULT || 'unknown';
-          const overallStatus = majorResult === 'success' && immutableResult === 'success' ? 'pass' : 'fail';
+          const overallStatus = majorResult === 'pass' && immutableResult === 'pass' ? 'pass' : 'fail';
           const payload = {
             schema: 'comparevi-history/consumer-certification-ledger@v1',
             generatedAt: new Date().toISOString(),
