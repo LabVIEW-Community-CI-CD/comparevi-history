@@ -182,17 +182,23 @@ Corpus/downstream-processing pilots can also emit additive processing receipts:
 
 ## Manual VI exploration workflow
 
-Trusted consumer repositories can expose arbitrary repo-relative `.vi` exploration through the reusable workflow
+Trusted maintainers can characterize repo-relative `.vi` history through the reusable workflow
 [`./.github/workflows/manual-vi-exploration.yml`](.github/workflows/manual-vi-exploration.yml) plus a thin consumer
 wrapper such as
 [`docs/examples/comparevi-history-manual-vi-exploration.yml`](docs/examples/comparevi-history-manual-vi-exploration.yml).
+
+This surface is currently characterization-only, not a certified developer decision surface. The current `DrawIcon.vi`
+product proof demonstrates corrected revision discovery and real backend execution, but it still does not prove
+trustworthy commit-by-commit review semantics or clean per-mode category fidelity. Do not expose the wrapper as a
+reviewer-facing consumer contract until those semantics are proven.
 
 The current execution slice stays additive on top of the discovery-first baseline:
 
 - operator supplies `vi_path`
 - the platform validates the selected path fail-closed
-- trusted manual exploration now defaults to the public reviewer surface: `modes=attributes,front-panel,block-diagram`
-  plus `noise_policy=collapse`
+- operator must choose explicit characterization modes; there is no bundled default mode list
+- `noise_policy=collapse` stays the default characterization output because the alternate noise surfaces are not yet a
+  certified reviewer contract
 - the platform emits `revision-catalog.json` for the selected ref lineage
 - the platform plans deterministic chunk receipts/manifests
 - the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
@@ -338,6 +344,10 @@ For report iteration on a trusted maintainer machine, use
 [`scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1`](scripts/Invoke-CompareVIHistoryManualExplorationFastLoop.ps1).
 It reuses the released backend pin, the existing request/public-run receipts, and the consumer's trusted
 `Tooling/Invoke-CompareVIHistoryHostedNILinux.ps1` adapter instead of inventing a separate local artifact shape.
+
+The current fast loop is still a characterization aid, not a certified reviewer-facing history contract. The present
+proof path preserves corrected lineage discovery, but the emitted history surface still needs explicit proof for
+commit-by-commit review usefulness and per-mode category fidelity.
 
 The default results root is:
 
@@ -691,7 +701,7 @@ policy there:
     without checking out or executing candidate PR code
 - That split keeps fork PR support compatible with GitHub's read-only `pull_request` token model while preserving a
   reviewer-facing sticky PR comment through the privileged publisher.
-- Public reviewer surfaces accept only explicit scoped modes: `attributes`, `front-panel`, and `block-diagram`.
+- Characterization surfaces accept only explicit scoped modes: `attributes`, `front-panel`, and `block-diagram`.
   Aggregate aliases such as `default`, `full`, and `all` are not part of the public platform contract.
 - Consumer-ready public PR diagnostics templates are published in `docs/SAFE_PR_DIAGNOSTICS_TEMPLATES.md`.
 - Reviewer-facing consumers should use `public-comment-path`, `public-step-summary-path`, `public-run-path`, and

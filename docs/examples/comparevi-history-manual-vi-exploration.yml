@@ -1,4 +1,4 @@
-name: CompareVI History Manual VI Exploration
+name: CompareVI History Manual VI Characterization
 
 on:
   workflow_dispatch:
@@ -13,9 +13,8 @@ on:
         default: develop
         type: string
       compare_modes:
-        description: Explicit public compare modes for manual exploration
-        required: false
-        default: attributes,front-panel,block-diagram
+        description: Explicit characterization compare mode list for manual exploration
+        required: true
         type: string
       include_merge_parents:
         description: Walk merge parents alongside the mainline when building the revision catalog
@@ -23,7 +22,7 @@ on:
         default: false
         type: boolean
       noise_policy:
-        description: Noise handling for manual exploration
+        description: Noise handling for manual exploration characterization
         required: false
         default: collapse
         type: string

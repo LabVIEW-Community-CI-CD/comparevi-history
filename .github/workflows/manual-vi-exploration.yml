@@ -16,9 +16,8 @@ on:
         required: true
         type: string
       modes:
-        description: Explicit public compare modes for manual exploration. Defaults to the reviewer-facing public surface.
-        required: false
-        default: attributes,front-panel,block-diagram
+        description: Explicit characterization compare mode list for manual exploration. Required until per-mode reviewer semantics are certified.
+        required: true
         type: string
       include_merge_parents:
         description: Walk merge parents alongside the mainline when building the revision catalog.
@@ -26,7 +25,7 @@ on:
         default: false
         type: boolean
       noise_policy:
-        description: Noise handling for manual exploration. Defaults to collapsed reviewer-facing output.
+        description: Noise handling for manual exploration. Defaults to collapsed characterization output.
         required: false
         default: collapse
         type: string
@@ -51,9 +50,8 @@ on:
         required: true
         type: string
       modes:
-        description: Explicit public compare modes for manual exploration. Defaults to the reviewer-facing public surface.
-        required: false
-        default: attributes,front-panel,block-diagram
+        description: Explicit characterization compare mode list for manual exploration. Required until per-mode reviewer semantics are certified.
+        required: true
         type: string
       include_merge_parents:
         description: Walk merge parents alongside the mainline when building the revision catalog.
@@ -61,7 +59,7 @@ on:
         default: false
         type: boolean
       noise_policy:
-        description: Noise handling for manual exploration. Defaults to collapsed reviewer-facing output.
+        description: Noise handling for manual exploration. Defaults to collapsed characterization output.
         required: false
         default: collapse
         type: string
