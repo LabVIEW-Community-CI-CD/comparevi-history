@@ -13,9 +13,9 @@ on:
         default: develop
         type: string
       compare_modes:
-        description: Compare mode bundle for trusted manual exploration
+        description: Explicit public compare modes for manual exploration
         required: false
-        default: full
+        default: attributes,front-panel,block-diagram
         type: string
       include_merge_parents:
         description: Walk merge parents alongside the mainline when building the revision catalog
@@ -23,9 +23,9 @@ on:
         default: false
         type: boolean
       noise_policy:
-        description: Noise handling for trusted manual exploration
+        description: Noise handling for manual exploration
         required: false
-        default: include
+        default: collapse
         type: string
 
 permissions:

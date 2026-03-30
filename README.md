@@ -191,12 +191,13 @@ The current execution slice stays additive on top of the discovery-first baselin
 
 - operator supplies `vi_path`
 - the platform validates the selected path fail-closed
-- trusted manual exploration now defaults to raw execution: `modes=full` plus `noise_policy=include`
+- trusted manual exploration now defaults to the public reviewer surface: `modes=attributes,front-panel,block-diagram`
+  plus `noise_policy=collapse`
 - the platform emits `revision-catalog.json` for the selected ref lineage
 - the platform plans deterministic chunk receipts/manifests
 - the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
-- the platform keeps unsuppressed LVCompare output in-band and surfaces deterministic metadata summaries for capture
-  artifacts such as images instead of collapsing them into generic noise counts
+- the platform keeps raw backend artifacts available in the bundle, but the default operator surface collapses generic
+  noise instead of normalizing it into the primary decision view
 - the platform emits `exploration-run.json` as the top-level execution and aggregation receipt
 - the platform emits `shared-evidence.json` as the shared machine-readable evidence core that manual exploration and
   curated PR diagnostics can both surface
@@ -368,7 +369,7 @@ explicitly instead of relying on maintainer-only source-checkout fallback behavi
 
 For faster local iteration, maintainers can still pass existing backend bounds such as `-MaxPairs`, but the local loop
 keeps the hosted artifact contract and does not replace the hosted workflow as the source of truth.
-Its defaults now match the raw manual exploration surface: `-Mode full` and `-NoisePolicy include`.
+Its defaults remain maintainer-oriented: `-Mode full` and `-NoisePolicy include`.
 
 ## Local review facade
 
@@ -459,7 +460,7 @@ pwsh -NoLogo -NoProfile -File scripts/Invoke-CompareVIHistoryLocalReview.ps1 `
 The local review facade keeps the PR-review defaults:
 
 - explicit public modes only: `attributes`, `front-panel`, `block-diagram`
-- `noise_policy=include`
+- `noise_policy=collapse`
 - fail closed above `maxChangedViCount = 10`
 - pair-level review workspace and pair pages
 

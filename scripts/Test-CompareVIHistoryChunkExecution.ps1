@@ -70,6 +70,64 @@ if ($env:COMPAREVI_HISTORY_TEST_FAIL_START_REF -and $env:COMPAREVI_HISTORY_TEST_
   throw "Forced compare failure for start ref $StartRef."
 }
 
+if ($env:COMPAREVI_HISTORY_TEST_ZERO_PROCESSED_START_REF -and $env:COMPAREVI_HISTORY_TEST_ZERO_PROCESSED_START_REF -eq $StartRef) {
+  New-Item -ItemType Directory -Path $ResultsDir -Force | Out-Null
+  $manifestPath = Join-Path $ResultsDir 'manifest.json'
+  $historySummaryPath = Join-Path $ResultsDir 'history-summary.json'
+  $historyReportMd = Join-Path $ResultsDir 'history-report.md'
+  $historyReportHtml = Join-Path $ResultsDir 'history-report.html'
+
+  @(
+    '{'
+    '  "schema": "vi-compare/history-suite@v1",'
+    '  "requestedModes": ["attributes"],'
+    '  "executedModes": ["attributes"],'
+    '  "startRef": "forced-start",'
+    '  "endRef": "forced-start",'
+    '  "stats": {'
+    '    "processed": 0,'
+    '    "diffs": 0,'
+    '    "stopReason": "no-pairs"'
+    '  }'
+    '}'
+  ) | Set-Content -LiteralPath $manifestPath -Encoding utf8
+  @(
+    '{'
+    '  "schema": "comparevi-tools/history-facade@v1",'
+    '  "execution": {'
+    '    "requestedModes": ["attributes"],'
+    '    "executedModes": ["attributes"]'
+    '  },'
+    '  "summary": {'
+    '    "comparisons": 0,'
+    '    "diffs": 0'
+    '  }'
+    '}'
+  ) | Set-Content -LiteralPath $historySummaryPath -Encoding utf8
+  "# report for $StartRef" | Set-Content -LiteralPath $historyReportMd -Encoding utf8
+  "<html><body>report for $StartRef</body></html>" | Set-Content -LiteralPath $historyReportHtml -Encoding utf8
+  @(
+    "target-path=$TargetPath"
+    "manifest-path=$manifestPath"
+    "results-dir=$ResultsDir"
+    "history-summary-json=$historySummaryPath"
+    "history-report-md=$historyReportMd"
+    "history-report-html=$historyReportHtml"
+    "mode-count=1"
+    "total-processed=0"
+    "total-diffs=0"
+    "stop-reason=no-pairs"
+    "category-counts-json={}"
+    "bucket-counts-json={}"
+    'mode-manifests-json=[{"mode":"attributes","slug":"attributes","manifest":"manifest.json","resultsDir":"results","processed":0,"diffs":0,"signalDiffs":0,"noiseCollapsed":0,"errors":0,"missing":0,"status":"ok","stopReason":"no-pairs","flags":[],"categoryCounts":{},"bucketCounts":{}}]'
+    "requested-mode-list=attributes"
+    "executed-mode-list=attributes"
+    "mode-list=attributes"
+    'flag-list='
+  ) | Set-Content -LiteralPath $GitHubOutputPath -Encoding utf8
+  return
+}
+
 New-Item -ItemType Directory -Path $ResultsDir -Force | Out-Null
 $manifestPath = Join-Path $ResultsDir 'manifest.json'
 $historySummaryPath = Join-Path $ResultsDir 'history-summary.json'
@@ -317,6 +375,38 @@ $processedCount = if ($null -eq $MaxPairs) { 1 } else { [int]$MaxPairs }
   }
   if (-not $failedReceipt.failure -or [string]::IsNullOrWhiteSpace([string]$failedReceipt.failure.message)) {
     throw 'Expected failure details for forced chunk failure.'
+  }
+
+  $zeroProcessedResultsDir = Join-Path $tempRoot 'results-zero-processed'
+  Copy-Item -LiteralPath $resultsDir -Destination $zeroProcessedResultsDir -Recurse
+  $zeroProcessedPlanPath = Join-Path $zeroProcessedResultsDir 'chunk-plan.json'
+  $zeroProcessedPlan = Get-Content -LiteralPath $zeroProcessedPlanPath -Raw | ConvertFrom-Json -Depth 64
+  $env:COMPAREVI_HISTORY_TEST_ZERO_PROCESSED_START_REF = [string]$zeroProcessedPlan.chunks[0].execution.startRef
+  try {
+    $zeroProcessedJson = & $executionScriptPath `
+      -ConsumerRepositoryRoot $consumerRoot `
+      -ChunkPlanPath $zeroProcessedPlanPath `
+      -ResultsDir $zeroProcessedResultsDir `
+      -Mode 'attributes' `
+      -ToolingRoot $toolingRoot
+  } finally {
+    Remove-Item Env:COMPAREVI_HISTORY_TEST_ZERO_PROCESSED_START_REF -ErrorAction SilentlyContinue
+  }
+
+  $zeroProcessed = $zeroProcessedJson | ConvertFrom-Json -Depth 32
+  if ($zeroProcessed.executionStatus -ne 'partial') {
+    throw 'Expected partial execution status when a chunk reports zero processed comparisons for planned pairs.'
+  }
+  $zeroProcessedReceiptPath = [string]$zeroProcessedPlan.chunks[0].outputs.receiptPath
+  $zeroProcessedReceipt = Get-Content -LiteralPath $zeroProcessedReceiptPath -Raw | ConvertFrom-Json -Depth 64
+  if ($zeroProcessedReceipt.status -ne 'failed') {
+    throw 'Expected failed chunk receipt for zero-processed planned-pair platform defect.'
+  }
+  if ($zeroProcessedReceipt.summary.finalReason -ne 'platform-defect-no-executed-comparisons') {
+    throw 'Expected explicit platform defect reason for zero-processed planned-pair chunk.'
+  }
+  if (-not $zeroProcessedReceipt.failure -or [string]$zeroProcessedReceipt.failure.message -notmatch 'executed zero comparisons') {
+    throw 'Expected platform defect failure message for zero-processed planned-pair chunk.'
   }
 } finally {
   Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

@@ -225,6 +225,7 @@ foreach ($plannedChunk in $chunks) {
   $chunkModeSummaryJsonPath = Join-Path $chunkRoot 'mode-summary.json'
   $chunkStatus = 'succeeded'
   $chunkFailureMessage = $null
+  $chunkFailureReason = $null
   $runValues = @{}
 
   try {
@@ -277,15 +278,39 @@ foreach ($plannedChunk in $chunks) {
     $modeSummary = Get-Content -LiteralPath $chunkModeSummaryJsonPath -Raw | ConvertFrom-Json -Depth 64
   }
 
+  $reportedTotalProcessed = if ($runValues.ContainsKey('total-processed') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['total-processed'])) {
+    [int][string]$runValues['total-processed']
+  } else {
+    0
+  }
+  $reportedTotalDiffs = if ($runValues.ContainsKey('total-diffs') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['total-diffs'])) {
+    [int][string]$runValues['total-diffs']
+  } else {
+    0
+  }
+  $reportedStopReason = if ($runValues.ContainsKey('stop-reason') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['stop-reason'])) {
+    [string]$runValues['stop-reason']
+  } else {
+    $null
+  }
+
+  if ($chunkStatus -ne 'failed' -and [int]$plannedChunk.pairCount -gt 0 -and $reportedTotalProcessed -eq 0) {
+    $chunkStatus = 'failed'
+    $chunkFailureReason = 'platform-defect-no-executed-comparisons'
+    $chunkFailureMessage = "comparevi-history planned $([int]$plannedChunk.pairCount) revision pairs for chunk '$([string]$plannedChunk.chunkId)' but executed zero comparisons (stop-reason '$reportedStopReason')."
+  }
+
   $chunkFinalReason = if ($chunkStatus -eq 'failed') {
-    if ($runValues.ContainsKey('stop-reason') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['stop-reason'])) {
-      [string]$runValues['stop-reason']
+    if (-not [string]::IsNullOrWhiteSpace($chunkFailureReason)) {
+      $chunkFailureReason
+    } elseif ($null -ne $reportedStopReason) {
+      $reportedStopReason
     } else {
       'facade-step-failed'
     }
   } else {
-    if ($runValues.ContainsKey('stop-reason') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['stop-reason'])) {
-      [string]$runValues['stop-reason']
+    if ($null -ne $reportedStopReason) {
+      $reportedStopReason
     } else {
       'completed'
     }
@@ -329,9 +354,9 @@ foreach ($plannedChunk in $chunks) {
       requestedModes = @($requestedModes)
       executedModes = @(ConvertTo-NormalizedModeList -Value $(if ($runValues.ContainsKey('executed-mode-list')) { [string]$runValues['executed-mode-list'] } else { '' }))
       modeCount = $(if ($runValues.ContainsKey('mode-count') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['mode-count'])) { [int][string]$runValues['mode-count'] } else { 0 })
-      totalProcessed = $(if ($runValues.ContainsKey('total-processed') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['total-processed'])) { [int][string]$runValues['total-processed'] } else { 0 })
-      totalDiffs = $(if ($runValues.ContainsKey('total-diffs') -and -not [string]::IsNullOrWhiteSpace([string]$runValues['total-diffs'])) { [int][string]$runValues['total-diffs'] } else { 0 })
-      stopReason = $(if ($runValues.ContainsKey('stop-reason')) { [string]$runValues['stop-reason'] } else { $null })
+      totalProcessed = $reportedTotalProcessed
+      totalDiffs = $reportedTotalDiffs
+      stopReason = $reportedStopReason
       finalStatus = $(if ($chunkStatus -eq 'failed') { 'failed' } else { 'succeeded' })
       finalReason = $chunkFinalReason
     }
