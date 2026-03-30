@@ -4,10 +4,10 @@
     "repository": "LabVIEW-Community-CI-CD/comparevi-history",
     "defaultBranch": "main",
     "movingMajorTag": "v1",
-    "latestCertifiedImmutableTag": "v1.3.24",
-    "latestCertifiedImmutableRunUrl": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23430879024",
+    "latestCertifiedImmutableTag": "v1.3.25",
+    "latestCertifiedImmutableRunUrl": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23724460447",
     "latestBranchCertificationRef": "main",
-    "latestBranchCertificationRunUrl": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23723036008"
+    "latestBranchCertificationRunUrl": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23724190881"
   },
   "consumers": [
     {
