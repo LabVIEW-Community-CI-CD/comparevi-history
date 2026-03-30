@@ -21,6 +21,16 @@ foreach ($flag in @('-nobd', '-noattr', '-nofp', '-nofppos', '-nobdcosm')) {
   [void]$suppressionFlags.Add($flag)
 }
 
+$script:CanonicalCategoryLabels = @{
+  'attributes' = 'VI Attribute'
+  'vi attribute' = 'VI Attribute'
+  'block diagram' = 'Block Diagram'
+  'front panel' = 'Front Panel'
+  'cosmetic' = 'Block Diagram Cosmetic'
+  'block diagram cosmetic' = 'Block Diagram Cosmetic'
+  'block diagram objects' = 'Block Diagram objects'
+}
+
 function ConvertTo-NormalizedModeList {
   param(
     [AllowNull()]
@@ -205,7 +215,17 @@ function Normalize-CategoryLabel {
 
   $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
   $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
-  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+  $normalized = ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+  if ([string]::IsNullOrWhiteSpace($normalized)) {
+    return ''
+  }
+
+  $lookupKey = ([regex]::Replace($normalized.ToLowerInvariant().Replace('_', ' '), '\s*-\s*', ' ')).Trim()
+  if ($script:CanonicalCategoryLabels.ContainsKey($lookupKey)) {
+    return [string]$script:CanonicalCategoryLabels[$lookupKey]
+  }
+
+  return $normalized
 }
 
 function Try-ParseComparisonPairLabel {
@@ -422,10 +442,10 @@ function Get-PreviewCategoryLabel {
   }
 
   if ($normalized.Count -gt 1) {
-    return 'multiple-categories'
+    return 'Multiple categories'
   }
 
-  return 'uncategorized'
+  return 'Uncategorized'
 }
 
 function Get-UniqueComparisonPair {

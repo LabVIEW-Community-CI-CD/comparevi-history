@@ -182,7 +182,7 @@ try {
   if ($indexMarkdown -notmatch [regex]::Escape('chunk-receipts/chunk-001/history/history-report.html')) {
     throw 'Index markdown must link the chunk HTML report.'
   }
-  if ($indexMarkdown -notmatch [regex]::Escape('![attributes | attributes](chunk-receipts/chunk-001/history/preview-images/cli-image-00.png)')) {
+  if ($indexMarkdown -notmatch [regex]::Escape('![attributes | VI Attribute](chunk-receipts/chunk-001/history/preview-images/cli-image-00.png)')) {
     throw 'Index markdown must embed the preview image gallery entry.'
   }
   foreach ($requiredFragment in @(
@@ -236,6 +236,9 @@ try {
   }
   if ($indexHtmlContent -notmatch [regex]::Escape('src="chunk-receipts/chunk-001/history/preview-images/cli-image-00.png"')) {
     throw 'Index HTML must embed the preview image gallery entry.'
+  }
+  if ($indexHtmlContent -notmatch [regex]::Escape('alt="attributes | VI Attribute"')) {
+    throw 'Index HTML must preserve the normalized preview gallery label.'
   }
   foreach ($requiredFragment in @(
       'Continuity status</strong><span>break-detected</span>',
