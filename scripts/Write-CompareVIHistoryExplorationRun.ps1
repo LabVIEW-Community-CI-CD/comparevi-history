@@ -25,6 +25,15 @@ $ErrorActionPreference = 'Stop'
 $script:PreviewGalleryCap = 12
 $script:StepSummaryPreviewCap = 2
 $script:StepSummaryPreviewByteBudget = 196608
+$script:CanonicalCategoryLabels = @{
+  'attributes' = 'VI Attribute'
+  'vi attribute' = 'VI Attribute'
+  'block diagram' = 'Block Diagram'
+  'front panel' = 'Front Panel'
+  'cosmetic' = 'Block Diagram Cosmetic'
+  'block diagram cosmetic' = 'Block Diagram Cosmetic'
+  'block diagram objects' = 'Block Diagram objects'
+}
 
 function Write-ActionOutput {
   param(
@@ -294,7 +303,17 @@ function Normalize-CategoryLabel {
 
   $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
   $withoutTags = [regex]::Replace($decoded, '<[^>]+>', ' ')
-  return ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+  $normalized = ([regex]::Replace($withoutTags, '\s+', ' ')).Trim()
+  if ([string]::IsNullOrWhiteSpace($normalized)) {
+    return ''
+  }
+
+  $lookupKey = ([regex]::Replace($normalized.ToLowerInvariant().Replace('_', ' '), '\s*-\s*', ' ')).Trim()
+  if ($script:CanonicalCategoryLabels.ContainsKey($lookupKey)) {
+    return [string]$script:CanonicalCategoryLabels[$lookupKey]
+  }
+
+  return $normalized
 }
 
 function Try-ParseComparisonPairLabel {

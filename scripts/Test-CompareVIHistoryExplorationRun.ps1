@@ -274,6 +274,10 @@ try {
       chunkCountWithMetadata = 1
       categoryCounts = [ordered]@{
         '<div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div>' = 2
+        'attributes' = 1
+        'VI Attribute' = 2
+        'block-diagram' = 1
+        'Block Diagram' = 1
         'Block Diagram objects' = 1
       }
       previewImages = @(
@@ -385,7 +389,13 @@ try {
   if ($executedRun.surfaces.categoryCounts.PSObject.Properties.Name -match 'First VI') {
     throw 'Executed exploration run category counts must not retain raw comparison identity fragments.'
   }
-  if ($executedRun.surfaces.categoryCounts.'Block Diagram objects' -ne 1) {
+  if ($executedRun.surfaces.categoryCounts.PSObject.Properties.Name -contains 'attributes' -or
+    $executedRun.surfaces.categoryCounts.PSObject.Properties.Name -contains 'block-diagram') {
+    throw 'Executed exploration run category counts must not retain slug category aliases.'
+  }
+  if ($executedRun.surfaces.categoryCounts.'VI Attribute' -ne 3 -or
+    $executedRun.surfaces.categoryCounts.'Block Diagram' -ne 2 -or
+    $executedRun.surfaces.categoryCounts.'Block Diagram objects' -ne 1) {
     throw 'Executed exploration run normalized category counts mismatch.'
   }
   if ($executedRun.surfaces.comparisonPairs.Count -ne 1) {

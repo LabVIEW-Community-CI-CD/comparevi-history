@@ -57,6 +57,10 @@ try {
     stats = [ordered]@{
       categoryCounts = [ordered]@{
         '<div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div>' = 2
+        'attributes' = 1
+        'VI Attribute' = 2
+        'block-diagram' = 1
+        'Block Diagram' = 2
         'Block Diagram Cosmetic' = 1
         'Block Diagram objects' = 2
       }
@@ -79,6 +83,10 @@ try {
       flags = @()
       categoryCounts = [ordered]@{
         '<div class="dropdown-left">First VI: /compare/m0/Base.vi</div><div class="dropdown-right">Second VI: /compare/m0/Head.vi</div>' = 2
+        'attributes' = 1
+        'VI Attribute' = 2
+        'block-diagram' = 1
+        'Block Diagram' = 2
         'Block Diagram Cosmetic' = 1
         'Block Diagram objects' = 2
       }
@@ -125,7 +133,7 @@ try {
   if ($summary -notmatch 'Preview images: `1`') {
     throw 'Summary did not surface the preview image count.'
   }
-  if ($summary -notmatch 'Category counts: `Block Diagram Cosmetic \(1\), Block Diagram objects \(2\)`') {
+  if ($summary -notmatch 'Category counts: `Block Diagram \(3\), Block Diagram Cosmetic \(1\), Block Diagram objects \(2\), VI Attribute \(3\)`') {
     throw 'Summary did not surface normalized category counts.'
   }
   if ($summary -notmatch 'Comparison pairs: `/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\)`') {
@@ -140,7 +148,7 @@ try {
   if ($summary -notmatch '\| full \| unsuppressed \| none \| 2 \| 1 \| 1 \| in-band \| captures=1; images=1 \| ok \|') {
     throw 'Summary did not include the raw full-mode row.'
   }
-  if ($summary -notmatch '- full: `categories=Block Diagram Cosmetic \(1\), Block Diagram objects \(2\); comparison-pairs=/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\); buckets=metadata-rich \(1\); metadata=captures:1, images:1, artifact-dirs:1, mime-types:image/png; preview-images=1`') {
+  if ($summary -notmatch '- full: `categories=Block Diagram \(3\), Block Diagram Cosmetic \(1\), Block Diagram objects \(2\), VI Attribute \(3\); comparison-pairs=/compare/m0/Base\.vi -> /compare/m0/Head\.vi \(2\); buckets=metadata-rich \(1\); metadata=captures:1, images:1, artifact-dirs:1, mime-types:image/png; preview-images=1`') {
     throw 'Summary did not include the per-mode metadata detail line.'
   }
   if (-not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
@@ -163,7 +171,14 @@ try {
   if ($modeSummaryJson.categoryCounts.PSObject.Properties.Name -match 'First VI') {
     throw 'Mode summary JSON category counts must not retain comparison identity fragments.'
   }
-  if ($modeSummaryJson.categoryCounts.'Block Diagram Cosmetic' -ne 1 -or $modeSummaryJson.categoryCounts.'Block Diagram objects' -ne 2) {
+  if ($modeSummaryJson.categoryCounts.PSObject.Properties.Name -contains 'attributes' -or
+    $modeSummaryJson.categoryCounts.PSObject.Properties.Name -contains 'block-diagram') {
+    throw 'Mode summary JSON category counts must not retain slug category aliases.'
+  }
+  if ($modeSummaryJson.categoryCounts.'VI Attribute' -ne 3 -or
+    $modeSummaryJson.categoryCounts.'Block Diagram' -ne 3 -or
+    $modeSummaryJson.categoryCounts.'Block Diagram Cosmetic' -ne 1 -or
+    $modeSummaryJson.categoryCounts.'Block Diagram objects' -ne 2) {
     throw 'Mode summary JSON normalized category counts mismatch.'
   }
   if ($modeSummaryJson.comparisonPairs.Count -ne 1) {
