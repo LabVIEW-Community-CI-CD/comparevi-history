@@ -327,7 +327,7 @@ jobs:
           PUBLIC_STEP_SUMMARY_PATH: ${{ steps.history.outputs['public-step-summary-path'] }}
           FINAL_STATUS: ${{ steps.history.outputs['final-status'] }}
           FINAL_REASON: ${{ steps.history.outputs['final-reason'] }}
-          ARTIFACT_NAME: comparevi-history-published-major-${{ github.run_id }}
+          ARTIFACT_NAME: comparevi-history-published-major-${{ needs.plan.outputs.consumer_id }}-${{ github.run_id }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -366,7 +366,7 @@ jobs:
         if: ${{ steps.history.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
-          name: comparevi-history-published-major-${{ github.run_id }}
+          name: comparevi-history-published-major-${{ needs.plan.outputs.consumer_id }}-${{ github.run_id }}
           path: |
             ${{ steps.history.outputs['results-dir'] }}/**
             labview-icon-editor/tests/results/_comparevi-history-published/major/published-evidence.json
@@ -506,7 +506,7 @@ jobs:
           PUBLIC_STEP_SUMMARY_PATH: ${{ steps.history.outputs['public-step-summary-path'] }}
           FINAL_STATUS: ${{ steps.history.outputs['final-status'] }}
           FINAL_REASON: ${{ steps.history.outputs['final-reason'] }}
-          ARTIFACT_NAME: comparevi-history-published-immutable-${{ github.run_id }}
+          ARTIFACT_NAME: comparevi-history-published-immutable-${{ needs.plan.outputs.consumer_id }}-${{ github.run_id }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
@@ -545,7 +545,7 @@ jobs:
         if: ${{ steps.history.outcome == 'success' }}
         uses: actions/upload-artifact@v5
         with:
-          name: comparevi-history-published-immutable-${{ github.run_id }}
+          name: comparevi-history-published-immutable-${{ needs.plan.outputs.consumer_id }}-${{ github.run_id }}
           path: |
             ${{ steps.history.outputs['results-dir'] }}/**
             labview-icon-editor/tests/results/_comparevi-history-published/immutable/published-evidence.json
