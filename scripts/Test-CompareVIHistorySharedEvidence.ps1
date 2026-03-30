@@ -228,7 +228,7 @@ try {
           "maxPairs": 2,
           "toolingSource": "bundle",
           "compareviRepository": "LabVIEW-Community-CI-CD/compare-vi-cli-action",
-          "compareviRef": "v0.6.7",
+          "compareviRef": "v0.6.8",
           "invokeScriptPath": null
         },
         "outputs": {
