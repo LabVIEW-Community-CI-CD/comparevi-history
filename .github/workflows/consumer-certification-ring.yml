@@ -1,0 +1,225 @@
+name: consumer-certification-ring
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_advisory:
+        description: Include advisory/proving consumers in the ring run
+        required: false
+        default: true
+        type: boolean
+      latest_immutable_tag:
+        description: Optional immutable tag override passed to published-consumer-validation
+        required: false
+        default: ''
+        type: string
+  schedule:
+    - cron: '36 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consumer-certification-ring-${{ github.event_name }}-${{ github.ref_name || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      required_matrix: ${{ steps.plan.outputs.required_matrix }}
+      advisory_matrix: ${{ steps.plan.outputs.advisory_matrix }}
+      latest_immutable_tag: ${{ steps.plan.outputs.latest_immutable_tag }}
+    steps:
+      - name: Checkout comparevi-history repo
+        uses: actions/checkout@v5
+
+      - name: Resolve certification ring plan
+        id: plan
+        shell: bash
+        env:
+          INPUT_INCLUDE_ADVISORY: ${{ inputs.include_advisory }}
+          INPUT_LATEST_IMMUTABLE_TAG: ${{ inputs.latest_immutable_tag }}
+        run: |
+          set -euo pipefail
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const policy = JSON.parse(fs.readFileSync('tools/policy/consumer-certification-ring.json', 'utf8'));
+          const includeAdvisory = !['false', '0', 'no'].includes(String(process.env.INPUT_INCLUDE_ADVISORY || 'true').trim().toLowerCase());
+          const immutableOverride = String(process.env.INPUT_LATEST_IMMUTABLE_TAG || '').trim();
+          const scheduled = (policy.consumers || []).filter((entry) => entry.scheduled === true);
+          const withOverride = scheduled.map((entry) => ({
+            consumer_id: entry.id,
+            consumer_tier: entry.tier,
+            certification_scope: entry.scope,
+            consumer_repository: entry.repository,
+            consumer_ref: entry.ref,
+            target_path: entry.targetPath,
+            compare_modes: entry.compareModes,
+            max_pairs: entry.maxPairs,
+            max_signal_pairs: entry.maxSignalPairs,
+            latest_immutable_tag: immutableOverride || policy.platform.latestCertifiedImmutableTag || ''
+          }));
+          const required = withOverride.filter((entry) => entry.certification_scope === 'required');
+          const advisory = includeAdvisory
+            ? withOverride.filter((entry) => entry.certification_scope !== 'required')
+            : [];
+          console.log(`required_matrix=${JSON.stringify(required)}`);
+          console.log(`advisory_matrix=${JSON.stringify(advisory)}`);
+          console.log(`latest_immutable_tag=${immutableOverride || policy.platform.latestCertifiedImmutableTag || ''}`);
+          NODE
+
+  certify-required:
+    if: ${{ needs.plan.outputs.required_matrix != '[]' }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        consumer: ${{ fromJson(needs.plan.outputs.required_matrix) }}
+    uses: ./.github/workflows/published-consumer-validation.yml
+    with:
+      consumer_id: ${{ matrix.consumer.consumer_id }}
+      consumer_tier: ${{ matrix.consumer.consumer_tier }}
+      certification_scope: ${{ matrix.consumer.certification_scope }}
+      consumer_repository: ${{ matrix.consumer.consumer_repository }}
+      consumer_ref: ${{ matrix.consumer.consumer_ref }}
+      target_path: ${{ matrix.consumer.target_path }}
+      compare_modes: ${{ matrix.consumer.compare_modes }}
+      max_pairs: ${{ matrix.consumer.max_pairs }}
+      max_signal_pairs: ${{ matrix.consumer.max_signal_pairs }}
+      latest_immutable_tag: ${{ matrix.consumer.latest_immutable_tag }}
+
+  certify-advisory:
+    if: ${{ needs.plan.outputs.advisory_matrix != '[]' }}
+    needs: plan
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        consumer: ${{ fromJson(needs.plan.outputs.advisory_matrix) }}
+    uses: ./.github/workflows/published-consumer-validation.yml
+    with:
+      consumer_id: ${{ matrix.consumer.consumer_id }}
+      consumer_tier: ${{ matrix.consumer.consumer_tier }}
+      certification_scope: ${{ matrix.consumer.certification_scope }}
+      consumer_repository: ${{ matrix.consumer.consumer_repository }}
+      consumer_ref: ${{ matrix.consumer.consumer_ref }}
+      target_path: ${{ matrix.consumer.target_path }}
+      compare_modes: ${{ matrix.consumer.compare_modes }}
+      max_pairs: ${{ matrix.consumer.max_pairs }}
+      max_signal_pairs: ${{ matrix.consumer.max_signal_pairs }}
+      latest_immutable_tag: ${{ matrix.consumer.latest_immutable_tag }}
+
+  aggregate-ledger:
+    if: ${{ always() }}
+    needs:
+      - plan
+      - certify-required
+      - certify-advisory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout comparevi-history repo
+        uses: actions/checkout@v5
+
+      - name: Download consumer certification ledgers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: comparevi-history-certification-ledger-*
+          merge-multiple: true
+          path: certification-ledgers
+
+      - name: Build certification ring ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const policy = JSON.parse(fs.readFileSync('tools/policy/consumer-certification-ring.json', 'utf8'));
+          const ledgerDir = path.resolve('certification-ledgers');
+          const ledgers = fs.existsSync(ledgerDir)
+            ? fs.readdirSync(ledgerDir).filter((entry) => entry.endsWith('.json')).map((entry) => JSON.parse(fs.readFileSync(path.join(ledgerDir, entry), 'utf8')))
+            : [];
+          const byId = new Map(ledgers.map((entry) => [entry.consumer.id, entry]));
+          const consumers = policy.consumers.map((entry) => {
+            const ledger = byId.get(entry.id) || null;
+            return {
+              id: entry.id,
+              repository: entry.repository,
+              ref: entry.ref,
+              tier: entry.tier,
+              scope: entry.scope,
+              scheduled: entry.scheduled === true,
+              latestRunUrl: ledger?.platform?.runUrl || null,
+              status: ledger?.certification?.status || 'missing'
+            };
+          });
+          const requiredFailures = consumers.filter((entry) => entry.scope === 'required' && entry.status !== 'pass').length;
+          const advisoryFailures = consumers.filter((entry) => entry.scope !== 'required' && entry.status !== 'pass').length;
+          const overallStatus = requiredFailures > 0 ? 'fail' : advisoryFailures > 0 ? 'warn' : 'pass';
+          const payload = {
+            schema: 'comparevi-history/consumer-certification-ring-ledger@v1',
+            generatedAt: new Date().toISOString(),
+            platform: {
+              repository: process.env.GITHUB_REPOSITORY,
+              ref: process.env.GITHUB_REF_NAME || null,
+              runUrl: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              latestImmutableTag: process.env.LATEST_IMMUTABLE_TAG || policy.platform.latestCertifiedImmutableTag || null
+            },
+            consumers,
+            summary: {
+              status: overallStatus,
+              consumerCount: consumers.length,
+              requiredFailures,
+              advisoryFailures
+            }
+          };
+          const outputPath = path.resolve('tests/results/certification/consumer-certification-ring-ledger.json');
+          fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+          fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+          NODE
+        env:
+          LATEST_IMMUTABLE_TAG: ${{ needs.plan.outputs.latest_immutable_tag }}
+
+      - name: Append certification ring summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const ledger = JSON.parse(fs.readFileSync('tests/results/certification/consumer-certification-ring-ledger.json', 'utf8'));
+          const lines = [
+            '## Consumer Certification Ring',
+            `- status: \`${ledger.summary.status}\``,
+            `- consumers: \`${ledger.summary.consumerCount}\``,
+            `- required failures: \`${ledger.summary.requiredFailures}\``,
+            `- advisory failures: \`${ledger.summary.advisoryFailures}\``
+          ];
+          for (const consumer of ledger.consumers) {
+            lines.push(`- ${consumer.repository}@${consumer.ref}: \`${consumer.status}\` [${consumer.tier}/${consumer.scope}]`);
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`, 'utf8');
+          NODE
+
+      - name: Upload certification ring ledger
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-certification-ring-ledger-${{ github.run_id }}
+          path: tests/results/certification/consumer-certification-ring-ledger.json
+          if-no-files-found: error
+
+      - name: Enforce required certification ring health
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const ledger = JSON.parse(fs.readFileSync('tests/results/certification/consumer-certification-ring-ledger.json', 'utf8'));
+          if (ledger.summary.requiredFailures > 0) {
+            console.error(`required consumer certification failures detected: ${ledger.summary.requiredFailures}`);
+            process.exit(1);
+          }
+          NODE

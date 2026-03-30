@@ -3,6 +3,18 @@ name: published-consumer-validation
 on:
   workflow_call:
     inputs:
+      consumer_id:
+        description: Stable consumer identifier for certification ledger artifacts.
+        required: false
+        type: string
+      consumer_tier:
+        description: Consumer support tier, for example certified or proving.
+        required: false
+        type: string
+      certification_scope:
+        description: Ring enforcement scope, for example required or advisory.
+        required: false
+        type: string
       consumer_repository:
         description: External consumer repository to validate.
         required: false
@@ -33,6 +45,21 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      consumer_id:
+        description: Stable consumer identifier for certification ledger artifacts.
+        required: false
+        default: ni-icon-editor
+        type: string
+      consumer_tier:
+        description: Consumer support tier, for example certified or proving.
+        required: false
+        default: certified
+        type: string
+      certification_scope:
+        description: Ring enforcement scope, for example required or advisory.
+        required: false
+        default: required
+        type: string
       consumer_repository:
         description: External consumer repository to validate.
         required: false
@@ -68,9 +95,6 @@ on:
         required: false
         default: ''
         type: string
-  schedule:
-    - cron: '21 9 * * 1'
-
 permissions:
   contents: read
 
@@ -85,6 +109,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
+      consumer_id: ${{ steps.defaults.outputs.consumer_id }}
+      consumer_tier: ${{ steps.defaults.outputs.consumer_tier }}
+      certification_scope: ${{ steps.defaults.outputs.certification_scope }}
       consumer_repository: ${{ steps.defaults.outputs.consumer_repository }}
       consumer_ref: ${{ steps.defaults.outputs.consumer_ref }}
       target_path: ${{ steps.defaults.outputs.target_path }}
@@ -102,6 +129,24 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
+
+          $consumerId = '${{ inputs.consumer_id }}'
+          if ([string]::IsNullOrWhiteSpace($consumerId)) {
+            $consumerId = ('${{ inputs.consumer_repository }}' -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($consumerId)) {
+              $consumerId = 'consumer'
+            }
+          }
+
+          $consumerTier = '${{ inputs.consumer_tier }}'
+          if ([string]::IsNullOrWhiteSpace($consumerTier)) {
+            $consumerTier = 'certified'
+          }
+
+          $certificationScope = '${{ inputs.certification_scope }}'
+          if ([string]::IsNullOrWhiteSpace($certificationScope)) {
+            $certificationScope = 'required'
+          }
 
           $consumerRepository = '${{ inputs.consumer_repository }}'
           if ([string]::IsNullOrWhiteSpace($consumerRepository)) {
@@ -134,6 +179,9 @@ jobs:
           }
 
           @(
+            "consumer_id=$consumerId"
+            "consumer_tier=$consumerTier"
+            "certification_scope=$certificationScope"
             "consumer_repository=$consumerRepository"
             "consumer_ref=$consumerRef"
             "target_path=$targetPath"
@@ -476,3 +524,100 @@ jobs:
             ${{ steps.history.outputs['results-dir'] }}/**
             labview-icon-editor/tests/results/_comparevi-history-published/immutable/published-evidence.json
           if-no-files-found: error
+
+  certification-ledger:
+    name: certification-ledger
+    if: ${{ always() }}
+    needs:
+      - plan
+      - validate-major
+      - validate-immutable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write certification ledger receipt
+        shell: bash
+        env:
+          CONSUMER_ID: ${{ needs.plan.outputs.consumer_id }}
+          CONSUMER_TIER: ${{ needs.plan.outputs.consumer_tier }}
+          CERTIFICATION_SCOPE: ${{ needs.plan.outputs.certification_scope }}
+          CONSUMER_REPOSITORY: ${{ needs.plan.outputs.consumer_repository }}
+          CONSUMER_REF: ${{ needs.plan.outputs.consumer_ref }}
+          TARGET_PATH: ${{ needs.plan.outputs.target_path }}
+          COMPARE_MODES: ${{ needs.plan.outputs.compare_modes }}
+          MAX_PAIRS: ${{ needs.plan.outputs.max_pairs }}
+          MAX_SIGNAL_PAIRS: ${{ needs.plan.outputs.max_signal_pairs }}
+          LATEST_IMMUTABLE_TAG: ${{ needs.plan.outputs.latest_immutable_tag }}
+          MAJOR_RESULT: ${{ needs.validate-major.result }}
+          IMMUTABLE_RESULT: ${{ needs.validate-immutable.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTPUT_PATH: tests/results/certification/${{ needs.plan.outputs.consumer_id }}-certification-ledger.json
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const majorResult = process.env.MAJOR_RESULT || 'unknown';
+          const immutableResult = process.env.IMMUTABLE_RESULT || 'unknown';
+          const overallStatus = majorResult === 'success' && immutableResult === 'success' ? 'pass' : 'fail';
+          const payload = {
+            schema: 'comparevi-history/consumer-certification-ledger@v1',
+            generatedAt: new Date().toISOString(),
+            platform: {
+              repository: process.env.GITHUB_REPOSITORY,
+              ref: process.env.GITHUB_REF_NAME || null,
+              runUrl: process.env.RUN_URL,
+              latestImmutableTag: process.env.LATEST_IMMUTABLE_TAG || null
+            },
+            consumer: {
+              id: process.env.CONSUMER_ID,
+              repository: process.env.CONSUMER_REPOSITORY,
+              ref: process.env.CONSUMER_REF,
+              tier: process.env.CONSUMER_TIER,
+              scope: process.env.CERTIFICATION_SCOPE,
+              targetPath: process.env.TARGET_PATH,
+              compareModes: process.env.COMPARE_MODES,
+              maxPairs: process.env.MAX_PAIRS,
+              maxSignalPairs: process.env.MAX_SIGNAL_PAIRS
+            },
+            certification: {
+              status: overallStatus,
+              movingMajorTag: {
+                ref: 'v1',
+                result: majorResult
+              },
+              immutableTag: {
+                ref: process.env.LATEST_IMMUTABLE_TAG || null,
+                result: immutableResult
+              }
+            }
+          };
+          const outputPath = path.resolve(process.env.OUTPUT_PATH);
+          fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+          fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+          NODE
+
+      - name: Upload certification ledger receipt
+        uses: actions/upload-artifact@v5
+        with:
+          name: comparevi-history-certification-ledger-${{ needs.plan.outputs.consumer_id }}-${{ github.run_id }}
+          path: tests/results/certification/${{ needs.plan.outputs.consumer_id }}-certification-ledger.json
+          if-no-files-found: error
+
+      - name: Append certification ledger summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('tests/results/certification/${{ needs.plan.outputs.consumer_id }}-certification-ledger.json', 'utf8'));
+          const lines = [
+            '## Consumer Certification Ledger',
+            `- consumer: \`${report.consumer.repository}@${report.consumer.ref}\``,
+            `- tier: \`${report.consumer.tier}\``,
+            `- scope: \`${report.consumer.scope}\``,
+            `- status: \`${report.certification.status}\``,
+            `- moving major tag (\`v1\`): \`${report.certification.movingMajorTag.result}\``,
+            `- immutable tag (\`${report.certification.immutableTag.ref || 'none'}\`): \`${report.certification.immutableTag.result}\``
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`, 'utf8');
+          NODE

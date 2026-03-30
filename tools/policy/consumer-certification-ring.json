@@ -1,0 +1,40 @@
+{
+  "schema": "comparevi-history/consumer-certification-ring@v1",
+  "platform": {
+    "repository": "LabVIEW-Community-CI-CD/comparevi-history",
+    "defaultBranch": "main",
+    "movingMajorTag": "v1",
+    "latestCertifiedImmutableTag": "v1.3.24",
+    "latestCertifiedImmutableRunUrl": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23430879024",
+    "latestBranchCertificationRef": "main",
+    "latestBranchCertificationRunUrl": "https://github.com/LabVIEW-Community-CI-CD/comparevi-history/actions/runs/23723036008"
+  },
+  "consumers": [
+    {
+      "id": "ni-icon-editor",
+      "repository": "ni/labview-icon-editor",
+      "ref": "develop",
+      "tier": "certified",
+      "scope": "required",
+      "scheduled": true,
+      "targetPath": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "compareModes": "attributes,front-panel,block-diagram",
+      "maxPairs": "5",
+      "maxSignalPairs": "5",
+      "notes": "Canonical external certified consumer."
+    },
+    {
+      "id": "icon-editor-demo",
+      "repository": "LabVIEW-Community-CI-CD/labview-icon-editor-demo",
+      "ref": "develop",
+      "tier": "proving",
+      "scope": "advisory",
+      "scheduled": true,
+      "targetPath": "Tooling/deployment/VIP_Post-Install Custom Action.vi",
+      "compareModes": "attributes,front-panel,block-diagram",
+      "maxPairs": "5",
+      "maxSignalPairs": "5",
+      "notes": "Org-owned proving consumer used for admission and template evolution."
+    }
+  ]
+}
