@@ -78,6 +78,9 @@ concurrency:
   group: manual-vi-exploration-${{ github.event_name }}-${{ github.ref_name || github.run_id }}
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   manual-vi-exploration:
     runs-on: ubuntu-latest

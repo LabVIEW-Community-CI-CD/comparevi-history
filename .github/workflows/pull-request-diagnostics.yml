@@ -54,6 +54,9 @@ concurrency:
   group: pull-request-diagnostics-${{ github.repository }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   pull-request-diagnostics:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
