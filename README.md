@@ -199,7 +199,7 @@ The current execution slice stays additive on top of the discovery-first baselin
 - operator must choose explicit characterization modes; there is no bundled default mode list
 - `noise_policy=collapse` stays the default characterization output because the alternate noise surfaces are not yet a
   certified reviewer contract
-- the platform emits `revision-catalog.json` for the selected ref lineage
+- the platform emits `revision-catalog.json` for the selected ref touch history
 - the platform plans deterministic chunk receipts/manifests
 - the platform executes planned chunks serially through the consumer's trusted hosted NI Linux adapter
 - the platform keeps raw backend artifacts available in the bundle, but the default operator surface collapses generic

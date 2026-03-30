@@ -229,9 +229,6 @@ $logArguments = @(
   'log',
   $selectedRefTrimmed
 )
-if (-not $IncludeMergeParents.IsPresent) {
-  $logArguments += '--first-parent'
-}
 $logArguments += @(
   '--follow',
   '--find-renames=90%',
@@ -283,7 +280,7 @@ $catalog = [ordered]@{
   }
   discovery      = [ordered]@{
     includeMergeParents = [bool]$IncludeMergeParents.IsPresent
-    historyMode         = $(if ($IncludeMergeParents.IsPresent) { 'ancestry' } else { 'first-parent' })
+    historyMode         = $(if ($IncludeMergeParents.IsPresent) { 'ancestry' } else { 'touch-history' })
     followRenames       = $true
     complete            = $true
     completenessReason  = 'selected-ref-lineage'

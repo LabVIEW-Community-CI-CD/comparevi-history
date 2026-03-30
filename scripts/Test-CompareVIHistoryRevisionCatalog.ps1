@@ -74,7 +74,7 @@ try {
   if ($catalog.summary.renameCount -ne 1) {
     throw 'Rename count mismatch.'
   }
-  if ($catalog.discovery.historyMode -ne 'first-parent') {
+  if ($catalog.discovery.historyMode -ne 'touch-history') {
     throw 'History mode mismatch.'
   }
   if ($catalog.revisions[0].path -ne 'legacy/Original.vi') {
