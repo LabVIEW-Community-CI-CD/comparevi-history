@@ -40,6 +40,9 @@ concurrency:
   group: pull-request-diagnostics-canary-evaluate-${{ github.repository }}-${{ inputs.workflow_run_id }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   pull-request-diagnostics-canary-evaluate:
     runs-on: ubuntu-latest
