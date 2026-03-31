@@ -142,12 +142,62 @@ function Resolve-ToolingMetadata {
   return Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json -Depth 32
 }
 
+function Resolve-DockerCommandSource {
+  $override = $env:DOCKER_COMMAND_OVERRIDE
+  if (-not [string]::IsNullOrWhiteSpace($override) -and (Test-Path -LiteralPath $override -PathType Leaf)) {
+    return [System.IO.Path]::GetFullPath($override)
+  }
+
+  $pathSeparator = [System.IO.Path]::PathSeparator
+  $pathEntries = @($env:PATH -split [regex]::Escape([string]$pathSeparator))
+  $candidates = if ($IsWindows) {
+    @('docker.exe', 'docker.cmd', 'docker.ps1', 'docker.bat', 'docker')
+  } else {
+    @('docker', 'docker.sh', 'docker.exe', 'docker.ps1', 'docker.cmd')
+  }
+
+  foreach ($entry in $pathEntries) {
+    if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+    foreach ($name in $candidates) {
+      $candidatePath = Join-Path $entry $name
+      if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+        return [System.IO.Path]::GetFullPath($candidatePath)
+      }
+    }
+  }
+
+  $command = Get-Command -Name 'docker' -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($null -eq $command -or [string]::IsNullOrWhiteSpace([string]$command.Source)) {
+    return $null
+  }
+
+  return [System.IO.Path]::GetFullPath([string]$command.Source)
+}
+
+function Invoke-DockerCommand {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+  $dockerCommandSource = Resolve-DockerCommandSource
+  if ([string]::IsNullOrWhiteSpace($dockerCommandSource)) {
+    throw 'docker was not found on PATH and DOCKER_COMMAND_OVERRIDE is not set.'
+  }
+
+  $dockerCommandExtension = [System.IO.Path]::GetExtension($dockerCommandSource)
+  if ([System.StringComparer]::OrdinalIgnoreCase.Equals($dockerCommandExtension, '.ps1')) {
+    & pwsh -NoLogo -NoProfile -File $dockerCommandSource @Arguments | Out-Null
+  } else {
+    & $dockerCommandSource @Arguments | Out-Null
+  }
+
+  return $LASTEXITCODE
+}
+
 function Test-DockerImageExists {
   param([Parameter(Mandatory = $true)][string]$ImageName)
 
   try {
-    & docker image inspect $ImageName *> $null
-    return ($LASTEXITCODE -eq 0)
+    $exitCode = Invoke-DockerCommand -Arguments @('image', 'inspect', $ImageName)
+    return ($exitCode -eq 0)
   } catch {
     return $false
   }
@@ -156,13 +206,8 @@ function Test-DockerImageExists {
 function Invoke-DockerPull {
   param([Parameter(Mandatory = $true)][string]$Image)
 
-  $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
-  if ($null -eq $dockerCommand) {
-    throw "docker was not found on PATH, but the local fast loop requires it to pre-pull '$Image'."
-  }
-
-  & $dockerCommand.Source pull $Image
-  if ($LASTEXITCODE -ne 0) {
+  $exitCode = Invoke-DockerCommand -Arguments @('pull', $Image)
+  if ($exitCode -ne 0) {
     throw "docker pull failed for image '$Image'."
   }
 }
