@@ -187,10 +187,11 @@ Trusted maintainers can characterize repo-relative `.vi` history through the reu
 wrapper such as
 [`docs/examples/comparevi-history-manual-vi-exploration.yml`](docs/examples/comparevi-history-manual-vi-exploration.yml).
 
-This surface is currently characterization-only, not a certified developer decision surface. The current `DrawIcon.vi`
-product proof demonstrates corrected revision discovery and real backend execution, but it still does not prove
-trustworthy commit-by-commit review semantics or clean per-mode category fidelity. Do not expose the wrapper as a
-reviewer-facing consumer contract until those semantics are proven.
+This surface is currently characterization-only, not a certified developer decision surface. The current
+`Tooling/deployment/VIP_Pre-Install Custom Action.vi` product proof demonstrates corrected revision discovery, real
+backend execution, and explicit newest-signal guidance, but it still does not prove trustworthy commit-by-commit review
+semantics or clean pair-level category fidelity. Do not expose the wrapper as a reviewer-facing consumer contract until
+those semantics are proven.
 
 The current execution slice stays additive on top of the discovery-first baseline:
 
