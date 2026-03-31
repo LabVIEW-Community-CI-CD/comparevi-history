@@ -278,6 +278,86 @@ $ErrorActionPreference = 'Stop'
     throw 'Local fast loop must surface capture/image metadata.'
   }
 
+  $dockerStubDir = Join-Path $tempRoot 'docker-stub'
+  $dockerStubLog = Join-Path $dockerStubDir 'docker-log.ndjson'
+  $dockerStubPullMarker = Join-Path $dockerStubDir 'pulled.txt'
+  New-Item -ItemType Directory -Path $dockerStubDir -Force | Out-Null
+  @'
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+$logPath = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_LOG', 'Process')
+if (-not [string]::IsNullOrWhiteSpace($logPath)) {
+  ([ordered]@{ args = @($Args) } | ConvertTo-Json -Compress) | Add-Content -LiteralPath $logPath -Encoding utf8
+}
+
+$pullMarker = [System.Environment]::GetEnvironmentVariable('DOCKER_STUB_PULL_MARKER', 'Process')
+if ($Args.Count -ge 2 -and $Args[0] -eq 'pull') {
+  if (-not [string]::IsNullOrWhiteSpace($pullMarker)) {
+    'pulled' | Set-Content -LiteralPath $pullMarker -Encoding utf8
+  }
+  Write-Output $Args[1]
+  exit 0
+}
+
+if ($Args.Count -ge 3 -and $Args[0] -eq 'image' -and $Args[1] -eq 'inspect') {
+  if (-not [string]::IsNullOrWhiteSpace($pullMarker) -and (Test-Path -LiteralPath $pullMarker -PathType Leaf)) {
+    Write-Output '[]'
+    exit 0
+  }
+  exit 1
+}
+
+exit 0
+'@ | Set-Content -LiteralPath (Join-Path $dockerStubDir 'docker-override.ps1') -Encoding utf8
+
+  $savedDockerOverride = $env:DOCKER_COMMAND_OVERRIDE
+  $savedDockerStubLog = $env:DOCKER_STUB_LOG
+  $savedDockerStubPullMarker = $env:DOCKER_STUB_PULL_MARKER
+  try {
+    Set-Item Env:DOCKER_COMMAND_OVERRIDE (Join-Path $dockerStubDir 'docker-override.ps1')
+    Set-Item Env:DOCKER_STUB_LOG $dockerStubLog
+    Set-Item Env:DOCKER_STUB_PULL_MARKER $dockerStubPullMarker
+
+    $proofResultsDir = Join-Path $tempRoot 'results-proof-override'
+    $proofReceiptJson = & $scriptPath `
+      -ConsumerRepositoryRoot $consumerRoot `
+      -ViPath 'Tooling/deployment/VIP_Pre-Install Custom Action.vi' `
+      -ConsumerRef 'HEAD' `
+      -ResultsDir $proofResultsDir `
+      -ToolingRoot $toolingRoot
+
+    $proofReceipt = $proofReceiptJson | ConvertFrom-Json -Depth 20
+    if (-not $proofReceipt.tooling.imagePulled) {
+      throw 'Proof-profile local fast loop must report imagePulled when using the docker override path.'
+    }
+    if (-not (Test-Path -LiteralPath $dockerStubPullMarker -PathType Leaf)) {
+      throw 'Docker override pull marker was not written.'
+    }
+    $dockerLogLines = @(Get-Content -LiteralPath $dockerStubLog | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($dockerLogLines.Count -eq 0) {
+      throw 'Docker override log is empty.'
+    }
+    $dockerCalls = @($dockerLogLines | ForEach-Object { $_ | ConvertFrom-Json })
+    if (@($dockerCalls | Where-Object { $_.args[0] -eq 'pull' }).Count -lt 1) {
+      throw 'Local fast loop did not pre-pull through DOCKER_COMMAND_OVERRIDE.'
+    }
+  } finally {
+    if ([string]::IsNullOrWhiteSpace($savedDockerOverride)) {
+      Remove-Item Env:DOCKER_COMMAND_OVERRIDE -ErrorAction SilentlyContinue
+    } else {
+      Set-Item Env:DOCKER_COMMAND_OVERRIDE $savedDockerOverride
+    }
+    if ([string]::IsNullOrWhiteSpace($savedDockerStubLog)) {
+      Remove-Item Env:DOCKER_STUB_LOG -ErrorAction SilentlyContinue
+    } else {
+      Set-Item Env:DOCKER_STUB_LOG $savedDockerStubLog
+    }
+    if ([string]::IsNullOrWhiteSpace($savedDockerStubPullMarker)) {
+      Remove-Item Env:DOCKER_STUB_PULL_MARKER -ErrorAction SilentlyContinue
+    } else {
+      Set-Item Env:DOCKER_STUB_PULL_MARKER $savedDockerStubPullMarker
+    }
+  }
+
   $devFastResultsDir = Join-Path $tempRoot 'results-dev-fast'
   $devFastReceiptJson = & $scriptPath `
     -ConsumerRepositoryRoot $consumerRoot `
