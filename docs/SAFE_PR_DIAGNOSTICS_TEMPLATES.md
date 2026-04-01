@@ -191,4 +191,3 @@ Consumer repositories should not contain:
 7. Add the comment-gated template only after you are comfortable letting maintainers trigger diagnostics from PR
    comments on a trusted hosted runner.
 8. If you need stricter reproducibility, replace `@v1` with the latest immutable tag after each reviewed release.
-
