@@ -2,10 +2,16 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $scriptPath = Join-Path $PSScriptRoot 'Write-CompareVIHistoryPublicRun.ps1'
+$compareviRefPath = Join-Path $PSScriptRoot '..' 'comparevi-backend-ref.txt'
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("comparevi-history-public-run-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
 try {
+  $compareviRef = (Get-Content -LiteralPath $compareviRefPath -Raw).Trim()
+  if ([string]::IsNullOrWhiteSpace($compareviRef)) {
+    throw "comparevi-backend-ref.txt must contain the repo-pinned backend release tag."
+  }
+
   $repoRoot = Join-Path $tempRoot 'consumer'
   $resultsRoot = Join-Path $repoRoot 'tests/results/ref-compare/history'
   $publicRoot = Join-Path $resultsRoot 'public'
@@ -158,7 +164,7 @@ $lines -join "`n"
     -RequestPath (Join-Path $publicRoot 'request.json') `
     -ToolingRoot $toolingRoot `
     -CompareviRepository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
-    -CompareviRef 'v0.6.11' `
+    -CompareviRef $compareviRef `
     -ToolingSource 'bundle' `
     -ActionRef 'LabVIEW-Community-CI-CD/comparevi-history@v1' `
     -HistorySummaryJson (Join-Path $resultsRoot 'history-summary.json') `
@@ -230,7 +236,7 @@ $lines -join "`n"
     -RequestPath (Join-Path $publicRoot 'request.json') `
     -ToolingRoot $toolingRoot `
     -CompareviRepository 'LabVIEW-Community-CI-CD/compare-vi-cli-action' `
-    -CompareviRef 'v0.6.11' `
+    -CompareviRef $compareviRef `
     -ToolingSource 'bundle' `
     -ModeSummaryJsonPath $modeSummaryJsonPath `
     -ModeSummaryPath $modeSummaryPath `
