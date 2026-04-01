@@ -23,7 +23,7 @@ jobs:
       DEFAULT_COMPARE_MODES: attributes,front-panel,block-diagram
       DEFAULT_MAX_PAIRS: '5'
       DEFAULT_MAX_SIGNAL_PAIRS: '5'
-      FACADE_REF: v1.3.26
+      FACADE_REF: v1.3.27
       COMPAREVI_NI_LINUX_IMAGE: nationalinstruments/labview:2026q1-linux
     steps:
       - name: Validate maintainer command and resolve PR head
@@ -65,7 +65,6 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($compareModes)) {
             $compareModes = $env:DEFAULT_COMPARE_MODES
           }
-
           $headers = @{
             Accept = 'application/vnd.github+json'
             Authorization = "Bearer $env:GITHUB_TOKEN"
@@ -101,7 +100,7 @@ jobs:
 
       - name: Run comparevi-history
         id: history
-        uses: LabVIEW-Community-CI-CD/comparevi-history@v1.3.26
+        uses: LabVIEW-Community-CI-CD/comparevi-history@v1.3.27
         with:
           target_spec_path: .github/comparevi-history-targets.json
           target_id: ${{ steps.request.outputs['target-id'] }}
@@ -147,7 +146,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1.3.26
+          ACTION_REF: LabVIEW-Community-CI-CD/comparevi-history@v1.3.27
           COMMENT_PATH: ${{ steps.history.outputs['public-comment-path'] }}
         run: |
           Set-StrictMode -Version Latest
